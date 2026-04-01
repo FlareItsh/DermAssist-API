@@ -13,3 +13,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('users', UserController::class);
 });
+
+Route::get('/test', function () {
+    return response()->json(
+        "Hello World"
+    );
+});
