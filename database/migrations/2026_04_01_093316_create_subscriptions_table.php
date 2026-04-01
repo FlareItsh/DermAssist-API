@@ -15,15 +15,15 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('plan_id')->constrained()->cascadeOnDelete();
-            $table->string('stripe_id');
+            $table->string('trsansaction_id');
             $table->dateTime('starts_at');
             $table->dateTime('ends_at');
-            $table->dateTime('cancelled_at');
+            $table->dateTime('cancelled_at')->nullable();
             $table->timestamps();
         });
     }
 
-    /**
+    /** 
      * Reverse the migrations.
      */
     public function down(): void
