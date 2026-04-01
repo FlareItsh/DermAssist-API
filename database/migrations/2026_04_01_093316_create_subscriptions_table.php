@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('plan_id')->constrained()->cascadeOnDelete();
-            $table->string('trsansaction_id');
+            $table->string('transaction_id');
             $table->dateTime('starts_at');
             $table->dateTime('ends_at');
             $table->dateTime('cancelled_at')->nullable();
