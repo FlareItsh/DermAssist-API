@@ -3,7 +3,6 @@
 namespace App\Repository;
 
 use App\Models\User;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class UserRepository
 {
@@ -27,16 +26,23 @@ class UserRepository
         return User::where($field, $value)->firstOrFail();
     }
 
+    public function findFirstByField(string $field, $value)
+    {
+        return User::where($field, $value)->first();
+    }
+
     public function update(string $uuid, array $payload)
     {
         $model = $this->findByUuid($uuid);
         $model->update($payload);
+
         return $model;
     }
 
     public function delete(string $uuid)
     {
         $model = $this->findByUuid($uuid);
+
         return $model->delete();
     }
 
@@ -44,6 +50,7 @@ class UserRepository
     {
         $model = User::withTrashed()->where('uuid', $uuid)->firstOrFail();
         $model->restore();
+
         return $model;
     }
 }
