@@ -23,4 +23,9 @@ class AuthController extends Controller
     {
         return $this->userService->logoutUser($request->user());
     }
+
+    public function register(Request $request)
+    {
+        return $this->userService->createUser($request->all());
+    }
 }

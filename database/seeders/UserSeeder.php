@@ -2,7 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -13,35 +14,38 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        $adminRole = \App\Models\Role::where('slug', 'admin')->first();
-        $patientRole = \App\Models\Role::where('slug', 'patient')->first();
-        $doctorRole = \App\Models\Role::where('slug', 'doctor')->first();
+        $adminRole = Role::where('slug', 'admin')->first();
+        $patientRole = Role::where('slug', 'patient')->first();
+        $doctorRole = Role::where('slug', 'doctor')->first();
 
         // 1. Admin Account
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'admin@dermassist.com'],
             [
-                'name' => 'System Admin',
+                'first_name' => 'System',
+                'last_name' => 'Admin',
                 'password' => Hash::make('password'),
                 'role_id' => $adminRole->id,
             ]
         );
 
         // 2. Patient Account
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'patient@dermassist.com'],
             [
-                'name' => 'John Patient',
+                'first_name' => 'John',
+                'last_name' => 'Patient',
                 'password' => Hash::make('password'),
                 'role_id' => $patientRole->id,
             ]
         );
 
         // 3. Doctor Account
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'doctor@dermassist.com'],
             [
-                'name' => 'Dr. Smith',
+                'first_name' => 'Dr.',
+                'last_name' => 'Smith',
                 'password' => Hash::make('password'),
                 'role_id' => $doctorRole->id,
             ]
