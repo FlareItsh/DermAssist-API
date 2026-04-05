@@ -4,7 +4,9 @@ namespace App\Service;
 
 use App\Http\Resources\UserResource;
 use App\Repository\UserRepository;
+use App\Models\DoctorVerification;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class UserService
 {
@@ -15,15 +17,15 @@ class UserService
         $this->userRepository = $userRepository;
     }
 
-    public function loginUser(object $payload)
+    public function login(array $payload)
     {
-        $user = $this->userRepository->findFirstByField('email', $payload->email);
+        $user = $this->userRepository->findFirstByField('email', $payload['email']);
 
         if (! $user) {
             return response()->json(['message' => 'Invalid Credentials'], 401);
         }
 
-        if (! Hash::check($payload->password, $user->password)) {
+        if (! Hash::check($payload['password'], $user->password)) {
             return response()->json(['message' => 'Invalid password'], 401);
         }
 
@@ -35,7 +37,7 @@ class UserService
         ], 200);
     }
 
-    public function logoutUser(object $user)
+    public function logout(object $user)
     {
         if ($user->currentAccessToken()) {
             $user->currentAccessToken()->delete();
@@ -81,19 +83,11 @@ class UserService
                 ];
 
                 if (! empty($payload['idPhoto'])) {
-                    $imageData = explode(',', $payload['idPhoto']);
-                    if (count($imageData) === 2) {
-                        $extension = str_replace(['data:image/', ';base64'], '', $imageData[0]);
-                        $image = base64_decode($imageData[1]);
-                        $imageName = 'doctor_' . $user->id . '_' . time() . '.' . $extension;
-                        $path = 'verifications/' . $imageName;
-
-                        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $image);
-                        $verificationData['id_photo_path'] = $path;
-                    }
+                    $path = 'verifications/doctor_' . $user->id . '_' . time() . '.png';
+                    $verificationData['id_photo_path'] = $this->saveBase64Image($payload['idPhoto'], $path);
                 }
 
-                \App\Models\DoctorVerification::create($verificationData);
+                DoctorVerification::create($verificationData);
             }
 
             $token = $user->createToken($user->email)->plainTextToken;
@@ -127,7 +121,7 @@ class UserService
             throw new \Exception('did not match data URI with image data');
         }
 
-        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $base64String);
+        Storage::disk('public')->put($path, $base64String);
 
         return $path;
     }

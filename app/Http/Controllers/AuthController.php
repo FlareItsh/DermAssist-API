@@ -2,41 +2,30 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RegisterRequest;
 use App\Service\UserService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
-    private UserService $userService;
-
-    public function __construct(UserService $userService)
+    public function __construct(protected UserService $userService)
     {
-        $this->userService = $userService;
     }
 
-    public function login(Request $request)
+    public function login(LoginRequest $request): JsonResponse
     {
-        return $this->userService->loginUser($request);
+        return $this->userService->login($request->all());
     }
 
     public function logout(Request $request)
     {
-        return $this->userService->logoutUser($request->user());
+        return $this->userService->logout($request->user());
     }
 
-    public function register(Request $request)
+    public function register(RegisterRequest $request): JsonResponse
     {
-        $request->validate([
-            'firstName' => ['required', 'string', 'max:255'],
-            'middleName' => ['nullable', 'string', 'max:255'],
-            'lastName' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'string', 'in:patient,doctor'],
-            'prcNumber' => ['nullable', 'string', 'max:255'],
-            'idPhoto' => ['nullable', 'string'],
-        ]);
-
         return $this->userService->createUser($request->all());
     }
 }
