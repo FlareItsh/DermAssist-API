@@ -53,9 +53,83 @@ class UserService
 
     public function createUser(array $payload)
     {
-        $model = $this->userRepository->create($payload);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($payload) {
+            $roleSlug = $payload['role'] ?? 'patient';
+            $role = \App\Models\Role::where('slug', $roleSlug)->firstOrFail();
 
-        return new UserResource($model);
+            // Map frontend camelCase to backend snake_case
+            // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
+            $userData = [
+                'first_name' => $payload['firstName'],
+                'middle_name' => $payload['middleName'] ?? null,
+                'last_name' => $payload['lastName'],
+                'email' => $payload['email'],
+                'password' => $payload['password'],
+                'role_id' => $role->id,
+                'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            ];
+
+            $user = $this->userRepository->create($userData);
+
+            // Handle Doctor Verification (Now Optional)
+            if ($roleSlug === 'doctor' && ! empty($payload['prcNumber'])) {
+                $verificationData = [
+                    'user_id' => $user->id,
+                    'prc_number' => $payload['prcNumber'],
+                    'id_photo_path' => null,
+                    'is_verified' => false,
+                ];
+
+                if (! empty($payload['idPhoto'])) {
+                    $imageData = explode(',', $payload['idPhoto']);
+                    if (count($imageData) === 2) {
+                        $extension = str_replace(['data:image/', ';base64'], '', $imageData[0]);
+                        $image = base64_decode($imageData[1]);
+                        $imageName = 'doctor_' . $user->id . '_' . time() . '.' . $extension;
+                        $path = 'verifications/' . $imageName;
+
+                        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $image);
+                        $verificationData['id_photo_path'] = $path;
+                    }
+                }
+
+                \App\Models\DoctorVerification::create($verificationData);
+            }
+
+            $token = $user->createToken($user->email)->plainTextToken;
+
+            // Load role relationship for the resource
+            $user->load('role');
+
+            return response()->json([
+                'user' => new UserResource($user),
+                'token' => $token,
+            ], 201);
+        });
+    }
+
+    private function saveBase64Image(string $base64String, string $path): string
+    {
+        if (preg_match('/^data:image\/(\w+);base64,/', $base64String, $type)) {
+            $base64String = substr($base64String, strpos($base64String, ',') + 1);
+            $type = strtolower($type[1]);
+
+            if (! in_array($type, ['jpg', 'jpeg', 'gif', 'png'])) {
+                throw new \Exception('invalid image type');
+            }
+
+            $base64String = base64_decode($base64String);
+
+            if ($base64String === false) {
+                throw new \Exception('base64_decode failed');
+            }
+        } else {
+            throw new \Exception('did not match data URI with image data');
+        }
+
+        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $base64String);
+
+        return $path;
     }
 
     public function getUser(string $uuid)

@@ -21,6 +21,23 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
+    /**
+     * The primary key for the model.
+     *
+     * @var string
+     */
+    protected $keyType = 'int';
+
+    /**
+     * Indicates if the IDs are auto-incrementing.
+     *
+     * @var bool
+     */
+    public $incrementing = true;
+
+    /**
+     * The secondary unique ID columns.
+     */
     public function uniqueIds(): array
     {
         return ['uuid'];
@@ -44,6 +61,16 @@ class User extends Authenticatable
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    /**
+     * Get the doctor verification associated with the user.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<DoctorVerification, $this>
+     */
+    public function doctorVerification(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(DoctorVerification::class);
     }
 
     /**

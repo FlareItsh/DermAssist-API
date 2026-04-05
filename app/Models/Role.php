@@ -16,6 +16,23 @@ class Role extends Model
     /** @use HasFactory<RoleFactory> */
     use HasFactory, HasUuids;
 
+    /**
+     * The primary key for the model.
+     *
+     * @var string
+     */
+    protected $keyType = 'int';
+
+    /**
+     * Indicates if the IDs are auto-incrementing.
+     *
+     * @var bool
+     */
+    public $incrementing = true;
+
+    /**
+     * The secondary unique ID columns.
+     */
     public function uniqueIds(): array
     {
         return ['uuid'];

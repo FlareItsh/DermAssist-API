@@ -26,6 +26,17 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        $request->validate([
+            'firstName' => ['required', 'string', 'max:255'],
+            'middleName' => ['nullable', 'string', 'max:255'],
+            'lastName' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'role' => ['required', 'string', 'in:patient,doctor'],
+            'prcNumber' => ['nullable', 'string', 'max:255'],
+            'idPhoto' => ['nullable', 'string'],
+        ]);
+
         return $this->userService->createUser($request->all());
     }
 }
