@@ -2,7 +2,7 @@
 
 namespace App\Repository;
 
-use App\Models\Verification;
+use App\Models\DoctorVerification as Verification;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class VerificationRepository
