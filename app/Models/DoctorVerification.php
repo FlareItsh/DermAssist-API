@@ -7,10 +7,14 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'prc_number', 'id_photo_path', 'is_verified'])]
+#[Fillable(['user_id', 'prc_number', 'id_photo_path', 'status'])]
 class DoctorVerification extends Model
 {
     use HasUuids;
+
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_VERIFIED = 'verified';
+    public const STATUS_DECLINED = 'declined';
 
     /**
      * The primary key for the model.

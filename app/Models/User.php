@@ -65,13 +65,23 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the doctor verification associated with the user.
+     * Get the doctor verifications associated with the user.
+     *
+     * @return HasMany<DoctorVerification, $this>
+     */
+    public function doctorVerifications(): HasMany
+    {
+        return $this->hasMany(DoctorVerification::class);
+    }
+
+    /**
+     * Get the latest doctor verification associated with the user.
      *
      * @return HasOne<DoctorVerification, $this>
      */
-    public function doctorVerification(): HasOne
+    public function latestDoctorVerification(): HasOne
     {
-        return $this->hasOne(DoctorVerification::class);
+        return $this->hasOne(DoctorVerification::class)->latestOfMany();
     }
 
     /**

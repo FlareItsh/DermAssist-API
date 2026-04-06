@@ -79,7 +79,7 @@ class UserService
                     'user_id' => $user->id,
                     'prc_number' => $payload['prcNumber'],
                     'id_photo_path' => null,
-                    'is_verified' => false,
+                    'status' => 'pending',
                 ];
 
                 if (! empty($payload['idPhoto'])) {

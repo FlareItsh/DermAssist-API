@@ -19,7 +19,7 @@ class VerificationResource extends JsonResource
             'uuid' => $this->uuid,
             'prc_number' => $this->prc_number,
             'id_photo_path' => $this->id_photo_path,
-            'is_verified' => (bool) $this->is_verified,
+            'status' => $this->status,
             'user' => new UserResource($this->whenLoaded('user')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
