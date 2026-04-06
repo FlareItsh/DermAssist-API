@@ -9,22 +9,22 @@ class VerificationRepository
 {
     public function paginate(int $perPage = 15)
     {
-        return Verification::latest()->paginate($perPage);
+        return Verification::with(['user', 'user.role'])->latest()->paginate($perPage);
     }
 
     public function create(array $payload)
     {
-        return Verification::create($payload);
+        return Verification::create($payload)->load(['user', 'user.role']);
     }
 
     public function findByUuid(string $uuid)
     {
-        return Verification::where('uuid', $uuid)->firstOrFail();
+        return Verification::with(['user', 'user.role'])->where('uuid', $uuid)->firstOrFail();
     }
 
     public function findByField(string $field, $value)
     {
-        return Verification::where($field, $value)->firstOrFail();
+        return Verification::with(['user', 'user.role'])->where($field, $value)->firstOrFail();
     }
 
     public function update(string $uuid, array $payload)
