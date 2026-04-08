@@ -20,6 +20,7 @@ class VerificationResource extends JsonResource
             'prc_number' => $this->prc_number,
             'id_photo_path' => $this->id_photo_path,
             'status' => $this->status,
+            'rejection_reason' => $this->rejection_reason,
             'user' => new UserResource($this->whenLoaded('user')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

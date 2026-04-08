@@ -14,9 +14,9 @@ class VerificationService
         $this->verificationRepository = $verificationRepository;
     }
 
-    public function listVerification(int $perPage = 15)
+    public function listVerification(int $perPage = 15, ?string $status = null, ?string $search = null)
     {
-        $collection = $this->verificationRepository->paginate($perPage);
+        $collection = $this->verificationRepository->paginate($perPage, $status, $search);
         return VerificationResource::collection($collection);
     }
 

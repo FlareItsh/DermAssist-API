@@ -7,9 +7,19 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class VerificationRepository
 {
-    public function paginate(int $perPage = 15)
+    public function paginate(int $perPage = 15, ?string $status = null, ?string $search = null)
     {
-        return Verification::with(['user', 'user.role'])->latest()->paginate($perPage);
+        return Verification::with(['user', 'user.role'])
+            ->when($status, fn($query) => $query->where('status', $status))
+            ->when($search, function ($query) use ($search) {
+                $query->whereHas('user', function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
+            ->latest()
+            ->paginate($perPage);
     }
 
     public function create(array $payload)

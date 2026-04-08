@@ -17,7 +17,11 @@ class VerificationController extends Controller
 
     public function index(Request $request)
     {
-        return $this->verificationService->listVerification($request->input('per_page', 15));
+        return $this->verificationService->listVerification(
+            $request->input('per_page', 15),
+            $request->query('status'),
+            $request->query('search')
+        );
     }
 
     public function store(Request $request)
