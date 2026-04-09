@@ -3,10 +3,13 @@
 namespace App\Service;
 
 use App\Http\Resources\UserResource;
-use App\Repository\UserRepository;
 use App\Models\DoctorVerification;
+use App\Models\Role;
+use App\Repository\UserRepository;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class UserService
 {
@@ -55,9 +58,9 @@ class UserService
 
     public function createUser(array $payload)
     {
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($payload) {
+        return DB::transaction(function () use ($payload) {
             $roleSlug = $payload['role'] ?? 'patient';
-            $role = \App\Models\Role::where('slug', $roleSlug)->firstOrFail();
+            $role = Role::where('slug', $roleSlug)->firstOrFail();
 
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
@@ -68,23 +71,29 @@ class UserService
                 'email' => $payload['email'],
                 'password' => $payload['password'],
                 'role_id' => $role->id,
-                'uuid' => (string) \Illuminate\Support\Str::uuid(),
+                'uuid' => (string) Str::uuid(),
             ];
 
             $user = $this->userRepository->create($userData);
 
-            // Handle Doctor Verification (Now Optional)
+            // Handle Doctor Verification
             if ($roleSlug === 'doctor' && ! empty($payload['prcNumber'])) {
                 $verificationData = [
                     'user_id' => $user->id,
                     'prc_number' => $payload['prcNumber'],
                     'id_photo_path' => null,
-                    'status' => 'pending',
+                    'status' => DoctorVerification::STATUS_PENDING,
                 ];
 
                 if (! empty($payload['idPhoto'])) {
-                    $path = 'verifications/doctor_' . $user->id . '_' . time() . '.png';
-                    $verificationData['id_photo_path'] = $this->saveBase64Image($payload['idPhoto'], $path);
+                    $path = 'verifications/doctor_'.$user->id.'_'.time().'.png';
+                    try {
+                        $verificationData['id_photo_path'] = $this->saveBase64Image($payload['idPhoto'], $path);
+                    } catch (\Exception $e) {
+                        // Log the error but don't fail the whole registration if image processing fails?
+                        // Actually, better to fail and let user retry.
+                        throw $e;
+                    }
                 }
 
                 DoctorVerification::create($verificationData);
