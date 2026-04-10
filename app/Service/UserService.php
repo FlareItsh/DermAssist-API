@@ -72,7 +72,17 @@ class UserService
                 'password' => $payload['password'],
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
+                'avatar_path' => null,
             ];
+
+            if (! empty($payload['avatar'])) {
+                $path = 'avatars/'.Str::slug($payload['firstName'].'_'.$payload['lastName']).'_'.time().'.png';
+                try {
+                    $userData['avatar_path'] = $this->saveBase64Image($payload['avatar'], $path);
+                } catch (\Exception $e) {
+                    throw $e;
+                }
+            }
 
             $user = $this->userRepository->create($userData);
 
@@ -151,6 +161,28 @@ class UserService
 
     public function updateUser(string $uuid, array $payload)
     {
+        $user = $this->userRepository->findByUuid($uuid);
+
+        if (! empty($payload['avatar'])) {
+            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
+
+            try {
+                $avatarPath = $this->saveBase64Image($payload['avatar'], $path);
+
+                // Delete old avatar if it exists
+                if ($user->avatar_path) {
+                    Storage::disk('public')->delete($user->avatar_path);
+                }
+
+                $payload['avatar_path'] = $avatarPath;
+            } catch (\Exception $e) {
+                throw $e;
+            }
+        }
+
+        // Remove Base64 string from payload before update
+        unset($payload['avatar']);
+
         $model = $this->userRepository->update($uuid, $payload);
 
         return new UserResource($model);
