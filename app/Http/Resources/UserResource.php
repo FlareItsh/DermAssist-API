@@ -30,9 +30,11 @@ class UserResource extends JsonResource
             'longitude' => $this->longitude,
             'age' => $this->age,
             'gender' => $this->gender,
+            'prcNumber' => $this->prc_number,
             'email' => $this->email,
             'role' => $this->role->slug,
             'avatar_path' => $this->avatar_path,
+            'doctor_verification' => new VerificationResource($this->latestDoctorVerification),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

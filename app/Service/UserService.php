@@ -72,6 +72,7 @@ class UserService
                 'password' => $payload['password'],
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
+                'prc_number' => $payload['prcNumber'] ?? null,
                 'avatar_path' => null,
             ];
 
@@ -178,6 +179,12 @@ class UserService
             } catch (\Exception $e) {
                 throw $e;
             }
+        }
+
+        // Map prcNumber to prc_number
+        if (isset($payload['prcNumber'])) {
+            $payload['prc_number'] = $payload['prcNumber'];
+            unset($payload['prcNumber']);
         }
 
         // Remove Base64 string from payload before update

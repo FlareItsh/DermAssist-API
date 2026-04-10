@@ -17,7 +17,7 @@ class VerificationResource extends JsonResource
         return [
             'id' => $this->id,
             'uuid' => $this->uuid,
-            'prc_number' => $this->prc_number,
+            'prcNumber' => $this->prc_number,
             'id_photo_path' => $this->id_photo_path,
             'status' => $this->status,
             'rejection_reason' => $this->rejection_reason,
