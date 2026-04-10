@@ -17,7 +17,11 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        return $this->userService->listUser($request->input('per_page', 15));
+        return $this->userService->listUser(
+            $request->input('per_page', 15),
+            $request->input('role'),
+            $request->input('status')
+        );
     }
 
     public function store(Request $request)

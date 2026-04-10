@@ -6,9 +6,20 @@ use App\Models\User;
 
 class UserRepository
 {
-    public function paginate(int $perPage = 15)
+    public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null)
     {
-        return User::latest()->paginate($perPage);
+        return User::latest()
+            ->when($role, function ($query) use ($role) {
+                $query->whereHas('role', function ($q) use ($role) {
+                    $q->where('slug', $role);
+                });
+            })
+            ->when($status, function ($query) use ($status) {
+                $query->whereHas('doctorVerifications', function ($q) use ($status) {
+                    $q->where('status', $status);
+                });
+            })
+            ->paginate($perPage);
     }
 
     public function create(array $payload)

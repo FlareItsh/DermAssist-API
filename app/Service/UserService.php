@@ -49,9 +49,9 @@ class UserService
         return response()->json(['message' => 'Logged out successfully'], 200);
     }
 
-    public function listUser(int $perPage = 15)
+    public function listUser(int $perPage = 15, ?string $role = null, ?string $status = null)
     {
-        $collection = $this->userRepository->paginate($perPage);
+        $collection = $this->userRepository->paginate($perPage, $role, $status);
 
         return UserResource::collection($collection);
     }
@@ -163,6 +163,7 @@ class UserService
     public function updateUser(string $uuid, array $payload)
     {
         $user = $this->userRepository->findByUuid($uuid);
+        $user->load(['role', 'latestDoctorVerification']);
 
         if (! empty($payload['avatar'])) {
             $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
@@ -191,6 +192,25 @@ class UserService
         unset($payload['avatar']);
 
         $model = $this->userRepository->update($uuid, $payload);
+
+        // Reset verification status for doctors if they were declined or changed key identification data
+        if ($user->role->slug === 'doctor' && $user->latestDoctorVerification) {
+            $sensitiveFields = ['first_name', 'last_name', 'prc_number'];
+            $hasChangedSensitiveField = false;
+            foreach ($sensitiveFields as $field) {
+                if (isset($payload[$field])) {
+                    $hasChangedSensitiveField = true;
+                    break;
+                }
+            }
+
+            if ($user->latestDoctorVerification->status === 'declined' || $hasChangedSensitiveField) {
+                $user->latestDoctorVerification->update([
+                    'status' => 'pending',
+                    'rejection_reason' => null
+                ]);
+            }
+        }
 
         return new UserResource($model);
     }
