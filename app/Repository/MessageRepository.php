@@ -1,0 +1,34 @@
+<?php
+
+namespace App\Repository;
+
+use App\Models\Message;
+
+class MessageRepository
+{
+    public function paginateForConversation(int $conversationId, int $perPage = 15)
+    {
+        return Message::with('sender')
+            ->where('conversation_id', $conversationId)
+            ->latest()
+            ->paginate($perPage);
+    }
+
+    public function create(array $payload)
+    {
+        return Message::create($payload);
+    }
+
+    public function findByUuid(string $uuid)
+    {
+        return Message::where('uuid', $uuid)->firstOrFail();
+    }
+
+    public function update(string $uuid, array $payload)
+    {
+        $model = $this->findByUuid($uuid);
+        $model->update($payload);
+
+        return $model;
+    }
+}
