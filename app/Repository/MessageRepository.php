@@ -31,4 +31,11 @@ class MessageRepository
 
         return $model;
     }
+
+    public function delete(string $uuid): bool
+    {
+        $model = $this->findByUuid($uuid);
+
+        return $model->delete();
+    }
 }

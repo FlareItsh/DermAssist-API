@@ -30,6 +30,17 @@ class MessageController extends Controller
 
     public function update(Request $request, string $message)
     {
+        if ($request->has('message')) {
+            return $this->messageService->editMessage($request->user(), $message, $request->all());
+        }
+
         return $this->messageService->markAsRead($request->user(), $message);
+    }
+
+    public function destroy(Request $request, string $message)
+    {
+        $this->messageService->deleteMessage($request->user(), $message);
+
+        return response()->json(['message' => 'Message deleted successfully'], 200);
     }
 }

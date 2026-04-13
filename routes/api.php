@@ -18,5 +18,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('verifications', VerificationController::class);
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
-    Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update']);
+    Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
 });

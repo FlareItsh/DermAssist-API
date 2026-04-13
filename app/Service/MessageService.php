@@ -83,4 +83,46 @@ class MessageService
 
         return new MessageResource($message);
     }
+
+    public function editMessage(User $user, string $messageUuid, array $payload): MessageResource
+    {
+        $message = $this->messageRepository->findByUuid($messageUuid);
+
+        $conversation = $message->conversation;
+        if ($conversation->doctor_id !== $user->id && $conversation->patient_id !== $user->id) {
+            abort(403, 'Unauthorized access to this message.');
+        }
+
+        if ($message->sender_id !== $user->id) {
+            abort(403, 'You can only edit your own messages.');
+        }
+
+        if (empty($payload['message'])) {
+            throw ValidationException::withMessages(['message' => 'Message content is required.']);
+        }
+
+        $message = $this->messageRepository->update($messageUuid, [
+            'message' => $payload['message'],
+        ]);
+
+        $message->load('sender');
+
+        return new MessageResource($message);
+    }
+
+    public function deleteMessage(User $user, string $messageUuid): bool
+    {
+        $message = $this->messageRepository->findByUuid($messageUuid);
+
+        $conversation = $message->conversation;
+        if ($conversation->doctor_id !== $user->id && $conversation->patient_id !== $user->id) {
+            abort(403, 'Unauthorized access to this message.');
+        }
+
+        if ($message->sender_id !== $user->id) {
+            abort(403, 'You can only delete your own messages.');
+        }
+
+        return $this->messageRepository->delete($messageUuid);
+    }
 }
