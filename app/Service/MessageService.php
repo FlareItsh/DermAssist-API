@@ -75,7 +75,7 @@ class MessageService
         }
 
         if (! $message->is_read) {
-            $message = $this->messageRepository->update($messageUuid, [
+            $message = $this->messageRepository->updateQuietly($messageUuid, [
                 'is_read' => true,
                 'read_at' => now(),
             ]);

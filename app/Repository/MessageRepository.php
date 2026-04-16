@@ -32,6 +32,14 @@ class MessageRepository
         return $model;
     }
 
+    public function updateQuietly(string $uuid, array $payload)
+    {
+        $model = $this->findByUuid($uuid);
+        $model->updateQuietly($payload);
+
+        return $model;
+    }
+
     public function delete(string $uuid): bool
     {
         $model = $this->findByUuid($uuid);
