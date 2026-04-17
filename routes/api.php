@@ -17,4 +17,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('users', UserController::class);
     Route::apiResource('verifications', VerificationController::class);
+
+    Route::post('/diagnose', [\App\Http\Controllers\DiagnosisController::class, 'diagnose']);
+    Route::get('/appeals', [\App\Http\Controllers\AppealController::class, 'index']);
+    Route::post('/appeals', [\App\Http\Controllers\AppealController::class, 'store']);
 });
