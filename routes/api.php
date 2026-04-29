@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConversationController;
+use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
@@ -13,6 +14,8 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    Route::post('/diagnose', [DiagnosisController::class, 'diagnose']);
 
     Route::apiResource('users', UserController::class);
     Route::apiResource('verifications', VerificationController::class);
