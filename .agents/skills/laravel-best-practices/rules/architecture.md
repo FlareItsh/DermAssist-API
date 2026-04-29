@@ -1,5 +1,27 @@
 # Architecture Best Practices
 
+## Mandatory Service-Repository Pattern
+
+This project STRICTLY enforces the **Service-Repository** pattern for all API features. Do not place business logic in Controllers or Models.
+
+### 1. Scaffolding
+ALWAYS create new API layers using the custom artisan command:
+```bash
+php artisan make:api-layer {Name}
+```
+This generates:
+- `App\Http\Controllers\{Name}Controller`
+- `App\Service\{Name}Service`
+- `App\Repository\{Name}Repository`
+- `App\Http\Resources\{Name}Resource`
+
+### 2. Responsibility Layers
+- **Controller**: Thin entry point. Handles routing, authentication, and delegates to Service.
+- **Service**: The business logic engine. Orchestrates repository calls, external API hits, and returns API Resources.
+- **Repository**: The only place where Eloquent queries are written. Encapsulates all DB interactions.
+- **Request**: Form Request classes for validation.
+- **Resource**: JSON transformation layer for API responses.
+
 ## Single-Purpose Action Classes
 
 Extract discrete business operations into invokable Action classes.

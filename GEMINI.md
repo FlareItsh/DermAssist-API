@@ -113,6 +113,13 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 # Do Things the Laravel Way
 
 - Use `php artisan make:` commands to create new files (i.e. migrations, controllers, models, etc.). You can list available Artisan commands using `php artisan list` and check their parameters with `php artisan [command] --help`.
+- **Mandatory Architecture**: This project STRICTLY uses the **Service-Repository** pattern for all API features.
+    - **Controllers**: Thin orchestrators. Inject Service and delegate logic.
+    - **Services**: Business logic layer. Interact with Repositories and return Resources.
+    - **Repositories**: Data access layer. Handles all Eloquent queries.
+    - **Requests**: Use Form Requests for all validation.
+    - **Resources**: Use Eloquent Resources for all API responses.
+- **Scaffolding**: ALWAYS use the custom command to create new API layers: `php artisan make:api-layer {Name}`. This generates the Controller, Service, Repository, and Resource automatically.
 - If you're creating a generic PHP class, use `php artisan make:class`.
 - Pass `--no-interaction` to all Artisan commands to ensure they work without user input. You should also pass the correct `--options` to ensure correct behavior.
 
