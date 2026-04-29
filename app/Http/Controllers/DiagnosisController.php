@@ -20,7 +20,7 @@ class DiagnosisController extends Controller
         try {
             // Forward the image to the Python AI API
             $response = Http::attach(
-                'image',
+                'file',
                 file_get_contents($image->getRealPath()),
                 $image->getClientOriginalName()
             )->post($pythonApiUrl);
