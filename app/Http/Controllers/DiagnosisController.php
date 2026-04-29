@@ -2,45 +2,66 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Diagnosis;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use App\Models\Diagnosis;
 
 class DiagnosisController extends Controller
 {
     public function diagnose(Request $request)
     {
-        if (! $request->hasFile('image')) {
-            return response()->json(['error' => 'No image uploaded'], 400);
-        }
-
-        $image = $request->file('image');
-        $pythonApiUrl = 'http://127.0.0.1:8001/predict';
+        $request->validate([
+            'image' => 'required|image|max:10240',
+        ]);
 
         try {
-            // Forward the image to the Python AI API
+            $image = $request->file('image');
+
             $response = Http::attach(
                 'file',
                 file_get_contents($image->getRealPath()),
                 $image->getClientOriginalName()
-            )->post($pythonApiUrl);
+            )->post('http://127.0.0.1:8001/predict');
 
             if ($response->failed()) {
-                Log::error('AI API Error: ' . $response->body());
+                Log::error('AI Server Error: '.$response->body());
 
                 return response()->json([
-                    'error' => 'AI Service Error',
-                    'details' => $response->json() ?? $response->body(),
-                ], $response->status());
+                    'error' => 'The AI server is currently unavailable or returned an error.',
+                    'details' => $response->json(),
+                ], 503);
             }
 
-            return response()->json($response->json());
-        } catch (\Exception $e) {
-            Log::error('Diagnosis proxy error: ' . $e->getMessage());
+            $aiResult = $response->json();
 
-            return response()->json(['error' => 'Could not connect to AI service'], 500);
+            // 1. Save image to public storage
+            $path = $image->store('diagnoses', 'public');
+
+            // 2. Create database record
+            $diagnosis = Diagnosis::create([
+                'user_uuid' => $request->header('X-User-Uuid') ?? $request->input('user_uuid'),
+                'image_path' => $path,
+                'label' => $aiResult['label'],
+                'confidence' => $aiResult['confidence'],
+                'probabilities' => $aiResult['all_probabilities'],
+                'status' => 'completed',
+            ]);
+
+            return response()->json([
+                'id' => $diagnosis->uuid,
+                'label' => $diagnosis->label,
+                'confidence' => $diagnosis->confidence,
+                'all_probabilities' => $diagnosis->probabilities,
+                'image_url' => Storage::url($diagnosis->image_path),
+                'created_at' => $diagnosis->created_at,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Diagnosis Error: '.$e->getMessage());
+
+            return response()->json(['error' => 'Internal Server Error during diagnosis.'], 500);
         }
     }
 }
