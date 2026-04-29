@@ -6,6 +6,7 @@ use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
+use App\Http\Controllers\AppealController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -22,4 +23,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
+
+    Route::post('/diagnose', [DiagnosisController::class, 'diagnose']);
+    Route::get('/appeals', [AppealController::class, 'index']);
+    Route::post('/appeals', [AppealController::class, 'store']);
 });

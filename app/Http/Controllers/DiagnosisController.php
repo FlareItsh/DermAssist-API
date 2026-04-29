@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use App\Models\Diagnosis;
 
 class DiagnosisController extends Controller
 {
@@ -26,7 +28,7 @@ class DiagnosisController extends Controller
             )->post($pythonApiUrl);
 
             if ($response->failed()) {
-                Log::error('AI API Error: '.$response->body());
+                Log::error('AI API Error: ' . $response->body());
 
                 return response()->json([
                     'error' => 'AI Service Error',
@@ -36,7 +38,7 @@ class DiagnosisController extends Controller
 
             return response()->json($response->json());
         } catch (\Exception $e) {
-            Log::error('Diagnosis proxy error: '.$e->getMessage());
+            Log::error('Diagnosis proxy error: ' . $e->getMessage());
 
             return response()->json(['error' => 'Could not connect to AI service'], 500);
         }
