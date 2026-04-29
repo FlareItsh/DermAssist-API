@@ -23,7 +23,7 @@ class DiagnosisController extends Controller
                 'file',
                 file_get_contents($image->getRealPath()),
                 $image->getClientOriginalName()
-            )->post('http://127.0.0.1:8001/predict');
+            )->post(config('services.ai.url').'/predict');
 
             if ($response->failed()) {
                 Log::error('AI Server Error: '.$response->body());
