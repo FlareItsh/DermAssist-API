@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AppealController;
+use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DiagnosisController;
@@ -17,11 +18,12 @@ Route::controller(AuthController::class)->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::post('/diagnose', [DiagnosisController::class, 'diagnose']);
 
     Route::apiResources([
         'users' => UserController::class,
         'verifications' => VerificationController::class,
+        'appointments' => AppointmentController::class,
+        'diagnoses' => DiagnosisController::class,
     ]);
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);

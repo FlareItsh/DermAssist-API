@@ -26,6 +26,8 @@ class Message extends Model
         ];
     }
 
+    protected $touches = ['conversation'];
+
     public function uniqueIds(): array
     {
         return ['uuid'];
