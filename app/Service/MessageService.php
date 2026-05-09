@@ -6,6 +6,7 @@ use App\Http\Resources\MessageResource;
 use App\Models\User;
 use App\Repository\ConversationRepository;
 use App\Repository\MessageRepository;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class MessageService
@@ -37,6 +38,8 @@ class MessageService
         $conversation = $this->getValidConversation($user, $conversationUuid);
         $collection = $this->messageRepository->paginateForConversation($conversation->id, $perPage);
 
+        $collection->load('attachments');
+
         return MessageResource::collection($collection);
     }
 
@@ -44,19 +47,42 @@ class MessageService
     {
         $conversation = $this->getValidConversation($user, $conversationUuid);
 
-        if (empty($payload['message'])) {
-            throw ValidationException::withMessages(['message' => 'Message content is required.']);
+        $validator = Validator::make($payload, [
+            'message' => 'nullable|string',
+            'attachments' => 'nullable|array',
+            'attachments.*' => 'file|max:15360', // 15MB limit
+        ]);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        if (empty($payload['message']) && empty($payload['attachments'])) {
+            throw ValidationException::withMessages(['message' => 'Message content or attachment is required.']);
         }
 
         $model = $this->messageRepository->create([
             'conversation_id' => $conversation->id,
             'sender_id' => $user->id,
-            'message' => $payload['message'],
+            'message' => $payload['message'] ?? '',
         ]);
+
+        if (! empty($payload['attachments'])) {
+            foreach ($payload['attachments'] as $file) {
+                $path = $file->store('attachments', 'public');
+
+                $model->attachments()->create([
+                    'file_path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                ]);
+            }
+        }
 
         $conversation->touch();
 
-        $model->load('sender');
+        $model->load(['sender', 'attachments']);
 
         return new MessageResource($model);
     }

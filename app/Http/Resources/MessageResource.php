@@ -24,6 +24,7 @@ class MessageResource extends JsonResource
             'read_at' => $this->read_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'attachments' => AttachmentResource::collection($this->whenLoaded('attachments')),
         ];
 
         // Enrich with appointment data if it's a request or diagnosis-only tag
