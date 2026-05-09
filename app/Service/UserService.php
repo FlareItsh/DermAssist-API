@@ -207,7 +207,7 @@ class UserService
             if ($user->latestDoctorVerification->status === 'declined' || $hasChangedSensitiveField) {
                 $user->latestDoctorVerification->update([
                     'status' => 'pending',
-                    'rejection_reason' => null
+                    'rejection_reason' => null,
                 ]);
             }
         }

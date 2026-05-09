@@ -116,4 +116,14 @@ class User extends Authenticatable
             get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
         );
     }
+
+    /**
+     * Get the diagnoses associated with the user.
+     *
+     * @return HasMany<Diagnosis, $this>
+     */
+    public function diagnoses(): HasMany
+    {
+        return $this->hasMany(Diagnosis::class, 'user_uuid', 'uuid');
+    }
 }
