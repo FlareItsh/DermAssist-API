@@ -28,6 +28,7 @@ class RegisterRequest extends FormRequest
             'lastName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'affiliation' => ['nullable', 'string', 'max:255'],
             'role' => ['required', 'string', 'in:patient,doctor'],
             'prcNumber' => ['nullable', 'string', 'max:255'],
             'idPhoto' => ['nullable', 'string'],

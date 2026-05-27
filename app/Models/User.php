@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,26 +18,26 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
 #[Hidden(['password', 'remember_token'])]
+#[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
     /**
-     * The primary key for the model.
+     * Get the attributes that should be cast.
      *
-     * @var string
+     * @return array<string, string>
      */
-    protected $keyType = 'int';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     *
-     * @var bool
-     */
-    public $incrementing = true;
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
 
     /**
      * The secondary unique ID columns.
@@ -67,7 +68,27 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the doctor verifications associated with the user.
+     * Get the appeals submitted by the user.
+     *
+     * @return HasMany<Appeal, $this>
+     */
+    public function appeals(): HasMany
+    {
+        return $this->hasMany(Appeal::class);
+    }
+
+    /**
+     * Get the verification record for the doctor.
+     *
+     * @return HasOne<DoctorVerification, $this>
+     */
+    public function verification(): HasOne
+    {
+        return $this->hasOne(DoctorVerification::class);
+    }
+
+    /**
+     * Get all doctor verifications for the user.
      *
      * @return HasMany<DoctorVerification, $this>
      */
@@ -77,7 +98,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the latest doctor verification associated with the user.
+     * Get the latest doctor verification for the user.
      *
      * @return HasOne<DoctorVerification, $this>
      */
@@ -87,29 +108,22 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the full URL for the user's avatar.
-     *
-     * @return Attribute<string|null, never>
+     * Accessor for user's full name.
      */
-    protected function avatarUrl(): Attribute
+    protected function fullName(): Attribute
     {
         return Attribute::make(
-            get: fn (): ?string => $this->avatar_path
-                ? Storage::disk('public')->url($this->avatar_path)
-                : null,
+            get: fn () => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
         );
     }
 
     /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
+     * Accessor for user's avatar URL.
      */
-    protected function casts(): array
+    protected function avatarUrl(): Attribute
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return Attribute::make(
+            get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
+        );
     }
 }

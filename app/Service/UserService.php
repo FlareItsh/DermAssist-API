@@ -70,6 +70,7 @@ class UserService
                 'last_name' => $payload['lastName'],
                 'email' => $payload['email'],
                 'password' => $payload['password'],
+                'affiliation' => $payload['affiliation'] ?? null,
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
                 'prc_number' => $payload['prcNumber'] ?? null,
@@ -207,7 +208,7 @@ class UserService
             if ($user->latestDoctorVerification->status === 'declined' || $hasChangedSensitiveField) {
                 $user->latestDoctorVerification->update([
                     'status' => 'pending',
-                    'rejection_reason' => null
+                    'rejection_reason' => null,
                 ]);
             }
         }
