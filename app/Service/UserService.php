@@ -199,7 +199,7 @@ class UserService
             $sensitiveFields = ['first_name', 'last_name', 'prc_number'];
             $hasChangedSensitiveField = false;
             foreach ($sensitiveFields as $field) {
-                if (isset($payload[$field])) {
+                if (isset($payload[$field]) && $payload[$field] !== $user->$field) {
                     $hasChangedSensitiveField = true;
                     break;
                 }

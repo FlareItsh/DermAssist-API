@@ -108,6 +108,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the availability dates for the doctor.
+     *
+     * @return HasMany<DoctorAvailability, $this>
+     */
+    public function availabilities(): HasMany
+    {
+        return $this->hasMany(DoctorAvailability::class, 'doctor_id');
+    }
+
+    /**
      * Accessor for user's full name.
      */
     protected function fullName(): Attribute

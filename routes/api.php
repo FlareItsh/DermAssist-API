@@ -5,6 +5,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DiagnosisController;
+use App\Http\Controllers\DoctorAvailabilityController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
@@ -30,4 +31,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Appointments
     Route::apiResource('appointments', AppointmentController::class);
+
+    // Doctor Availabilities
+    Route::apiResource('doctors.availabilities', DoctorAvailabilityController::class)
+        ->shallow()
+        ->only(['index', 'store', 'update', 'destroy']);
+    Route::get('/doctors/{doctor}/availability-check', [DoctorAvailabilityController::class, 'check']);
 });
