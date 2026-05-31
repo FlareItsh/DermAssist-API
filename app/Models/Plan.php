@@ -26,11 +26,6 @@ class Plan extends Model
     /** @use HasFactory<PlanFactory> */
     use HasFactory, HasUuids;
 
-    public function uniqueIds(): array
-    {
-        return ['uuid'];
-    }
-
     /**
      * Get the attributes that should be cast.
      *
@@ -43,6 +38,11 @@ class Plan extends Model
             'is_active' => 'boolean',
             'price' => 'decimal:2',
         ];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
     }
 
     /**

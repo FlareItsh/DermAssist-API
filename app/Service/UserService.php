@@ -192,6 +192,16 @@ class UserService
         // Remove Base64 string from payload before update
         unset($payload['avatar']);
 
+        // Strip null/empty values for non-nullable columns so that
+        // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
+        // integrity constraint violations when a field wasn't submitted.
+        $nonNullable = ['first_name', 'last_name', 'email'];
+        foreach ($nonNullable as $field) {
+            if (array_key_exists($field, $payload) && ($payload[$field] === null || $payload[$field] === '')) {
+                unset($payload[$field]);
+            }
+        }
+
         $model = $this->userRepository->update($uuid, $payload);
 
         // Reset verification status for doctors if they were declined or changed key identification data

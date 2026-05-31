@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['uuid', 'user_id', 'prc_number', 'id_photo_path', 'status', 'rejection_reason'])]
+#[Table(keyType: 'int', incrementing: true)]
 class DoctorVerification extends Model
 {
     use HasUuids;
@@ -17,20 +19,6 @@ class DoctorVerification extends Model
     public const STATUS_VERIFIED = 'verified';
 
     public const STATUS_DECLINED = 'declined';
-
-    /**
-     * The primary key for the model.
-     *
-     * @var string
-     */
-    protected $keyType = 'int';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     *
-     * @var bool
-     */
-    public $incrementing = true;
 
     /**
      * The secondary unique ID columns.

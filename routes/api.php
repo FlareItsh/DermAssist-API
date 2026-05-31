@@ -11,28 +11,25 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::controller(AuthController::class)->group(function () {
+    Route::post('/login', 'login')->name('login');
+    Route::post('/register', 'register');
+});
 
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    Route::apiResource('users', UserController::class);
-    Route::apiResource('verifications', VerificationController::class);
-
-    Route::post('/diagnose', [DiagnosisController::class, 'diagnose']);
-    Route::post('/collect', [DiagnosisController::class, 'collect']);
-    Route::get('/appeals', [AppealController::class, 'index']);
-    Route::post('/appeals', [AppealController::class, 'store']);
+    Route::apiResources([
+        'users' => UserController::class,
+        'verifications' => VerificationController::class,
+        'appointments' => AppointmentController::class,
+        'diagnoses' => DiagnosisController::class,
+    ]);
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
-
-    // Appointments
-    Route::apiResource('appointments', AppointmentController::class);
-
-    // Doctor Availabilities
+    Route::apiResource('appeals', AppealController::class)->only(['index', 'store']);
     Route::apiResource('doctors.availabilities', DoctorAvailabilityController::class)
         ->shallow()
         ->only(['index', 'store', 'update', 'destroy']);

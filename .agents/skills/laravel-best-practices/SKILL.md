@@ -14,7 +14,9 @@ Best practices for Laravel, prioritized by impact. Each rule teaches what to do 
 
 Before applying any rule, check what the application already does. Laravel offers multiple valid approaches — the best choice is the one the codebase already uses, even if another pattern would be theoretically better. Inconsistency is worse than a suboptimal pattern.
 
-Check sibling files, related controllers, models, or tests for established patterns. If one exists, follow it — don't introduce a second way. These rules are defaults for when no pattern exists yet, not overrides.
+Check sibling files, related controllers, models, or tests for established patterns. If one exists, follow it — don't introduce a second way. These rules are defaults for when no pattern exists yet, not overrides. 
+
+**Note**: This project uses a strict Service-Repository architecture. Controllers should not contain business logic.
 
 ## Quick Reference
 
@@ -94,7 +96,7 @@ Check sibling files, related controllers, models, or tests for established patte
 ### 9. Queue & Job Patterns → `rules/queue-jobs.md`
 
 - `retry_after` must exceed job `timeout`; use exponential backoff `[1, 5, 10]`
-- `ShouldBeUnique` to prevent duplicates; `WithoutOverlapping::untilProcessing()` for concurrency
+- `ShouldBeUnique` to prevent duplicates; `ShouldBeUniqueUntilProcessing` for early lock release
 - Always implement `failed()`; with `retryUntil()`, set `$tries = 0`
 - `RateLimited` middleware for external API calls; `Bus::batch()` for related jobs
 - Horizon for complex multi-queue scenarios
@@ -146,6 +148,13 @@ Check sibling files, related controllers, models, or tests for established patte
 ### 15. Architecture → `rules/architecture.md`
 
 - Single-purpose Action classes; dependency injection over `app()` helper
+- **Mandatory Architecture**: This project STRICTLY uses the **Service-Repository** pattern for all API features. 
+    - **Controllers**: Thin orchestrators. Inject Service and delegate logic.
+    - **Services**: Business logic layer. Interact with Repositories and return Resources.
+    - **Repositories**: Data access layer. Handles all Eloquent queries.
+    - **Requests**: Use Form Requests for all validation.
+    - **Resources**: Use Eloquent Resources for all API responses.
+- **Scaffolding**: ALWAYS use the custom command to create new API layers: `php artisan make:api-layer {Name}`. This generates the Controller, Service, Repository, and Resource automatically.
 - Prefer official Laravel packages and follow conventions, don't override defaults
 - Default to `ORDER BY id DESC` or `created_at DESC`; `mb_*` for UTF-8 safety
 - `defer()` for post-response work; `Context` for request-scoped data; `Concurrency::run()` for parallel execution

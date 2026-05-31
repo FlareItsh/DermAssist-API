@@ -22,11 +22,6 @@ class Subscription extends Model
     /** @use HasFactory<SubscriptionFactory> */
     use HasFactory, HasUuids;
 
-    public function uniqueIds(): array
-    {
-        return ['uuid'];
-    }
-
     /**
      * Get the attributes that should be cast.
      *
@@ -39,6 +34,11 @@ class Subscription extends Model
             'ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
+    }
+
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
     }
 
     /**

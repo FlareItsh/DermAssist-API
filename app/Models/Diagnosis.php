@@ -2,29 +2,27 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-use Illuminate\Support\Str;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
-
+#[Fillable(['uuid', 'user_uuid', 'image_path', 'label', 'confidence', 'probabilities', 'status'])]
 class Diagnosis extends Model
 {
     use HasUuids;
 
-    protected $fillable = [
-        'uuid',
-        'user_uuid',
-        'image_path',
-        'label',
-        'confidence',
-        'probabilities',
-        'status',
-    ];
-
-    protected $casts = [
-        'probabilities' => 'array',
-        'confidence' => 'float',
-    ];
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'probabilities' => 'array',
+            'confidence' => 'float',
+        ];
+    }
 
     /**
      * Get the route key for the model.

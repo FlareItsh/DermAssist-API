@@ -7,12 +7,16 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['uuid', 'doctor_id', 'patient_id'])]
-class Conversation extends Model
+#[Fillable(['uuid', 'message_id', 'file_path', 'file_name', 'file_type', 'file_size'])]
+class Attachment extends Model
 {
     use HasFactory, HasUuids;
+
+    protected $table = 'message_attachments';
+
+    protected $appends = ['url'];
 
     public function uniqueIds(): array
     {
@@ -24,18 +28,13 @@ class Conversation extends Model
         return 'uuid';
     }
 
-    public function messages(): HasMany
+    public function getUrlAttribute(): string
     {
-        return $this->hasMany(Message::class);
+        return Storage::disk('public')->url($this->file_path);
     }
 
-    public function doctor(): BelongsTo
+    public function message(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'doctor_id');
-    }
-
-    public function patient(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'patient_id');
+        return $this->belongsTo(Message::class);
     }
 }

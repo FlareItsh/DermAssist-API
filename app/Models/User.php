@@ -108,7 +108,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the availability dates for the doctor.
+     * Get the availability records for the doctor.
      *
      * @return HasMany<DoctorAvailability, $this>
      */
