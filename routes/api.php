@@ -26,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
         'appointments' => AppointmentController::class,
         'diagnoses' => DiagnosisController::class,
     ]);
+    Route::post('/diagnose', [DiagnosisController::class, 'store']);
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
