@@ -32,6 +32,7 @@ class DiagnosisController extends Controller
             $data = $request->validated();
             $data['image'] = $request->file('image');
             $data['user_uuid'] = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
+            $data['user'] = $request->user();
 
             return $this->diagnosisService->diagnose($data);
         } catch (\Exception $e) {

@@ -28,11 +28,12 @@ class AppointmentController extends Controller
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
             'message' => 'nullable|string',
+            'scheduled_at' => 'nullable|date',
         ]);
 
         $result = $this->appointmentService->createAppointment(
             $request->user(),
-            $request->only(['doctor_id', 'diagnosis_uuid', 'message'])
+            $request->only(['doctor_id', 'diagnosis_uuid', 'message', 'scheduled_at'])
         );
 
         return response()->json($result);
