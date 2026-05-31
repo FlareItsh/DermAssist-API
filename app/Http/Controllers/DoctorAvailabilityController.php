@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Resources\DoctorAvailabilityResource;
 use App\Http\Resources\UserResource;
 use App\Models\DoctorAvailability;
-use App\Models\User;
 use App\Service\DoctorAvailabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -22,34 +21,28 @@ class DoctorAvailabilityController extends Controller
 
     public function index(string $doctorUuid): JsonResponse
     {
-        $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
-        $availabilities = $this->service->getAvailabilities($doctor);
+        $availabilities = $this->service->getAvailabilitiesByDoctorUuid($doctorUuid);
 
         return response()->json(DoctorAvailabilityResource::collection($availabilities));
     }
 
     public function store(Request $request, string $doctorUuid): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'available_date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
             'is_available' => 'sometimes|boolean',
         ]);
 
-        $availability = $this->service->createAvailability($request->user(), $request->only([
-            'available_date',
-            'start_time',
-            'end_time',
-            'is_available',
-        ]));
+        $availability = $this->service->createAvailability($request->user(), $validated);
 
         return response()->json(new DoctorAvailabilityResource($availability), 201);
     }
 
     public function update(Request $request, DoctorAvailability $availability): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'available_date' => 'sometimes|date|after_or_equal:today',
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
@@ -58,7 +51,7 @@ class DoctorAvailabilityController extends Controller
 
         $updated = $this->service->updateAvailability(
             $availability,
-            $request->only(['available_date', 'start_time', 'end_time', 'is_available']),
+            $validated,
             $request->user()
         );
 
@@ -74,11 +67,10 @@ class DoctorAvailabilityController extends Controller
 
     public function check(Request $request, string $doctorUuid): JsonResponse
     {
-        $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
         $dateParam = $request->query('date');
         $date = $dateParam ? Carbon::parse($dateParam) : now();
 
-        $result = $this->service->checkDoctorAvailability($doctor->id, $date, $request->user());
+        $result = $this->service->checkDoctorAvailabilityByUuid($doctorUuid, $date, $request->user());
 
         return response()->json([
             'checked_at' => $date->toDateTimeString(),

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\DiagnosisRequest;
 use App\Service\DiagnosisService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class DiagnosisController extends Controller
 {
@@ -28,18 +27,12 @@ class DiagnosisController extends Controller
 
     public function store(DiagnosisRequest $request)
     {
-        try {
-            $data = $request->validated();
-            $data['image'] = $request->file('image');
-            $data['user_uuid'] = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
-            $data['user'] = $request->user();
+        $data = $request->validated();
+        $data['image'] = $request->file('image');
+        $data['user_uuid'] = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
+        $data['user'] = $request->user();
 
-            return $this->diagnosisService->diagnose($data);
-        } catch (\Exception $e) {
-            Log::error('Diagnosis Error: '.$e->getMessage());
-
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
+        return $this->diagnosisService->diagnose($data);
     }
 
     public function update(Request $request, string $uuid)

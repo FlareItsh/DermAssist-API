@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Models\DoctorAvailability;
 use App\Models\User;
 use App\Repository\DoctorAvailabilityRepository;
+use App\Repository\UserRepository;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -12,9 +13,21 @@ class DoctorAvailabilityService
 {
     private DoctorAvailabilityRepository $repository;
 
-    public function __construct(DoctorAvailabilityRepository $repository)
-    {
+    private UserRepository $userRepository;
+
+    public function __construct(
+        DoctorAvailabilityRepository $repository,
+        UserRepository $userRepository
+    ) {
         $this->repository = $repository;
+        $this->userRepository = $userRepository;
+    }
+
+    public function getAvailabilitiesByDoctorUuid(string $doctorUuid): Collection
+    {
+        $doctor = $this->userRepository->findByUuid($doctorUuid);
+
+        return $this->getAvailabilities($doctor);
     }
 
     public function getAvailabilities(User $doctor): Collection
@@ -92,5 +105,12 @@ class DoctorAvailabilityService
             'next_available' => $nextAvailable,
             'alternatives' => $alternatives,
         ];
+    }
+
+    public function checkDoctorAvailabilityByUuid(string $doctorUuid, Carbon $date, ?User $patient = null): array
+    {
+        $doctor = $this->userRepository->findByUuid($doctorUuid);
+
+        return $this->checkDoctorAvailability($doctor->id, $date, $patient);
     }
 }

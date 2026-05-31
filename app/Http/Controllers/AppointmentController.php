@@ -24,7 +24,7 @@ class AppointmentController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
             'message' => 'nullable|string',
@@ -33,7 +33,7 @@ class AppointmentController extends Controller
 
         $result = $this->appointmentService->createAppointment(
             $request->user(),
-            $request->only(['doctor_id', 'diagnosis_uuid', 'message', 'scheduled_at'])
+            $validated
         );
 
         return response()->json($result);
@@ -46,7 +46,7 @@ class AppointmentController extends Controller
 
     public function update(Request $request, Appointment $appointment)
     {
-        $request->validate([
+        $validated = $request->validate([
             'status' => 'sometimes|string|in:pending,accepted,declined,scheduled,completed',
             'scheduled_at' => 'nullable|date',
             'location' => 'nullable|string',
@@ -54,7 +54,7 @@ class AppointmentController extends Controller
 
         $updatedAppointment = $this->appointmentService->updateAppointmentStatus(
             $appointment,
-            $request->only(['status', 'scheduled_at', 'location']),
+            $validated,
             $request->user()
         );
 

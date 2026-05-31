@@ -17,8 +17,7 @@ class DiagnosisService
     public function __construct(
         DiagnosisRepository $diagnosisRepository,
         DoctorAvailabilityService $doctorAvailabilityService
-    )
-    {
+    ) {
         $this->diagnosisRepository = $diagnosisRepository;
         $this->doctorAvailabilityService = $doctorAvailabilityService;
     }
