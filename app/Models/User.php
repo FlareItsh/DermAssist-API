@@ -118,6 +118,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the diagnoses submitted by the user.
+     *
+     * @return HasMany<Diagnosis, $this>
+     */
+    public function diagnoses(): HasMany
+    {
+        return $this->hasMany(Diagnosis::class, 'user_uuid', 'uuid');
+    }
+
+    /**
      * Accessor for user's full name.
      */
     protected function fullName(): Attribute

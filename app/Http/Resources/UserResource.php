@@ -31,6 +31,7 @@ class UserResource extends JsonResource
             'age' => $this->age,
             'gender' => $this->gender,
             'affiliation' => $this->affiliation,
+            'total_scans' => $this->diagnoses()->count(),
             'prcNumber' => $this->prc_number,
             'email' => $this->email,
             'role' => $this->role->slug,
