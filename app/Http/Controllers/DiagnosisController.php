@@ -16,12 +16,23 @@ class DiagnosisController extends Controller
         $this->diagnosisService = $diagnosisService;
     }
 
-    public function diagnose(DiagnosisRequest $request)
+    public function index(Request $request)
+    {
+        return $this->diagnosisService->listDiagnosis($request->input('per_page', 15));
+    }
+
+    public function show(string $uuid)
+    {
+        return $this->diagnosisService->getDiagnosis($uuid);
+    }
+
+    public function store(DiagnosisRequest $request)
     {
         try {
             $data = $request->validated();
             $data['image'] = $request->file('image');
             $data['user_uuid'] = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
+            $data['user'] = $request->user();
 
             return $this->diagnosisService->diagnose($data);
         } catch (\Exception $e) {
@@ -29,21 +40,6 @@ class DiagnosisController extends Controller
 
             return response()->json(['error' => $e->getMessage()], 500);
         }
-    }
-
-    public function index(Request $request)
-    {
-        return $this->diagnosisService->listDiagnosis($request->input('per_page', 15));
-    }
-
-    public function store(Request $request)
-    {
-        return $this->diagnosisService->createDiagnosis($request->all());
-    }
-
-    public function show(string $uuid)
-    {
-        return $this->diagnosisService->getDiagnosis($uuid);
     }
 
     public function update(Request $request, string $uuid)

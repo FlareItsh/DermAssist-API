@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Http\Resources\DiagnosisResource;
+use App\Http\Resources\UserResource;
 use App\Repository\DiagnosisRepository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,9 +12,15 @@ class DiagnosisService
 {
     private DiagnosisRepository $diagnosisRepository;
 
-    public function __construct(DiagnosisRepository $diagnosisRepository)
+    private DoctorAvailabilityService $doctorAvailabilityService;
+
+    public function __construct(
+        DiagnosisRepository $diagnosisRepository,
+        DoctorAvailabilityService $doctorAvailabilityService
+    )
     {
         $this->diagnosisRepository = $diagnosisRepository;
+        $this->doctorAvailabilityService = $doctorAvailabilityService;
     }
 
     public function diagnose(array $data)
@@ -48,7 +55,25 @@ class DiagnosisService
             'status' => 'completed',
         ]);
 
-        return new DiagnosisResource($diagnosis);
+        $resource = new DiagnosisResource($diagnosis);
+
+        if (! empty($data['doctor_id'])) {
+            $availabilityCheck = $this->doctorAvailabilityService->checkDoctorAvailability(
+                $data['doctor_id'],
+                now(),
+                $data['user'] ?? null
+            );
+
+            $resource->additional([
+                'doctor_availability' => [
+                    'is_available' => $availabilityCheck['is_available'],
+                    'next_available' => $availabilityCheck['next_available'],
+                    'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
+                ],
+            ]);
+        }
+
+        return $resource;
     }
 
     public function listDiagnosis(int $perPage = 15)
