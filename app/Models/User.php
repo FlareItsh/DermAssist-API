@@ -123,7 +123,7 @@ class User extends Authenticatable
     protected function fullName(): Attribute
     {
         return Attribute::make(
-            get: fn () => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
+            get: fn() => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
         );
     }
 
@@ -133,7 +133,7 @@ class User extends Authenticatable
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(
-            get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
+            get: fn() => $this->avatar_path ? Storage::url($this->avatar_path) : null,
         );
     }
 
