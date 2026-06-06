@@ -18,7 +18,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -87,14 +87,34 @@ class User extends Authenticatable
         return $this->hasOne(DoctorVerification::class);
     }
 
+    /**
+     * Get all doctor verifications for the user.
+     *
+     * @return HasMany<DoctorVerification, $this>
+     */
     public function doctorVerifications(): HasMany
     {
         return $this->hasMany(DoctorVerification::class);
     }
 
+    /**
+     * Get the latest doctor verification for the user.
+     *
+     * @return HasOne<DoctorVerification, $this>
+     */
     public function latestDoctorVerification(): HasOne
     {
         return $this->hasOne(DoctorVerification::class)->latestOfMany();
+    }
+
+    /**
+     * Get the availability records for the doctor.
+     *
+     * @return HasMany<DoctorAvailability, $this>
+     */
+    public function availabilities(): HasMany
+    {
+        return $this->hasMany(DoctorAvailability::class, 'doctor_id');
     }
 
     /**

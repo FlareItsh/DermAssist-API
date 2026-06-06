@@ -30,6 +30,7 @@ class UserResource extends JsonResource
             'longitude' => $this->longitude,
             'age' => $this->age,
             'gender' => $this->gender,
+            'affiliation' => $this->affiliation,
             'prcNumber' => $this->prc_number,
             'email' => $this->email,
             'role' => $this->role->slug,

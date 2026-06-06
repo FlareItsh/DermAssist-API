@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Http\Resources\UserResource;
 use App\Models\Appointment;
 use App\Models\Conversation;
 use App\Models\Diagnosis;
@@ -14,9 +15,14 @@ class AppointmentService
 {
     protected $appointmentRepository;
 
-    public function __construct(AppointmentRepository $appointmentRepository)
-    {
+    protected $availabilityService;
+
+    public function __construct(
+        AppointmentRepository $appointmentRepository,
+        DoctorAvailabilityService $availabilityService
+    ) {
         $this->appointmentRepository = $appointmentRepository;
+        $this->availabilityService = $availabilityService;
     }
 
     public function getAppointmentsForUser($user)
@@ -37,6 +43,10 @@ class AppointmentService
 
     public function createAppointment($user, array $data)
     {
+        // Check availability on current time or a requested time
+        $checkDate = isset($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
+        $availabilityCheck = $this->availabilityService->checkDoctorAvailability($data['doctor_id'], $checkDate, $user);
+
         // Find existing active appointment (pending or scheduled)
         $activeAppointment = Appointment::where('patient_id', $user->id)
             ->where('doctor_id', $data['doctor_id'])
@@ -92,11 +102,25 @@ class AppointmentService
             'message' => $messageContent,
         ]);
 
-        return [
+        $result = [
             'message' => $responseMessage,
             'appointment' => $activeAppointment,
             'conversation_uuid' => $conversation->uuid,
         ];
+
+        if (! $availabilityCheck['is_available']) {
+            $result['doctor_availability'] = [
+                'is_available' => false,
+                'next_available' => $availabilityCheck['next_available'],
+                'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
+            ];
+        } else {
+            $result['doctor_availability'] = [
+                'is_available' => true,
+            ];
+        }
+
+        return $result;
     }
 
     public function updateAppointmentStatus(Appointment $appointment, array $data, $user)
