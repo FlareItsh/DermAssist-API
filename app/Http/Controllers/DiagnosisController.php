@@ -31,8 +31,19 @@ class DiagnosisController extends Controller
         try {
             $data = $request->validated();
             $data['image'] = $request->file('image');
-            $data['user_uuid'] = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
-            $data['user'] = $request->user();
+            $userUuid = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
+            $data['user_uuid'] = $userUuid;
+            
+            $user = $request->user();
+            $data['user'] = $user;
+
+            if ($user && $user->role->slug === 'doctor') {
+                $data['doctor_uuid'] = $userUuid;
+                $data['patient_uuid'] = $request->input('patient_uuid');
+            } else {
+                $data['patient_uuid'] = $request->input('patient_uuid') ?? $userUuid;
+                $data['doctor_uuid'] = null;
+            }
 
             return $this->diagnosisService->diagnose($data);
         } catch (\Exception $e) {

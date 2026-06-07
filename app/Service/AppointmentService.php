@@ -47,10 +47,9 @@ class AppointmentService
         $checkDate = isset($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
         $availabilityCheck = $this->availabilityService->checkDoctorAvailability($data['doctor_id'], $checkDate, $user);
 
-        // Find existing active appointment (pending or scheduled)
         $activeAppointment = Appointment::where('patient_id', $user->id)
             ->where('doctor_id', $data['doctor_id'])
-            ->whereIn('status', ['pending', 'scheduled'])
+            ->where('status', 'pending')
             ->orderByDesc('created_at')
             ->first();
 

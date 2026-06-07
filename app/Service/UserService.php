@@ -78,7 +78,7 @@ class UserService
             ];
 
             if (! empty($payload['avatar'])) {
-                $path = 'avatars/'.Str::slug($payload['firstName'].'_'.$payload['lastName']).'_'.time().'.png';
+                $path = 'avatars/' . Str::slug($payload['firstName'] . '_' . $payload['lastName']) . '_' . time() . '.png';
                 try {
                     $userData['avatar_path'] = $this->saveBase64Image($payload['avatar'], $path);
                 } catch (\Exception $e) {
@@ -98,7 +98,7 @@ class UserService
                 ];
 
                 if (! empty($payload['idPhoto'])) {
-                    $path = 'verifications/doctor_'.$user->id.'_'.time().'.png';
+                    $path = 'verifications/doctor_' . $user->id . '_' . time() . '.png';
                     try {
                         $verificationData['id_photo_path'] = $this->saveBase64Image($payload['idPhoto'], $path);
                     } catch (\Exception $e) {
@@ -167,7 +167,7 @@ class UserService
         $user->load(['role', 'latestDoctorVerification']);
 
         if (! empty($payload['avatar'])) {
-            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
+            $path = 'avatars/' . Str::slug($user->first_name . '_' . $user->last_name) . '_' . time() . '.png';
 
             try {
                 $avatarPath = $this->saveBase64Image($payload['avatar'], $path);

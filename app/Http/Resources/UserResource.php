@@ -35,6 +35,7 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'role' => $this->role->slug,
             'avatar_path' => $this->avatar_path,
+            'total_scans' => $this->diagnoses_count ?? 0,
             'doctor_verification' => new VerificationResource($this->latestDoctorVerification),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
