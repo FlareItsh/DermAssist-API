@@ -48,6 +48,8 @@ class DiagnosisService
         // 3. Create record
         $diagnosis = $this->diagnosisRepository->create([
             'user_uuid' => $userUuid,
+            'patient_uuid' => $data['patient_uuid'] ?? null,
+            'doctor_uuid' => $data['doctor_uuid'] ?? null,
             'image_path' => $path,
             'label' => $aiResult['label'],
             'confidence' => $aiResult['confidence'],

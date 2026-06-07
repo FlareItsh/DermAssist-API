@@ -42,4 +42,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/dataset', [\App\Http\Controllers\DatasetController::class, 'destroy']);
     Route::get('/dataset/download', [\App\Http\Controllers\DatasetController::class, 'download']);
     Route::post('/dataset/save-diagnosis', [\App\Http\Controllers\DatasetController::class, 'saveFromDiagnosis']);
+
+    // Appointments Extra Routes
+    Route::get('/appointments/{uuid}', [\App\Http\Controllers\AppointmentController::class, 'show']);
+    Route::post('/appointments/{uuid}/accept', [\App\Http\Controllers\AppointmentController::class, 'accept']);
+    Route::post('/appointments/{uuid}/decline', [\App\Http\Controllers\AppointmentController::class, 'decline']);
+
+    // Clinical Notes
+    Route::get('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'show']);
+    Route::post('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'store']);
 });

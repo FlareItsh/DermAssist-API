@@ -49,6 +49,11 @@ class Appointment extends Model
         return $this->belongsTo(Diagnosis::class, 'diagnosis_id');
     }
 
+    public function clinicalNote()
+    {
+        return $this->hasOne(ClinicalNote::class);
+    }
+
     public function getRouteKeyName()
     {
         return 'uuid';

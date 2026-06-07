@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['uuid', 'user_uuid', 'image_path', 'label', 'confidence', 'probabilities', 'status'])]
+#[Fillable(['uuid', 'user_uuid', 'patient_uuid', 'doctor_uuid', 'image_path', 'label', 'confidence', 'probabilities', 'status'])]
 class Diagnosis extends Model
 {
     use HasUuids;
@@ -38,5 +38,20 @@ class Diagnosis extends Model
     public function uniqueIds(): array
     {
         return ['uuid'];
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_uuid', 'uuid');
+    }
+
+    public function patient()
+    {
+        return $this->belongsTo(User::class, 'patient_uuid', 'uuid');
+    }
+
+    public function doctor()
+    {
+        return $this->belongsTo(User::class, 'doctor_uuid', 'uuid');
     }
 }
