@@ -7,6 +7,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
@@ -51,4 +52,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Clinical Notes
     Route::get('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'show']);
     Route::post('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'store']);
+    Route::post('/diagnoses/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'storeForDiagnosis']);
+
+    // Unified Records Endpoint
+    Route::get('/records', [RecordController::class, 'index']);
 });
