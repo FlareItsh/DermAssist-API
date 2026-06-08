@@ -54,4 +54,9 @@ class Diagnosis extends Model
     {
         return $this->belongsTo(User::class, 'doctor_uuid', 'uuid');
     }
+
+    public function clinicalNote()
+    {
+        return $this->hasOne(ClinicalNote::class);
+    }
 }
