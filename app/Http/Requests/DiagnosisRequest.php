@@ -25,6 +25,9 @@ class DiagnosisRequest extends FormRequest
         return [
             'image' => 'required|image|max:10240',
             'user_uuid' => 'nullable|uuid',
+            'patient_uuid' => 'nullable|uuid',
+            'doctor_uuid' => 'nullable|uuid',
+            'doctor_id' => 'nullable|exists:users,id',
         ];
     }
 }

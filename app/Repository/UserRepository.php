@@ -9,6 +9,7 @@ class UserRepository
     public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null)
     {
         return User::latest()
+            ->withCount('diagnoses')
             ->when($role, function ($query) use ($role) {
                 $query->whereHas('role', function ($q) use ($role) {
                     $q->where('slug', $role);
@@ -29,12 +30,12 @@ class UserRepository
 
     public function findByUuid(string $uuid)
     {
-        return User::where('uuid', $uuid)->firstOrFail();
+        return User::where('uuid', $uuid)->withCount('diagnoses')->firstOrFail();
     }
 
     public function findByField(string $field, $value)
     {
-        return User::where($field, $value)->firstOrFail();
+        return User::where($field, $value)->withCount('diagnoses')->firstOrFail();
     }
 
     public function findFirstByField(string $field, $value)
