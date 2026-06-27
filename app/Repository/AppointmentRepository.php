@@ -8,7 +8,7 @@ class AppointmentRepository
 {
     public function getAppointmentsForUser($user)
     {
-        $query = Appointment::with(['doctor', 'patient', 'diagnosis']);
+        $query = Appointment::with(['doctor', 'patient', 'diagnosis', 'clinicalNote.diagnosis']);
 
         if ($user->role->slug === 'doctor') {
             $query->where('doctor_id', $user->id);
