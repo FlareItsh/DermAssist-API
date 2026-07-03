@@ -49,7 +49,7 @@ class AppointmentService
 
         $activeAppointment = Appointment::where('patient_id', $user->id)
             ->where('doctor_id', $data['doctor_id'])
-            ->where('status', 'pending')
+            ->whereIn('status', ['pending', 'scheduled'])
             ->orderByDesc('created_at')
             ->first();
 
