@@ -70,6 +70,7 @@ class UserService
                 'last_name' => $payload['lastName'],
                 'email' => $payload['email'],
                 'password' => $payload['password'],
+                'affiliation' => $payload['affiliation'] ?? null,
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
                 'prc_number' => $payload['prcNumber'] ?? null,
@@ -77,7 +78,7 @@ class UserService
             ];
 
             if (! empty($payload['avatar'])) {
-                $path = 'avatars/'.Str::slug($payload['firstName'].'_'.$payload['lastName']).'_'.time().'.png';
+                $path = 'avatars/' . Str::slug($payload['firstName'] . '_' . $payload['lastName']) . '_' . time() . '.png';
                 try {
                     $userData['avatar_path'] = $this->saveBase64Image($payload['avatar'], $path);
                 } catch (\Exception $e) {
@@ -97,7 +98,7 @@ class UserService
                 ];
 
                 if (! empty($payload['idPhoto'])) {
-                    $path = 'verifications/doctor_'.$user->id.'_'.time().'.png';
+                    $path = 'verifications/doctor_' . $user->id . '_' . time() . '.png';
                     try {
                         $verificationData['id_photo_path'] = $this->saveBase64Image($payload['idPhoto'], $path);
                     } catch (\Exception $e) {
@@ -166,7 +167,7 @@ class UserService
         $user->load(['role', 'latestDoctorVerification']);
 
         if (! empty($payload['avatar'])) {
-            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
+            $path = 'avatars/' . Str::slug($user->first_name . '_' . $user->last_name) . '_' . time() . '.png';
 
             try {
                 $avatarPath = $this->saveBase64Image($payload['avatar'], $path);
@@ -191,6 +192,16 @@ class UserService
         // Remove Base64 string from payload before update
         unset($payload['avatar']);
 
+        // Strip null/empty values for non-nullable columns so that
+        // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
+        // integrity constraint violations when a field wasn't submitted.
+        $nonNullable = ['first_name', 'last_name', 'email'];
+        foreach ($nonNullable as $field) {
+            if (array_key_exists($field, $payload) && ($payload[$field] === null || $payload[$field] === '')) {
+                unset($payload[$field]);
+            }
+        }
+
         $model = $this->userRepository->update($uuid, $payload);
 
         // Reset verification status for doctors if they were declined or changed key identification data
@@ -198,7 +209,7 @@ class UserService
             $sensitiveFields = ['first_name', 'last_name', 'prc_number'];
             $hasChangedSensitiveField = false;
             foreach ($sensitiveFields as $field) {
-                if (isset($payload[$field])) {
+                if (isset($payload[$field]) && $payload[$field] !== $user->$field) {
                     $hasChangedSensitiveField = true;
                     break;
                 }
@@ -207,7 +218,7 @@ class UserService
             if ($user->latestDoctorVerification->status === 'declined' || $hasChangedSensitiveField) {
                 $user->latestDoctorVerification->update([
                     'status' => 'pending',
-                    'rejection_reason' => null
+                    'rejection_reason' => null,
                 ]);
             }
         }

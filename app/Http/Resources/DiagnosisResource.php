@@ -23,13 +23,16 @@ class DiagnosisResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->uuid,
+            'id' => $this->id,
+            'uuid' => $this->uuid,
             'label' => $this->label,
             'confidence' => $this->confidence,
             'all_probabilities' => $this->probabilities,
             'image_url' => Storage::url($this->image_path),
             'status' => $this->status,
             'created_at' => $this->created_at,
+            'image_quality' => $this->resource->image_quality ?? null,
+            'doctor_availability' => $this->resource->doctor_availability ?? null,
         ];
     }
 }

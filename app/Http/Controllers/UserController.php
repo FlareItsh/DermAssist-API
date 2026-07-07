@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Service\UserService;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 
 class UserController extends Controller
 {
@@ -42,9 +41,10 @@ class UserController extends Controller
     public function destroy(string $uuid)
     {
         $this->userService->deleteUser($uuid);
+
         return response()->json(['message' => 'Deleted successfully'], 200);
     }
-    
+
     public function restore(string $uuid)
     {
         return $this->userService->restoreUser($uuid);
