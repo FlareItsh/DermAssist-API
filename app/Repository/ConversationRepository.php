@@ -8,9 +8,14 @@ class ConversationRepository
 {
     public function paginateForUser(int $userId, int $perPage = 15)
     {
-        return Conversation::with(['doctor', 'patient'])
-            ->where('doctor_id', $userId)
-            ->orWhere('patient_id', $userId)
+        return Conversation::with(['doctor', 'patient', 'latestMessage.sender'])
+            ->withCount(['messages as unread_messages_count' => function ($query) use ($userId) {
+                $query->where('sender_id', '!=', $userId)->where('is_read', false);
+            }])
+            ->where(function ($query) use ($userId) {
+                $query->where('doctor_id', $userId)
+                    ->orWhere('patient_id', $userId);
+            })
             ->latest('updated_at')
             ->paginate($perPage);
     }

@@ -39,7 +39,19 @@ class DoctorAvailabilityRepository
         $dateStr = $date->toDateString();
         $timeStr = $date->toTimeString();
 
-        // Doctors are available by default unless they have an active blocked/unavailable slot (is_available = false)
+        // Must have an active available slot (is_available = true)
+        $hasAvailableSlot = DoctorAvailability::where('doctor_id', $doctorId)
+            ->whereDate('available_date', $dateStr)
+            ->where('is_available', true)
+            ->where('start_time', '<=', $timeStr)
+            ->where('end_time', '>=', $timeStr)
+            ->exists();
+
+        if (! $hasAvailableSlot) {
+            return false;
+        }
+
+        // Must NOT have a blocked/unavailable slot (is_available = false)
         $isBlocked = DoctorAvailability::where('doctor_id', $doctorId)
             ->whereDate('available_date', $dateStr)
             ->where('is_available', false)
@@ -47,17 +59,25 @@ class DoctorAvailabilityRepository
             ->where('end_time', '>=', $timeStr)
             ->exists();
 
-        return !$isBlocked;
+        return ! $isBlocked;
     }
 
     public function getNextAvailableDate(int $doctorId, Carbon $fromDate): ?DoctorAvailability
     {
-        // Find the active blocked/away slot causing the unavailability
+        $dateStr = $fromDate->toDateString();
+        $timeStr = $fromDate->toTimeString();
+
         return DoctorAvailability::where('doctor_id', $doctorId)
-            ->where('is_available', false)
-            ->whereDate('available_date', $fromDate->toDateString())
-            ->where('start_time', '<=', $fromDate->toTimeString())
-            ->where('end_time', '>=', $fromDate->toTimeString())
+            ->where('is_available', true)
+            ->where(function ($query) use ($dateStr, $timeStr) {
+                $query->whereDate('available_date', '>', $dateStr)
+                    ->orWhere(function ($q) use ($dateStr, $timeStr) {
+                        $q->whereDate('available_date', $dateStr)
+                            ->where('start_time', '>', $timeStr);
+                    });
+            })
+            ->orderBy('available_date', 'asc')
+            ->orderBy('start_time', 'asc')
             ->first();
     }
 
@@ -66,12 +86,17 @@ class DoctorAvailabilityRepository
         $dateStr = $date->toDateString();
         $timeStr = $date->toTimeString();
 
-        // A doctor is available if they do NOT have a blocked record at that date/time
         return User::whereHas('role', function ($query) {
             $query->where('slug', 'doctor');
         })
             ->whereHas('doctorVerifications', function ($query) {
                 $query->where('status', 'verified');
+            })
+            ->whereHas('availabilities', function ($query) use ($dateStr, $timeStr) {
+                $query->whereDate('available_date', $dateStr)
+                    ->where('is_available', true)
+                    ->where('start_time', '<=', $timeStr)
+                    ->where('end_time', '>=', $timeStr);
             })
             ->whereDoesntHave('availabilities', function ($query) use ($dateStr, $timeStr) {
                 $query->whereDate('available_date', $dateStr)

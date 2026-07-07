@@ -3,7 +3,9 @@
 use App\Http\Controllers\AppealController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClinicalNoteController;
 use App\Http\Controllers\ConversationController;
+use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
 use App\Http\Controllers\MessageController;
@@ -17,6 +19,8 @@ Route::controller(AuthController::class)->group(function () {
     Route::post('/register', 'register');
 });
 
+Route::post('/diagnose', [DiagnosisController::class, 'store']);
+
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -27,7 +31,6 @@ Route::middleware('auth:sanctum')->group(function () {
         'appointments' => AppointmentController::class,
         'diagnoses' => DiagnosisController::class,
     ]);
-    Route::post('/diagnose', [DiagnosisController::class, 'store']);
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
@@ -36,23 +39,23 @@ Route::middleware('auth:sanctum')->group(function () {
         ->shallow()
         ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/doctors/{doctor}/availability-check', [DoctorAvailabilityController::class, 'check']);
-    
+
     // Dataset Routes
-    Route::get('/dataset', [\App\Http\Controllers\DatasetController::class, 'index']);
-    Route::post('/dataset', [\App\Http\Controllers\DatasetController::class, 'store']);
-    Route::delete('/dataset', [\App\Http\Controllers\DatasetController::class, 'destroy']);
-    Route::get('/dataset/download', [\App\Http\Controllers\DatasetController::class, 'download']);
-    Route::post('/dataset/save-diagnosis', [\App\Http\Controllers\DatasetController::class, 'saveFromDiagnosis']);
+    Route::get('/dataset', [DatasetController::class, 'index']);
+    Route::post('/dataset', [DatasetController::class, 'store']);
+    Route::delete('/dataset', [DatasetController::class, 'destroy']);
+    Route::get('/dataset/download', [DatasetController::class, 'download']);
+    Route::post('/dataset/save-diagnosis', [DatasetController::class, 'saveFromDiagnosis']);
 
     // Appointments Extra Routes
-    Route::get('/appointments/{uuid}', [\App\Http\Controllers\AppointmentController::class, 'show']);
-    Route::post('/appointments/{uuid}/accept', [\App\Http\Controllers\AppointmentController::class, 'accept']);
-    Route::post('/appointments/{uuid}/decline', [\App\Http\Controllers\AppointmentController::class, 'decline']);
+    Route::get('/appointments/{uuid}', [AppointmentController::class, 'show']);
+    Route::post('/appointments/{uuid}/accept', [AppointmentController::class, 'accept']);
+    Route::post('/appointments/{uuid}/decline', [AppointmentController::class, 'decline']);
 
     // Clinical Notes
-    Route::get('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'show']);
-    Route::post('/appointments/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'store']);
-    Route::post('/diagnoses/{uuid}/clinical-note', [\App\Http\Controllers\ClinicalNoteController::class, 'storeForDiagnosis']);
+    Route::get('/appointments/{uuid}/clinical-note', [ClinicalNoteController::class, 'show']);
+    Route::post('/appointments/{uuid}/clinical-note', [ClinicalNoteController::class, 'store']);
+    Route::post('/diagnoses/{uuid}/clinical-note', [ClinicalNoteController::class, 'storeForDiagnosis']);
 
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);

@@ -28,7 +28,7 @@ class AppointmentController extends Controller
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
             'message' => 'nullable|string',
-            'scheduled_at' => 'nullable|date',
+            'scheduled_at' => 'nullable|date|after_or_equal:today',
         ]);
 
         $result = $this->appointmentService->createAppointment(
@@ -48,7 +48,7 @@ class AppointmentController extends Controller
     {
         $request->validate([
             'status' => 'sometimes|string|in:pending,accepted,declined,scheduled,completed',
-            'scheduled_at' => 'nullable|date',
+            'scheduled_at' => 'nullable|date|after_or_equal:today',
             'location' => 'nullable|string',
         ]);
 

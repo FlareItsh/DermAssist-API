@@ -17,8 +17,7 @@ class DiagnosisService
     public function __construct(
         DiagnosisRepository $diagnosisRepository,
         DoctorAvailabilityService $doctorAvailabilityService
-    )
-    {
+    ) {
         $this->diagnosisRepository = $diagnosisRepository;
         $this->doctorAvailabilityService = $doctorAvailabilityService;
     }
@@ -36,6 +35,13 @@ class DiagnosisService
         )->post(config('services.ai.url').'/predict');
 
         if ($response->failed()) {
+            $body = $response->json();
+
+            // The skin validator returns 422 when the image is not a skin photo
+            if ($response->status() === 422 && isset($body['detail']['code']) && $body['detail']['code'] === 'NOT_SKIN_IMAGE') {
+                throw new \InvalidArgumentException($body['detail']['message'] ?? 'The uploaded image does not appear to be a skin photo. Please upload a clear, close-up photo of the affected skin area.');
+            }
+
             Log::error('AI Server Error: '.$response->body());
             throw new \Exception('The AI server is currently unavailable or returned an error.');
         }
@@ -57,7 +63,8 @@ class DiagnosisService
             'status' => 'completed',
         ]);
 
-        $resource = new DiagnosisResource($diagnosis);
+        // Set transient properties directly on the model instance to keep response flat (no additional() wrapper)
+        $diagnosis->image_quality = $aiResult['image_quality'] ?? null;
 
         if (! empty($data['doctor_id'])) {
             $availabilityCheck = $this->doctorAvailabilityService->checkDoctorAvailability(
@@ -66,16 +73,14 @@ class DiagnosisService
                 $data['user'] ?? null
             );
 
-            $resource->additional([
-                'doctor_availability' => [
-                    'is_available' => $availabilityCheck['is_available'],
-                    'next_available' => $availabilityCheck['next_available'],
-                    'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
-                ],
-            ]);
+            $diagnosis->doctor_availability = [
+                'is_available' => $availabilityCheck['is_available'],
+                'next_available' => $availabilityCheck['next_available'],
+                'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
+            ];
         }
 
-        return $resource;
+        return new DiagnosisResource($diagnosis);
     }
 
     public function listDiagnosis(int $perPage = 15)

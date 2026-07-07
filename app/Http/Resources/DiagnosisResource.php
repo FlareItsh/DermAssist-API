@@ -31,6 +31,8 @@ class DiagnosisResource extends JsonResource
             'image_url' => Storage::url($this->image_path),
             'status' => $this->status,
             'created_at' => $this->created_at,
+            'image_quality' => $this->resource->image_quality ?? null,
+            'doctor_availability' => $this->resource->doctor_availability ?? null,
         ];
     }
 }
