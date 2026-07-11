@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/dataset/save-diagnosis', [DatasetController::class, 'saveFromDiagnosis']);
 
     // Appointments Extra Routes
+    Route::post('/appointments/schedule-for-patient', [AppointmentController::class, 'scheduleForPatient']);
     Route::get('/appointments/{uuid}', [AppointmentController::class, 'show']);
     Route::post('/appointments/{uuid}/accept', [AppointmentController::class, 'accept']);
     Route::post('/appointments/{uuid}/decline', [AppointmentController::class, 'decline']);

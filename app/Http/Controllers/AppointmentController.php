@@ -61,6 +61,23 @@ class AppointmentController extends Controller
         return response()->json($updatedAppointment);
     }
 
+    public function scheduleForPatient(Request $request)
+    {
+        $request->validate([
+            'patient_id' => 'required|integer|exists:users,id',
+            'scheduled_at' => 'required|date|after_or_equal:today',
+            'location' => 'required|string|max:255',
+            'purpose' => 'required|string|max:500',
+        ]);
+
+        $result = $this->appointmentService->scheduleAppointmentForPatient(
+            $request->user(),
+            $request->only(['patient_id', 'scheduled_at', 'location', 'purpose'])
+        );
+
+        return response()->json($result);
+    }
+
     public function destroy(Appointment $appointment)
     {
         $this->appointmentService->deleteAppointment($appointment);
