@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\Conversation;
 use App\Models\Diagnosis;
 use App\Models\Message;
+use App\Models\User;
 use App\Repository\AppointmentRepository;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
@@ -158,6 +159,44 @@ class AppointmentService
         }
 
         return $appointment;
+    }
+
+    public function scheduleAppointmentForPatient(User $doctor, array $data)
+    {
+        if ($doctor->role->slug !== 'doctor') {
+            abort(403, 'Only doctors can schedule appointments for patients.');
+        }
+
+        $conversation = Conversation::firstOrCreate([
+            'doctor_id' => $doctor->id,
+            'patient_id' => $data['patient_id'],
+        ], [
+            'uuid' => (string) Str::uuid(),
+        ]);
+
+        $appointment = $this->appointmentRepository->createAppointment([
+            'doctor_id' => $doctor->id,
+            'patient_id' => $data['patient_id'],
+            'scheduled_at' => $data['scheduled_at'],
+            'location' => $data['location'],
+            'purpose' => $data['purpose'],
+            'status' => 'scheduled',
+        ]);
+
+        $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+
+        Message::create([
+            'uuid' => (string) Str::uuid(),
+            'conversation_id' => $conversation->id,
+            'sender_id' => $doctor->id,
+            'message' => "A new follow-up appointment has been scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\nPurpose: {$data['purpose']}\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
+        ]);
+
+        return [
+            'message' => 'Appointment scheduled successfully.',
+            'appointment' => $appointment,
+            'conversation_uuid' => $conversation->uuid,
+        ];
     }
 
     public function deleteAppointment(Appointment $appointment)
