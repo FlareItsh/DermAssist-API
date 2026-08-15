@@ -4,27 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Service\AppointmentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class AppointmentController extends Controller
 {
-    protected $appointmentService;
+    public function __construct(public AppointmentService $appointmentService) {}
 
-    public function __construct(AppointmentService $appointmentService)
-    {
-        $this->appointmentService = $appointmentService;
-    }
-
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
         $appointments = $this->appointmentService->getAppointmentsForUser($request->user());
 
         return response()->json($appointments);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
             'message' => 'nullable|string',
@@ -33,37 +30,37 @@ class AppointmentController extends Controller
 
         $result = $this->appointmentService->createAppointment(
             $request->user(),
-            $request->only(['doctor_id', 'diagnosis_uuid', 'message', 'scheduled_at'])
+            $validated
         );
 
         return response()->json($result);
     }
 
-    public function show(Appointment $appointment)
+    public function show(Appointment $appointment): Appointment
     {
         return $appointment->load(['doctor', 'patient', 'diagnosis']);
     }
 
-    public function update(Request $request, Appointment $appointment)
+    public function update(Request $request, Appointment $appointment): JsonResponse
     {
-        $request->validate([
-            'status' => 'sometimes|string|in:pending,accepted,declined,scheduled,completed',
+        $validated = $request->validate([
+            'status' => 'sometimes|string|in:pending,accepted,declined,scheduled,completed,reschedule_proposed,reschedule_requested',
             'scheduled_at' => 'nullable|date|after_or_equal:today',
             'location' => 'nullable|string',
         ]);
 
         $updatedAppointment = $this->appointmentService->updateAppointmentStatus(
             $appointment,
-            $request->only(['status', 'scheduled_at', 'location']),
+            $validated,
             $request->user()
         );
 
         return response()->json($updatedAppointment);
     }
 
-    public function scheduleForPatient(Request $request)
+    public function scheduleForPatient(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'patient_id' => 'required|integer|exists:users,id',
             'scheduled_at' => 'required|date|after_or_equal:today',
             'location' => 'required|string|max:255',
@@ -72,13 +69,40 @@ class AppointmentController extends Controller
 
         $result = $this->appointmentService->scheduleAppointmentForPatient(
             $request->user(),
-            $request->only(['patient_id', 'scheduled_at', 'location', 'purpose'])
+            $validated
         );
 
         return response()->json($result);
     }
 
-    public function destroy(Appointment $appointment)
+    public function proposeReschedule(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'scheduled_at' => 'required|date|after_or_equal:today',
+            'location' => 'required|string',
+        ]);
+
+        $result = $this->appointmentService->proposeReschedule(
+            $appointment,
+            $validated,
+            $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+    public function acceptReschedule(Request $request, Appointment $appointment): JsonResponse
+    {
+        $result = $this->appointmentService->acceptReschedule(
+            $appointment,
+            [],
+            $request->user()
+        );
+
+        return response()->json($result);
+    }
+
+    public function destroy(Appointment $appointment): Response
     {
         $this->appointmentService->deleteAppointment($appointment);
 
