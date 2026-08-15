@@ -49,9 +49,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Appointments Extra Routes
     Route::post('/appointments/schedule-for-patient', [AppointmentController::class, 'scheduleForPatient']);
-    Route::get('/appointments/{uuid}', [AppointmentController::class, 'show']);
-    Route::post('/appointments/{uuid}/accept', [AppointmentController::class, 'accept']);
-    Route::post('/appointments/{uuid}/decline', [AppointmentController::class, 'decline']);
+    Route::get('/appointments/{appointment}', [AppointmentController::class, 'show']);
+    Route::post('/appointments/{appointment}/accept', [AppointmentController::class, 'accept']);
+    Route::post('/appointments/{appointment}/decline', [AppointmentController::class, 'decline']);
+    Route::post('/appointments/{appointment}/propose-reschedule', [AppointmentController::class, 'proposeReschedule']);
+    Route::post('/appointments/{appointment}/accept-reschedule', [AppointmentController::class, 'acceptReschedule']);
 
     // Clinical Notes
     Route::get('/appointments/{uuid}/clinical-note', [ClinicalNoteController::class, 'show']);

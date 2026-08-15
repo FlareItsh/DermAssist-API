@@ -125,7 +125,7 @@ class AppointmentService
 
     public function updateAppointmentStatus(Appointment $appointment, array $data, $user)
     {
-        if ($user->role->name !== 'admin' && $user->id !== $appointment->doctor_id) {
+        if ($user->role->name !== 'admin' && $user->id !== $appointment->doctor_id && $user->id !== $appointment->patient_id) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -138,22 +138,29 @@ class AppointmentService
         ])->first();
 
         if ($conversation && isset($data['status'])) {
-            $doctorId = $user->id;
+            $senderId = $user->id;
 
             if ($data['status'] === 'scheduled') {
                 $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
                 Message::create([
                     'uuid' => (string) Str::uuid(),
                     'conversation_id' => $conversation->id,
-                    'sender_id' => $doctorId,
+                    'sender_id' => $senderId,
                     'message' => "Appointment scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
                 ]);
             } elseif ($data['status'] === 'declined') {
                 Message::create([
                     'uuid' => (string) Str::uuid(),
                     'conversation_id' => $conversation->id,
-                    'sender_id' => $doctorId,
-                    'message' => "Your appointment request has been reviewed and unfortunately declined.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
+                    'sender_id' => $senderId,
+                    'message' => "The appointment has been declined or cancelled.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
+                ]);
+            } elseif ($data['status'] === 'reschedule_requested') {
+                Message::create([
+                    'uuid' => (string) Str::uuid(),
+                    'conversation_id' => $conversation->id,
+                    'sender_id' => $senderId,
+                    'message' => "A request has been made to choose another date for the appointment.\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$appointment->uuid}]",
                 ]);
             }
         }
@@ -196,6 +203,70 @@ class AppointmentService
             'message' => 'Appointment scheduled successfully.',
             'appointment' => $appointment,
             'conversation_uuid' => $conversation->uuid,
+        ];
+    }
+
+    public function proposeReschedule(Appointment $appointment, array $data, $user)
+    {
+        $conversation = Conversation::where([
+            'doctor_id' => $appointment->doctor_id,
+            'patient_id' => $appointment->patient_id,
+        ])->first();
+
+        if (! $conversation) {
+            abort(404, 'Conversation not found.');
+        }
+
+        $this->appointmentRepository->updateAppointment($appointment, [
+            'status' => 'reschedule_proposed',
+            'scheduled_at' => $data['scheduled_at'],
+            'location' => $data['location'],
+        ]);
+
+        $dateStr = Carbon::parse($data['scheduled_at'])->format('Y-m-d H:i:s');
+        $displayDateStr = Carbon::parse($data['scheduled_at'])->format('M d, Y h:i A');
+        $loc = $data['location'];
+
+        $message = Message::create([
+            'uuid' => (string) Str::uuid(),
+            'conversation_id' => $conversation->id,
+            'sender_id' => $user->id,
+            'message' => "A new schedule has been proposed on <b>{$displayDateStr}</b> at <b>{$loc}</b>.\n[APPOINTMENT_RESCHEDULE_PROPOSED:{$appointment->uuid}:{$dateStr}:{$loc}]",
+        ]);
+
+        return [
+            'message' => 'Reschedule proposed successfully.',
+            'appointment' => $appointment->refresh(),
+        ];
+    }
+
+    public function acceptReschedule(Appointment $appointment, array $data, $user)
+    {
+        $conversation = Conversation::where([
+            'doctor_id' => $appointment->doctor_id,
+            'patient_id' => $appointment->patient_id,
+        ])->first();
+
+        if (! $conversation) {
+            abort(404, 'Conversation not found.');
+        }
+
+        $this->appointmentRepository->updateAppointment($appointment, [
+            'status' => 'scheduled',
+        ]);
+
+        $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+
+        Message::create([
+            'uuid' => (string) Str::uuid(),
+            'conversation_id' => $conversation->id,
+            'sender_id' => $user->id,
+            'message' => "The proposed schedule has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]",
+        ]);
+
+        return [
+            'message' => 'Reschedule accepted successfully.',
+            'appointment' => $appointment->refresh(),
         ];
     }
 
