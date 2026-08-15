@@ -18,7 +18,8 @@ class ConversationService
 
     public function listConversations(User $user, int $perPage = 15)
     {
-        $collection = $this->conversationRepository->paginateForUser($user->id, $perPage);
+        $effectiveUserId = ($user->role->slug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
+        $collection = $this->conversationRepository->paginateForUser($effectiveUserId, $perPage);
 
         return ConversationResource::collection($collection);
     }
@@ -27,15 +28,15 @@ class ConversationService
     {
         $roleSlug = tap($user->role, fn ($role) => null)?->slug;
 
-        if (! in_array($roleSlug, ['doctor', 'patient'])) {
-            abort(403, 'Only doctors and patients can start conversations.');
+        if (! in_array($roleSlug, ['doctor', 'patient', 'secretary'])) {
+            abort(403, 'Only doctors, secretaries, and patients can start conversations.');
         }
 
         $doctorId = null;
         $patientId = null;
 
-        if ($roleSlug === 'doctor') {
-            $doctorId = $user->id;
+        if ($roleSlug === 'doctor' || $roleSlug === 'secretary') {
+            $doctorId = ($roleSlug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
             $patientId = $payload['patient_id'] ?? null;
 
             if (! $patientId) {
@@ -81,7 +82,11 @@ class ConversationService
     {
         $model = $this->conversationRepository->findByUuid($uuid);
 
-        if ($model->doctor_id !== $user->id && $model->patient_id !== $user->id) {
+        $isDoctor = $model->doctor_id === $user->id;
+        $isPatient = $model->patient_id === $user->id;
+        $isSecretary = $user->role->slug === 'secretary' && $model->doctor_id === $user->doctor_id;
+
+        if (! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized access to this conversation.');
         }
 
@@ -92,7 +97,11 @@ class ConversationService
     {
         $model = $this->conversationRepository->findByUuid($uuid);
 
-        if ($model->doctor_id !== $user->id && $model->patient_id !== $user->id) {
+        $isDoctor = $model->doctor_id === $user->id;
+        $isPatient = $model->patient_id === $user->id;
+        $isSecretary = $user->role->slug === 'secretary' && $model->doctor_id === $user->doctor_id;
+
+        if (! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized access to this conversation.');
         }
 

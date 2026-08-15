@@ -17,29 +17,41 @@ class DoctorAvailabilityService
         $this->repository = $repository;
     }
 
-    public function getAvailabilities(User $doctor): Collection
+    public function getAvailabilities(User $user): Collection
     {
-        if ($doctor->role->slug !== 'doctor') {
-            abort(403, 'Only doctors have availability records.');
+        if ($user->role->slug === 'doctor') {
+            return $this->repository->getAvailabilitiesForDoctor($user);
+        } elseif ($user->role->slug === 'secretary' && $user->doctor_id) {
+            $doctor = User::findOrFail($user->doctor_id);
+
+            return $this->repository->getAvailabilitiesForDoctor($doctor);
         }
 
-        return $this->repository->getAvailabilitiesForDoctor($doctor);
+        abort(403, 'Only doctors and secretaries can access availability records.');
     }
 
-    public function createAvailability(User $doctor, array $data): DoctorAvailability
+    public function createAvailability(User $actor, array $data): DoctorAvailability
     {
-        if ($doctor->role->slug !== 'doctor') {
-            abort(403, 'Only doctors can set availability.');
+        $doctorId = null;
+        if ($actor->role->slug === 'doctor') {
+            $doctorId = $actor->id;
+        } elseif ($actor->role->slug === 'secretary' && $actor->doctor_id) {
+            $doctorId = $actor->doctor_id;
+        } else {
+            abort(403, 'Only doctors or secretaries can set availability.');
         }
 
-        $data['doctor_id'] = $doctor->id;
+        $data['doctor_id'] = $doctorId;
 
         return $this->repository->createAvailability($data);
     }
 
     public function updateAvailability(DoctorAvailability $availability, array $data, User $user): DoctorAvailability
     {
-        if ($user->role->slug !== 'doctor' || $availability->doctor_id !== $user->id) {
+        $isDoctorOwner = $user->role->slug === 'doctor' && $availability->doctor_id === $user->id;
+        $isSecretaryOwner = $user->role->slug === 'secretary' && $availability->doctor_id === $user->doctor_id;
+
+        if (! $isDoctorOwner && ! $isSecretaryOwner) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -48,7 +60,10 @@ class DoctorAvailabilityService
 
     public function deleteAvailability(DoctorAvailability $availability, User $user): bool
     {
-        if ($user->role->slug !== 'doctor' || $availability->doctor_id !== $user->id) {
+        $isDoctorOwner = $user->role->slug === 'doctor' && $availability->doctor_id === $user->id;
+        $isSecretaryOwner = $user->role->slug === 'secretary' && $availability->doctor_id === $user->doctor_id;
+
+        if (! $isDoctorOwner && ! $isSecretaryOwner) {
             abort(403, 'Unauthorized action.');
         }
 

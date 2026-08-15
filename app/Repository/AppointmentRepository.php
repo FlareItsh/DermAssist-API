@@ -12,6 +12,8 @@ class AppointmentRepository
 
         if ($user->role->slug === 'doctor') {
             $query->where('doctor_id', $user->id);
+        } elseif ($user->role->slug === 'secretary') {
+            $query->where('doctor_id', $user->doctor_id);
         } elseif ($user->role->slug === 'patient') {
             $query->where('patient_id', $user->id);
         }
