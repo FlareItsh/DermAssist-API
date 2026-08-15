@@ -34,9 +34,10 @@ class UserResource extends JsonResource
             'prcNumber' => $this->prc_number,
             'email' => $this->email,
             'role' => $this->role->slug,
+            'doctor_uuid' => $this->doctor?->uuid,
             'avatar_path' => $this->avatar_path,
             'total_scans' => $this->diagnoses_count ?? 0,
-            'doctor_verification' => new VerificationResource($this->latestDoctorVerification),
+            'doctor_verification' => $this->latestDoctorVerification ? new VerificationResource($this->latestDoctorVerification) : null,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

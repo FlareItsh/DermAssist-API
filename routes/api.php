@@ -8,6 +8,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
+use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
@@ -39,6 +40,11 @@ Route::middleware('auth:sanctum')->group(function () {
         ->shallow()
         ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/doctors/{doctor}/availability-check', [DoctorAvailabilityController::class, 'check']);
+
+    // Doctor Secretaries Management
+    Route::get('/doctor/secretaries', [DoctorSecretaryController::class, 'index']);
+    Route::post('/doctor/secretaries', [DoctorSecretaryController::class, 'store']);
+    Route::delete('/doctor/secretaries/{uuid}', [DoctorSecretaryController::class, 'destroy']);
 
     // Dataset Routes
     Route::get('/dataset', [DatasetController::class, 'index']);
