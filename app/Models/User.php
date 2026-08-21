@@ -13,18 +13,19 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, HasUuids, Notifiable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable, SoftDeletes;
 
     /**
      * Get the attributes that should be cast.
@@ -55,6 +56,26 @@ class User extends Authenticatable
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Get the doctor this user (secretary) is associated with.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function doctor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    /**
+     * Get the secretaries associated with this doctor.
+     *
+     * @return HasMany<User, $this>
+     */
+    public function secretaries(): HasMany
+    {
+        return $this->hasMany(User::class, 'doctor_id');
     }
 
     /**
@@ -123,7 +144,7 @@ class User extends Authenticatable
     protected function fullName(): Attribute
     {
         return Attribute::make(
-            get: fn() => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
+            get: fn () => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
         );
     }
 
@@ -133,7 +154,7 @@ class User extends Authenticatable
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(
-            get: fn() => $this->avatar_path ? Storage::url($this->avatar_path) : null,
+            get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
         );
     }
 

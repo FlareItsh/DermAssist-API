@@ -48,7 +48,7 @@ class ClinicalNoteController extends Controller
     public function storeForDiagnosis(Request $request, string $diagnosisUuid)
     {
         $user = $request->user();
-        if ($user->role->slug !== 'doctor') {
+        if (! in_array($user->role->slug, ['doctor', 'secretary'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
