@@ -167,4 +167,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Diagnosis::class, 'user_uuid', 'uuid');
     }
+
+    /**
+     * Get the active subscription associated with the user.
+     */
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(Subscription::class)->latestOfMany();
+    }
 }

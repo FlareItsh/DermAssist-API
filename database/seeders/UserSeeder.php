@@ -30,17 +30,17 @@ class UserSeeder extends Seeder
                 'role_id' => $adminRole->id,
                 'age' => 35,
                 'gender' => 'Male',
-                'street' => fake()->streetAddress(),
+                'street' => 'JP Laurel Avenue',
                 'barangay' => 'Buhangin',
                 'city' => 'Davao City',
                 'province' => 'Davao del Sur',
                 'country' => 'Philippines',
-                'latitude' => fake()->latitude(7.05, 7.15),
-                'longitude' => fake()->longitude(125.55, 125.65),
+                'latitude' => 7.0850,
+                'longitude' => 125.6130,
             ]
         );
 
-        // 2. Patient Account
+        // 2. Main Patient Account
         User::firstOrCreate(
             ['email' => 'patient@dermassist.com'],
             [
@@ -50,17 +50,62 @@ class UserSeeder extends Seeder
                 'role_id' => $patientRole->id,
                 'age' => 28,
                 'gender' => 'Male',
-                'street' => fake()->streetAddress(),
+                'street' => 'McArthur Highway',
                 'barangay' => 'Matina',
                 'city' => 'Davao City',
                 'province' => 'Davao del Sur',
                 'country' => 'Philippines',
-                'latitude' => fake()->latitude(7.05, 7.15),
-                'longitude' => fake()->longitude(125.55, 125.65),
+                'latitude' => 7.0620,
+                'longitude' => 125.5940,
             ]
         );
 
-        // 3. Doctor Account
+        // Additional Hardcoded Patients
+        $hardcodedPatients = [
+            [
+                'email' => 'maria.santos@example.com',
+                'first_name' => 'Maria',
+                'last_name' => 'Santos',
+                'age' => 32,
+                'gender' => 'Female',
+                'barangay' => 'Poblacion',
+                'city' => 'Davao City',
+            ],
+            [
+                'email' => 'carlo.reyes@example.com',
+                'first_name' => 'Carlo',
+                'last_name' => 'Reyes',
+                'age' => 26,
+                'gender' => 'Male',
+                'barangay' => 'Agdao',
+                'city' => 'Davao City',
+            ],
+            [
+                'email' => 'elena.torres@example.com',
+                'first_name' => 'Elena',
+                'last_name' => 'Torres',
+                'age' => 41,
+                'gender' => 'Female',
+                'barangay' => 'Toril',
+                'city' => 'Davao City',
+            ],
+        ];
+
+        foreach ($hardcodedPatients as $pat) {
+            User::firstOrCreate(
+                ['email' => $pat['email']],
+                array_merge($pat, [
+                    'password' => Hash::make('password'),
+                    'role_id' => $patientRole->id,
+                    'province' => 'Davao del Sur',
+                    'country' => 'Philippines',
+                    'latitude' => 7.0700,
+                    'longitude' => 125.6000,
+                ])
+            );
+        }
+
+        // 3. Default Doctor Account (SUBSCRIBED DOCTOR)
         $mainDoctor = User::firstOrCreate(
             ['email' => 'doctor@dermassist.com'],
             [
@@ -68,21 +113,74 @@ class UserSeeder extends Seeder
                 'last_name' => 'Smith',
                 'password' => Hash::make('password'),
                 'role_id' => $doctorRole->id,
-                'prc_number' => '1234567',
-                'affiliation' => 'Davao Medical School Foundation',
+                'prc_number' => 'PRC-0012345',
+                'affiliation' => 'Davao Medical School Foundation Hospital',
                 'age' => 45,
-                'gender' => 'Female',
-                'street' => fake()->streetAddress(),
-                'barangay' => 'Obrero',
+                'gender' => 'Male',
+                'street' => 'E. Quirino Avenue',
+                'barangay' => 'Poblacion',
                 'city' => 'Davao City',
                 'province' => 'Davao del Sur',
                 'country' => 'Philippines',
-                'latitude' => fake()->latitude(7.05, 7.15),
-                'longitude' => fake()->longitude(125.55, 125.65),
+                'latitude' => 7.0731,
+                'longitude' => 125.6128,
             ]
         );
 
-        // 4. Secretary Account linked to Main Doctor
+        // 4. Additional Hardcoded Doctors (UNSUBSCRIBED / VARIOUS STATUSES)
+        $doctorProfiles = [
+            [
+                'email' => 'dr.beatriz.cruz@dermassist.com',
+                'first_name' => 'Beatriz',
+                'last_name' => 'Cruz',
+                'prc_number' => 'PRC-0098765',
+                'affiliation' => 'Southern Philippines Medical Center',
+                'age' => 39,
+                'gender' => 'Female',
+                'barangay' => 'Bajada',
+            ],
+            [
+                'email' => 'dr.ricardo.dizon@dermassist.com',
+                'first_name' => 'Ricardo',
+                'last_name' => 'Dizon',
+                'prc_number' => 'PRC-0045678',
+                'affiliation' => 'Davao Doctors Hospital',
+                'age' => 52,
+                'gender' => 'Male',
+                'barangay' => 'Madrazo',
+            ],
+            [
+                'email' => 'dr.clara.mendoza@dermassist.com',
+                'first_name' => 'Clara',
+                'last_name' => 'Mendoza',
+                'prc_number' => 'PRC-0054321',
+                'affiliation' => 'San Pedro Hospital of Davao',
+                'age' => 36,
+                'gender' => 'Female',
+                'barangay' => 'Guzman',
+            ],
+        ];
+
+        $createdDoctors = [$mainDoctor];
+
+        foreach ($doctorProfiles as $docData) {
+            $createdDoc = User::firstOrCreate(
+                ['email' => $docData['email']],
+                array_merge($docData, [
+                    'password' => Hash::make('password'),
+                    'role_id' => $doctorRole->id,
+                    'street' => 'Main Avenue',
+                    'city' => 'Davao City',
+                    'province' => 'Davao del Sur',
+                    'country' => 'Philippines',
+                    'latitude' => 7.0750,
+                    'longitude' => 125.6100,
+                ])
+            );
+            $createdDoctors[] = $createdDoc;
+        }
+
+        // 5. Secretaries linked to Doctors
         User::firstOrCreate(
             ['email' => 'secretary@dermassist.com'],
             [
@@ -93,41 +191,18 @@ class UserSeeder extends Seeder
                 'doctor_id' => $mainDoctor->id,
                 'age' => 30,
                 'gender' => 'Female',
-                'street' => fake()->streetAddress(),
-                'barangay' => 'Obrero',
+                'street' => 'E. Quirino Avenue',
+                'barangay' => 'Poblacion',
                 'city' => 'Davao City',
                 'province' => 'Davao del Sur',
                 'country' => 'Philippines',
-                'latitude' => fake()->latitude(7.05, 7.15),
-                'longitude' => fake()->longitude(125.55, 125.65),
+                'latitude' => 7.0731,
+                'longitude' => 125.6128,
             ]
         );
 
-        // 5. Multiple Patients
-        User::factory()->count(10)->create([
-            'role_id' => $patientRole->id,
-            'password' => Hash::make('password'),
-        ]);
-
-        // 6. Multiple Doctors & Secretarial Links
-        $otherDoctors = User::factory()->count(10)->create([
-            'role_id' => $doctorRole->id,
-            'password' => Hash::make('password'),
-            'prc_number' => fn () => fake()->numerify('#######'),
-            'affiliation' => fn () => fake()->company(),
-        ]);
-
-        foreach ($otherDoctors as $doctor) {
-            User::factory()->create([
-                'role_id' => $secretaryRole->id,
-                'doctor_id' => $doctor->id,
-                'password' => Hash::make('password'),
-            ]);
-        }
-
-        // 7. Verify all doctors
-        $doctors = User::where('role_id', $doctorRole->id)->get();
-        foreach ($doctors as $doc) {
+        // 6. Verify all doctors in DoctorVerification
+        foreach ($createdDoctors as $doc) {
             DoctorVerification::firstOrCreate([
                 'user_id' => $doc->id,
             ], [

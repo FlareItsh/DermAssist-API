@@ -1,5 +1,9 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminCouponController;
+use App\Http\Controllers\Admin\AdminPaymentController;
+use App\Http\Controllers\Admin\AdminPlanController;
+use App\Http\Controllers\Admin\AdminSubscriptionController;
 use App\Http\Controllers\AppealController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
@@ -68,4 +72,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);
+
+    // Admin Subscription Management Routes
+    Route::prefix('admin')->group(function () {
+        Route::get('/subscriptions/dashboard', [AdminSubscriptionController::class, 'dashboard']);
+        Route::get('/subscriptions', [AdminSubscriptionController::class, 'index']);
+
+        Route::apiResource('plans', AdminPlanController::class);
+        Route::patch('plans/{plan}/toggle-active', [AdminPlanController::class, 'toggleActive']);
+
+        Route::get('/payments', [AdminPaymentController::class, 'index']);
+        Route::post('/payments/{invoice}/approve', [AdminPaymentController::class, 'approve']);
+        Route::post('/payments/{invoice}/reject', [AdminPaymentController::class, 'reject']);
+
+        Route::apiResource('coupons', AdminCouponController::class)->except(['update', 'show']);
+        Route::patch('coupons/{coupon}/toggle-active', [AdminCouponController::class, 'toggleActive']);
+    });
 });
