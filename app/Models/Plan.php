@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Database\Factories\PlanFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,10 +11,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'name',
     'slug',
-    'price',
+    'tier_type',
+    'price_monthly',
+    'price_annual',
+    'max_doctors',
+    'max_clinics',
     'features',
-    'interval',
-    'interval_count',
     'trial_period_days',
     'grace_period_days',
     'sort_order',
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Plan extends Model
 {
     /** @use HasFactory<PlanFactory> */
-    use HasFactory, HasUuids;
+    use HasFactory;
 
     /**
      * Get the attributes that should be cast.
@@ -36,7 +37,13 @@ class Plan extends Model
         return [
             'features' => 'array',
             'is_active' => 'boolean',
-            'price' => 'decimal:2',
+            'price_monthly' => 'decimal:2',
+            'price_annual' => 'decimal:2',
+            'max_doctors' => 'integer',
+            'max_clinics' => 'integer',
+            'trial_period_days' => 'integer',
+            'grace_period_days' => 'integer',
+            'sort_order' => 'integer',
         ];
     }
 
