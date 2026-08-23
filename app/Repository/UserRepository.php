@@ -65,4 +65,30 @@ class UserRepository
 
         return $model;
     }
+
+    public function findDoctorRegisteredPatients(int $doctorId)
+    {
+        return User::where('registered_by_doctor_id', $doctorId)
+            ->where(function ($query) {
+                $query->whereNull('account_action')
+                    ->orWhere('account_action', '!=', 'delete')
+                    ->orWhere('account_action_scheduled_at', '>', now());
+            })
+            ->withCount('diagnoses')
+            ->latest()
+            ->get();
+    }
+
+    public function paginateDoctorPatients(int $doctorId, int $perPage = 15)
+    {
+        return User::where('registered_by_doctor_id', $doctorId)
+            ->where(function ($query) {
+                $query->whereNull('account_action')
+                    ->orWhere('account_action', '!=', 'delete')
+                    ->orWhere('account_action_scheduled_at', '>', now());
+            })
+            ->withCount('diagnoses')
+            ->latest()
+            ->paginate($perPage);
+    }
 }

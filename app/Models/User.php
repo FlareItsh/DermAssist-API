@@ -18,7 +18,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -123,7 +123,7 @@ class User extends Authenticatable
     protected function fullName(): Attribute
     {
         return Attribute::make(
-            get: fn() => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
+            get: fn () => trim("{$this->first_name} {$this->middle_name} {$this->last_name}"),
         );
     }
 
@@ -133,7 +133,7 @@ class User extends Authenticatable
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(
-            get: fn() => $this->avatar_path ? Storage::url($this->avatar_path) : null,
+            get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
         );
     }
 
@@ -145,5 +145,33 @@ class User extends Authenticatable
     public function diagnoses(): HasMany
     {
         return $this->hasMany(Diagnosis::class, 'user_uuid', 'uuid');
+    }
+
+    /**
+     * Get the doctor who registered this patient.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function registeredByDoctor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'registered_by_doctor_id');
+    }
+
+    /**
+     * Get all doctor-registered patients for this doctor.
+     *
+     * @return HasMany<User, $this>
+     */
+    public function doctorRegisteredPatients(): HasMany
+    {
+        return $this->hasMany(User::class, 'registered_by_doctor_id');
+    }
+
+    /**
+     * Check whether this user account is currently active.
+     */
+    public function isActive(): bool
+    {
+        return $this->account_status === 'active';
     }
 }

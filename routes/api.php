@@ -8,10 +8,12 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
+use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
+use App\Http\Middleware\CheckAccountStatus;
 use Illuminate\Support\Facades\Route;
 
 Route::controller(AuthController::class)->group(function () {
@@ -21,7 +23,7 @@ Route::controller(AuthController::class)->group(function () {
 
 Route::post('/diagnose', [DiagnosisController::class, 'store']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -62,4 +64,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);
+
+    // Doctor-Created Patients
+    Route::get('/doctor/patients', [DoctorPatientController::class, 'index']);
+    Route::post('/doctor/patients', [DoctorPatientController::class, 'store']);
+    Route::post('/doctor/patients/{uuid}/enable', [DoctorPatientController::class, 'enable']);
+    Route::post('/doctor/patients/{uuid}/disable', [DoctorPatientController::class, 'disable']);
+    Route::delete('/doctor/patients/{uuid}', [DoctorPatientController::class, 'destroy']);
+    Route::post('/doctor/patients/{uuid}/schedule-action', [DoctorPatientController::class, 'scheduleAction']);
+    Route::delete('/doctor/patients/{uuid}/cancel-schedule', [DoctorPatientController::class, 'cancelSchedule']);
+    Route::post('/doctor/patients/{uuid}/send-scan', [DoctorPatientController::class, 'sendScanResult']);
+    Route::post('/doctor/patients/{uuid}/schedule-appointment', [DoctorPatientController::class, 'scheduleAppointment']);
 });
