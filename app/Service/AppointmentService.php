@@ -149,12 +149,26 @@ class AppointmentService
                     'message' => "Appointment scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
                 ]);
             } elseif ($data['status'] === 'declined') {
-                Message::create([
-                    'uuid' => (string) Str::uuid(),
-                    'conversation_id' => $conversation->id,
-                    'sender_id' => $senderId,
-                    'message' => "The appointment has been declined or cancelled.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
-                ]);
+                $wasScheduled = $appointment->status === 'scheduled' 
+                    || $appointment->status === 'reschedule_proposed' 
+                    || $appointment->status === 'reschedule_requested' 
+                    || ! empty($appointment->scheduled_at);
+
+                if ($wasScheduled) {
+                    Message::create([
+                        'uuid' => (string) Str::uuid(),
+                        'conversation_id' => $conversation->id,
+                        'sender_id' => $senderId,
+                        'message' => "The appointment has been cancelled.\n[APPOINTMENT_CANCELLED:{$appointment->uuid}]",
+                    ]);
+                } else {
+                    Message::create([
+                        'uuid' => (string) Str::uuid(),
+                        'conversation_id' => $conversation->id,
+                        'sender_id' => $senderId,
+                        'message' => "The appointment request has been declined.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
+                    ]);
+                }
             } elseif ($data['status'] === 'reschedule_requested') {
                 Message::create([
                     'uuid' => (string) Str::uuid(),
