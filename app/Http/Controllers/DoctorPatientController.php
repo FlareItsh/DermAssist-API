@@ -96,6 +96,7 @@ class DoctorPatientController extends Controller
     {
         $request->validate([
             'scheduled_at' => 'required|date|after_or_equal:today',
+            'scheduled_end_at' => 'nullable|date|after:scheduled_at',
             'location' => 'required|string|max:255',
             'purpose' => 'required|string|max:500',
         ]);
@@ -107,6 +108,7 @@ class DoctorPatientController extends Controller
             [
                 'patient_id' => $patient->id,
                 'scheduled_at' => $request->input('scheduled_at'),
+                'scheduled_end_at' => $request->input('scheduled_end_at'),
                 'location' => $request->input('location'),
                 'purpose' => $request->input('purpose'),
             ]

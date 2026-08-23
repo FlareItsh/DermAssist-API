@@ -16,6 +16,7 @@ class Appointment extends Model
         'patient_id',
         'diagnosis_id',
         'scheduled_at',
+        'scheduled_end_at',
         'location',
         'purpose',
         'status',
@@ -23,6 +24,7 @@ class Appointment extends Model
 
     protected $casts = [
         'scheduled_at' => 'datetime',
+        'scheduled_end_at' => 'datetime',
     ];
 
     protected static function boot()
