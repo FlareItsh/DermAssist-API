@@ -48,4 +48,9 @@ class PaymentInvoice extends Model
     {
         return $this->belongsTo(Subscription::class);
     }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
 }
