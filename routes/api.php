@@ -13,10 +13,14 @@ use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
 use App\Http\Controllers\DoctorSecretaryController;
+use App\Http\Controllers\DoctorSubscriptionController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
+use App\Service\PaymentGatewayService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::controller(AuthController::class)->group(function () {
@@ -73,6 +77,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);
 
+    // Doctor Subscription Routes
+    Route::get('/subscription/plans', [DoctorSubscriptionController::class, 'plans']);
+    Route::get('/subscription/my-subscription', [DoctorSubscriptionController::class, 'mySubscription']);
+    Route::post('/subscription/validate-coupon', [DoctorSubscriptionController::class, 'validateCoupon']);
+    Route::post('/subscription/checkout', [DoctorSubscriptionController::class, 'checkout']);
+    Route::post('/subscription/confirm-return-payment', function (Request $request, PaymentGatewayService $gatewayService) {
+        $request->validate([
+            'invoice_uuid' => 'required|string',
+            'provider' => 'required|string',
+        ]);
+
+        return $gatewayService->confirmReturnPayment($request->input('invoice_uuid'), $request->input('provider'));
+    });
+
     // Admin Subscription Management Routes
     Route::prefix('admin')->group(function () {
         Route::get('/subscriptions/dashboard', [AdminSubscriptionController::class, 'dashboard']);
@@ -89,3 +107,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('coupons/{coupon}/toggle-active', [AdminCouponController::class, 'toggleActive']);
     });
 });
+
+// Unauthenticated Payment Webhooks
+Route::post('/webhooks/paymongo', [PaymentWebhookController::class, 'handlePayMongo']);
+Route::post('/webhooks/stripe', [PaymentWebhookController::class, 'handleStripe']);
