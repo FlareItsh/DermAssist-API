@@ -18,8 +18,13 @@ class DoctorPatientController extends Controller
 
     public function index(Request $request)
     {
+        $user = $request->user();
+        $doctorUuid = ($user->role?->slug === 'secretary' && $user->doctor)
+            ? $user->doctor->uuid
+            : $user->uuid;
+
         return $this->userService->listDoctorPatients(
-            $request->user()->uuid,
+            $doctorUuid,
             $request->input('per_page', 15)
         );
     }
