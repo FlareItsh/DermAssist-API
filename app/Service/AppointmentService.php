@@ -153,7 +153,12 @@ class AppointmentService
 
     public function updateAppointmentStatus(Appointment $appointment, array $data, $user)
     {
-        if ($user->role->name !== 'admin' && $user->id !== $appointment->doctor_id && $user->id !== $appointment->patient_id) {
+        $isDoctor = $user->id === $appointment->doctor_id;
+        $isPatient = $user->id === $appointment->patient_id;
+        $isSecretary = $user->role->slug === 'secretary' && $user->doctor_id === $appointment->doctor_id;
+        $isAdmin = $user->role->slug === 'admin' || $user->role->name === 'admin';
+
+        if (! $isAdmin && ! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -221,23 +226,28 @@ class AppointmentService
         return $appointment;
     }
 
-    public function scheduleAppointmentForPatient(User $doctor, array $data)
+    public function scheduleAppointmentForPatient(User $actor, array $data)
     {
-        if ($doctor->role->slug !== 'doctor') {
-            abort(403, 'Only doctors can schedule appointments for patients.');
+        $doctorId = null;
+        if ($actor->role->slug === 'doctor') {
+            $doctorId = $actor->id;
+        } elseif ($actor->role->slug === 'secretary' && $actor->doctor_id) {
+            $doctorId = $actor->doctor_id;
+        } else {
+            abort(403, 'Only doctors or their secretaries can schedule appointments for patients.');
         }
 
         $this->checkAppointmentConflict($doctor->id, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
 
         $conversation = Conversation::firstOrCreate([
-            'doctor_id' => $doctor->id,
+            'doctor_id' => $doctorId,
             'patient_id' => $data['patient_id'],
         ], [
             'uuid' => (string) Str::uuid(),
         ]);
 
         $appointment = $this->appointmentRepository->createAppointment([
-            'doctor_id' => $doctor->id,
+            'doctor_id' => $doctorId,
             'patient_id' => $data['patient_id'],
             'scheduled_at' => $data['scheduled_at'],
             'scheduled_end_at' => $data['scheduled_end_at'] ?? null,
@@ -254,7 +264,7 @@ class AppointmentService
         Message::create([
             'uuid' => (string) Str::uuid(),
             'conversation_id' => $conversation->id,
-            'sender_id' => $doctor->id,
+            'sender_id' => $actor->id,
             'message' => "A new follow-up appointment has been scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\nPurpose: {$data['purpose']}\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
         ]);
 

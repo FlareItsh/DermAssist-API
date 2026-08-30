@@ -18,6 +18,7 @@ class UserSeeder extends Seeder
         $adminRole = Role::where('slug', 'admin')->first();
         $patientRole = Role::where('slug', 'patient')->first();
         $doctorRole = Role::where('slug', 'doctor')->first();
+        $secretaryRole = Role::where('slug', 'secretary')->first();
 
         // 1. Admin Account
         User::firstOrCreate(
@@ -60,7 +61,7 @@ class UserSeeder extends Seeder
         );
 
         // 3. Doctor Account
-        User::firstOrCreate(
+        $mainDoctor = User::firstOrCreate(
             ['email' => 'doctor@dermassist.com'],
             [
                 'first_name' => 'Allan',
@@ -81,21 +82,50 @@ class UserSeeder extends Seeder
             ]
         );
 
-        // 4. Multiple Patients
+        // 4. Secretary Account linked to Main Doctor
+        User::firstOrCreate(
+            ['email' => 'secretary@dermassist.com'],
+            [
+                'first_name' => 'Sarah',
+                'last_name' => 'Secretary',
+                'password' => Hash::make('password'),
+                'role_id' => $secretaryRole->id,
+                'doctor_id' => $mainDoctor->id,
+                'age' => 30,
+                'gender' => 'Female',
+                'street' => fake()->streetAddress(),
+                'barangay' => 'Obrero',
+                'city' => 'Davao City',
+                'province' => 'Davao del Sur',
+                'country' => 'Philippines',
+                'latitude' => fake()->latitude(7.05, 7.15),
+                'longitude' => fake()->longitude(125.55, 125.65),
+            ]
+        );
+
+        // 5. Multiple Patients
         User::factory()->count(10)->create([
             'role_id' => $patientRole->id,
             'password' => Hash::make('password'),
         ]);
 
-        // 5. Multiple Doctors
-        User::factory()->count(10)->create([
+        // 6. Multiple Doctors & Secretarial Links
+        $otherDoctors = User::factory()->count(10)->create([
             'role_id' => $doctorRole->id,
             'password' => Hash::make('password'),
             'prc_number' => fn () => fake()->numerify('#######'),
             'affiliation' => fn () => fake()->company(),
         ]);
 
-        // 6. Verify all doctors
+        foreach ($otherDoctors as $doctor) {
+            User::factory()->create([
+                'role_id' => $secretaryRole->id,
+                'doctor_id' => $doctor->id,
+                'password' => Hash::make('password'),
+            ]);
+        }
+
+        // 7. Verify all doctors
         $doctors = User::where('role_id', $doctorRole->id)->get();
         foreach ($doctors as $doc) {
             DoctorVerification::firstOrCreate([

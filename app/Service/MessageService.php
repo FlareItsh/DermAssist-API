@@ -26,7 +26,11 @@ class MessageService
     private function getValidConversation(User $user, string $conversationUuid)
     {
         $conversation = $this->conversationRepository->findByUuid($conversationUuid);
-        if ($conversation->doctor_id !== $user->id && $conversation->patient_id !== $user->id) {
+        $isDoctor = $conversation->doctor_id === $user->id;
+        $isPatient = $conversation->patient_id === $user->id;
+        $isSecretary = $user->role->slug === 'secretary' && $conversation->doctor_id === $user->doctor_id;
+
+        if (! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized access to this conversation.');
         }
 
@@ -61,10 +65,19 @@ class MessageService
             throw ValidationException::withMessages(['message' => 'Message content or attachment is required.']);
         }
 
+        $senderId = ($user->role->slug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
+
+        $messageText = $payload['message'] ?? '';
+        if ($user->role->slug === 'secretary') {
+            $secretaryName = trim("{$user->first_name} {$user->last_name}");
+            $signature = "\n\n- Sent by Secretary ({$secretaryName})";
+            $messageText .= $signature;
+        }
+
         $model = $this->messageRepository->create([
             'conversation_id' => $conversation->id,
-            'sender_id' => $user->id,
-            'message' => $payload['message'] ?? '',
+            'sender_id' => $senderId,
+            'message' => $messageText,
         ]);
 
         if (! empty($payload['attachments'])) {
@@ -92,11 +105,17 @@ class MessageService
         $message = $this->messageRepository->findByUuid($messageUuid);
 
         $conversation = $message->conversation;
-        if ($conversation->doctor_id !== $user->id && $conversation->patient_id !== $user->id) {
+        $isDoctor = $conversation->doctor_id === $user->id;
+        $isPatient = $conversation->patient_id === $user->id;
+        $isSecretary = $user->role->slug === 'secretary' && $conversation->doctor_id === $user->doctor_id;
+
+        if (! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized access to this message.');
         }
 
-        if ($message->sender_id === $user->id) {
+        $effectiveUserId = ($user->role->slug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
+
+        if ($message->sender_id === $effectiveUserId) {
             abort(403, 'You cannot mark your own message as read.');
         }
 
