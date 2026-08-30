@@ -4,7 +4,9 @@ namespace App\Service;
 
 use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Http\Resources\UserResource;
+use App\Models\Appointment;
 use App\Models\Conversation;
+use App\Models\Diagnosis;
 use App\Models\DoctorVerification;
 use App\Models\Message;
 use App\Models\Role;
@@ -238,7 +240,12 @@ class UserService
 
     public function deleteUser(string $uuid)
     {
-        $this->userRepository->delete($uuid);
+        $user = $this->userRepository->findByUuid($uuid);
+        $user->tokens()->delete();
+        Conversation::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+        Appointment::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+        Diagnosis::where('user_uuid', $user->uuid)->delete();
+        $user->delete();
 
         return true;
     }

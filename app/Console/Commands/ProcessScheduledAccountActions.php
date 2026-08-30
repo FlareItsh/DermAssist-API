@@ -2,8 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Appointment;
+use App\Models\Conversation;
+use App\Models\Diagnosis;
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class ProcessScheduledAccountActions extends Command
 {
@@ -42,18 +46,25 @@ class ProcessScheduledAccountActions extends Command
 
         $count = 0;
         foreach ($users as $user) {
-            if ($user->account_action === 'disable') {
-                $user->update([
-                    'account_status' => 'disabled',
-                    'account_action' => null,
-                    'account_action_scheduled_at' => null,
-                ]);
-                $user->tokens()->delete(); // Log them out immediately
-                $count++;
-            } elseif ($user->account_action === 'delete') {
-                $user->tokens()->delete(); // Log them out immediately
-                $user->delete();
-                $count++;
+            try {
+                if ($user->account_action === 'disable') {
+                    $user->update([
+                        'account_status' => 'disabled',
+                        'account_action' => null,
+                        'account_action_scheduled_at' => null,
+                    ]);
+                    $user->tokens()->delete(); // Log them out immediately
+                    $count++;
+                } elseif ($user->account_action === 'delete') {
+                    $user->tokens()->delete(); // Log them out immediately
+                    Conversation::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+                    Appointment::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+                    Diagnosis::where('user_uuid', $user->uuid)->delete();
+                    $user->delete();
+                    $count++;
+                }
+            } catch (\Throwable $e) {
+                Log::error("Failed to process scheduled action for user {$user->id}: ".$e->getMessage());
             }
         }
 

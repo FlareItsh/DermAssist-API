@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,5 +66,20 @@ test('doctor can schedule patient action', function () {
     $this->assertDatabaseHas('users', [
         'id' => $patient->id,
         'account_action' => 'disable',
+    ]);
+});
+
+test('scheduled patient deletion is processed when time is due', function () {
+    $patient = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'registered_by_doctor_id' => $this->doctor->id,
+        'account_action' => 'delete',
+        'account_action_scheduled_at' => now()->subMinute()->toDateTimeString(),
+    ]);
+
+    ProcessScheduledAccountActions::processDueActions();
+
+    $this->assertDatabaseMissing('users', [
+        'id' => $patient->id,
     ]);
 });
