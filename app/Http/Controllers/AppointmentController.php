@@ -70,8 +70,11 @@ class AppointmentController extends Controller
             'purpose' => 'required|string|max:500',
         ]);
 
+        $user = $request->user();
+        $doctor = ($user->role?->slug === 'secretary' && $user->doctor) ? $user->doctor : $user;
+
         $result = $this->appointmentService->scheduleAppointmentForPatient(
-            $request->user(),
+            $doctor,
             $validated
         );
 

@@ -237,7 +237,7 @@ class AppointmentService
             abort(403, 'Only doctors or their secretaries can schedule appointments for patients.');
         }
 
-        $this->checkAppointmentConflict($doctor->id, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
+        $this->checkAppointmentConflict($doctorId, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
 
         $conversation = Conversation::firstOrCreate([
             'doctor_id' => $doctorId,

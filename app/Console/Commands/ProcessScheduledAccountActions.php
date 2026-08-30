@@ -60,7 +60,7 @@ class ProcessScheduledAccountActions extends Command
                     Conversation::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
                     Appointment::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
                     Diagnosis::where('user_uuid', $user->uuid)->delete();
-                    $user->delete();
+                    $user->forceDelete();
                     $count++;
                 }
             } catch (\Throwable $e) {
