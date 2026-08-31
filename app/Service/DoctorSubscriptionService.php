@@ -122,6 +122,18 @@ class DoctorSubscriptionService
             $proofPath = $data['proof_of_payment']->store('payment_proofs', 'public');
         }
 
+        // Clean up any previous abandoned/unpaid pending subscriptions and invoices for this doctor
+        $abandonedPendingSubscriptions = Subscription::where('user_id', $user->id)
+            ->where('status', 'pending')
+            ->get();
+
+        foreach ($abandonedPendingSubscriptions as $pendingSub) {
+            PaymentInvoice::where('subscription_id', $pendingSub->id)
+                ->where('payment_status', 'pending')
+                ->delete();
+            $pendingSub->delete();
+        }
+
         // Create subscription in pending state (only active once PayMongo confirms payment)
         $startsAt = now();
         $endsAt = $billingCycle === 'annual' ? now()->addYear() : now()->addMonth();
