@@ -69,3 +69,33 @@ pnpm make:service {ResourceName}
   - `bg-primary`, `text-primary-foreground`, `border-primary`, `ring-primary`
   - `border-border`, `border-sidebar-border`
   - `text-destructive`
+
+---
+
+## 4. Nuxt Modules Usage & Conventions (`nuxt.config.ts`)
+
+The frontend repository utilizes the following official Nuxt modules configured in `views/nuxt.config.ts`:
+
+### 1. `@nuxt/icon` (`<Icon />`)
+- **Usage**: Use the `<Icon name="..." />` component for all UI iconography.
+- **Available Collections**:
+  - `lucide:*` (e.g. `<Icon name="lucide:check" />`, `<Icon name="lucide:credit-card" />`)
+  - `heroicons:*` (e.g. `<Icon name="heroicons:chart-bar" />`)
+  - `material-symbols:*` (e.g. `<Icon name="material-symbols:chevron-left-rounded" />`)
+  - `solar:*`, `bx:*`, `tabler:*`, `mingcute:*`, `mynaui:*`
+- **Rule**: Avoid inline raw SVGs. Always use `<Icon />` with appropriate collection identifiers.
+
+### 2. `@nuxt/image` (`<NuxtImg />`)
+- **Usage**: Use `<NuxtImg src="..." />` instead of standard `<img>` tags for optimized rendering, lazy-loading, and responsive sizing.
+- **Storage Images**: Combine with `useStorage().getStorageUrl(path)` or pass absolute public paths.
+
+### 3. `@nuxt/fonts`
+- **Usage**: Google and system fonts (`Poppins`, `DM Sans`, `Playfair Display`, `Barlow Condensed`) are automatically optimized and loaded.
+- **Rule**: Apply font families via CSS classes (`font-primary`, `font-sans`, `font-serif`, `font-barlow`) without manually inserting `<link rel="stylesheet">` tags in `<head>`.
+
+### 4. `@nuxt/ui`
+- **Usage**: Provides headless component primitives, accessibility utilities, and UI foundation.
+
+### 5. `vue-sonner` (`toast`)
+- **Usage**: Use `toast.success('...')`, `toast.error('...')`, `toast.info('...')` from `vue-sonner` for user feedback and flash alerts.
+
