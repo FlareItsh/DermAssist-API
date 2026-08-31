@@ -38,6 +38,7 @@ class DoctorSubscriptionService
     {
         $subscription = Subscription::with('plan')
             ->where('user_id', $user->id)
+            ->whereIn('status', ['active', 'trialing'])
             ->orderBy('created_at', 'desc')
             ->first();
 
@@ -121,7 +122,7 @@ class DoctorSubscriptionService
             $proofPath = $data['proof_of_payment']->store('payment_proofs', 'public');
         }
 
-        // Create subscription in trialing/pending state
+        // Create subscription in pending state (only active once PayMongo confirms payment)
         $startsAt = now();
         $endsAt = $billingCycle === 'annual' ? now()->addYear() : now()->addMonth();
 
@@ -129,7 +130,7 @@ class DoctorSubscriptionService
             'user_id' => $user->id,
             'plan_id' => $plan->id,
             'billing_cycle' => $billingCycle,
-            'status' => 'trialing',
+            'status' => 'pending',
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
         ]);

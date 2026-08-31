@@ -18,101 +18,58 @@ class PaymentGatewayService
      */
     public function createPayMongoSession(User $user, Subscription $subscription, PaymentInvoice $invoice): array
     {
-        $secretKey = config('services.paymongo.secret_key', env('PAYMONGO_SECRET_KEY', 'sk_test_mock_paymongo_key'));
+        $secretKey = config('services.paymongo.secret_key') ?: env('PAYMONGO_SECRET_KEY');
+
+        if (! $secretKey) {
+            throw new \Exception('PayMongo API Secret Key is missing. Please add PAYMONGO_SECRET_KEY to your api/.env file.');
+        }
 
         $amountInCents = (int) round($invoice->final_amount * 100);
-        $frontendUrl = config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000'));
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
         $successUrl = "{$frontendUrl}/doctor/subscription?status=success&invoice={$invoice->uuid}";
         $cancelUrl = "{$frontendUrl}/doctor/subscription?status=cancelled";
 
-        try {
-            $response = Http::withBasicAuth($secretKey, '')
-                ->post('https://api.paymongo.com/v1/checkout_sessions', [
-                    'data' => [
-                        'attributes' => [
-                            'billing' => [
-                                'name' => "{$user->first_name} {$user->last_name}",
-                                'email' => $user->email,
-                            ],
-                            'line_items' => [
-                                [
-                                    'currency' => 'PHP',
-                                    'amount' => $amountInCents,
-                                    'description' => "DermAssist {$subscription->plan->name} Subscription ({$subscription->billing_cycle})",
-                                    'name' => "DermAssist Subscription - {$subscription->plan->name}",
-                                    'quantity' => 1,
-                                ],
-                            ],
-                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
-                            'success_url' => $successUrl,
-                            'cancel_url' => $cancelUrl,
-                            'reference_number' => $invoice->uuid,
+        $response = Http::withBasicAuth($secretKey, '')
+            ->post('https://api.paymongo.com/v1/checkout_sessions', [
+                'data' => [
+                    'attributes' => [
+                        'billing' => [
+                            'name' => "{$user->first_name} {$user->last_name}",
+                            'email' => $user->email,
                         ],
+                        'line_items' => [
+                            [
+                                'currency' => 'PHP',
+                                'amount' => $amountInCents,
+                                'description' => "DermAssist {$subscription->plan->name} Subscription ({$subscription->billing_cycle})",
+                                'name' => "DermAssist Subscription - {$subscription->plan->name}",
+                                'quantity' => 1,
+                            ],
+                        ],
+                        'payment_method_types' => ['gcash', 'paymaya', 'card', 'dob', 'dob_ubp'],
+                        'success_url' => $successUrl,
+                        'cancel_url' => $cancelUrl,
+                        'reference_number' => $invoice->uuid,
                     ],
-                ]);
+                ],
+            ]);
 
-            if ($response->successful()) {
-                $checkoutUrl = $response->json('data.attributes.checkout_url');
-
-                return [
-                    'checkout_url' => $checkoutUrl,
-                    'reference' => $invoice->uuid,
-                ];
-            }
-        } catch (\Throwable $e) {
-            Log::error('PayMongo API session creation error: '.$e->getMessage());
+        if ($response->failed()) {
+            $errorMsg = $response->json('errors.0.detail') ?? $response->json('message') ?? 'Failed to connect to PayMongo gateway.';
+            Log::error('PayMongo Session Error: '.$errorMsg);
+            throw new \Exception('PayMongo Gateway Error: '.$errorMsg);
         }
 
-        // Return simulated gateway URL for testing if API key is unconfigured
+        $checkoutSessionId = $response->json('data.id');
+        $checkoutUrl = $response->json('data.attributes.checkout_url');
+
+        // Store checkout session ID in invoice transaction_reference
+        $invoice->update([
+            'transaction_reference' => $checkoutSessionId,
+        ]);
+
         return [
-            'checkout_url' => "{$successUrl}&simulated=paymongo",
-            'reference' => $invoice->uuid,
-        ];
-    }
-
-    /**
-     * Create a Stripe checkout session link.
-     */
-    public function createStripeSession(User $user, Subscription $subscription, PaymentInvoice $invoice): array
-    {
-        $secretKey = config('services.stripe.secret_key', env('STRIPE_SECRET_KEY', 'sk_test_mock_stripe_key'));
-
-        $amountInCents = (int) round($invoice->final_amount * 100);
-        $frontendUrl = config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000'));
-        $successUrl = "{$frontendUrl}/doctor/subscription?status=success&invoice={$invoice->uuid}";
-        $cancelUrl = "{$frontendUrl}/doctor/subscription?status=cancelled";
-
-        try {
-            $response = Http::withToken($secretKey)
-                ->asForm()
-                ->post('https://api.stripe.com/v1/checkout/sessions', [
-                    'payment_method_types[0]' => 'card',
-                    'line_items[0][price_data][currency]' => 'php',
-                    'line_items[0][price_data][unit_amount]' => $amountInCents,
-                    'line_items[0][price_data][product_data][name]' => "DermAssist Subscription - {$subscription->plan->name}",
-                    'line_items[0][quantity]' => 1,
-                    'mode' => 'payment',
-                    'success_url' => $successUrl,
-                    'cancel_url' => $cancelUrl,
-                    'client_reference_id' => $invoice->uuid,
-                    'customer_email' => $user->email,
-                ]);
-
-            if ($response->successful()) {
-                $checkoutUrl = $response->json('url');
-
-                return [
-                    'checkout_url' => $checkoutUrl,
-                    'reference' => $invoice->uuid,
-                ];
-            }
-        } catch (\Throwable $e) {
-            Log::error('Stripe API session creation error: '.$e->getMessage());
-        }
-
-        // Return simulated gateway URL for testing if API key is unconfigured
-        return [
-            'checkout_url' => "{$successUrl}&simulated=stripe",
+            'checkout_url' => $checkoutUrl,
             'reference' => $invoice->uuid,
         ];
     }
@@ -126,8 +83,6 @@ class PaymentGatewayService
 
         if ($provider === 'paymongo') {
             $invoiceUuid = $payload['data']['attributes']['data']['attributes']['reference_number'] ?? null;
-        } elseif ($provider === 'stripe') {
-            $invoiceUuid = $payload['data']['object']['client_reference_id'] ?? null;
         }
 
         if (! $invoiceUuid) {
@@ -140,16 +95,16 @@ class PaymentGatewayService
         }
 
         // Auto approve payment and activate subscription
-        $this->paymentInvoiceService->approvePayment($invoice, null, strtoupper($provider).'-AUTO-'.now()->timestamp);
+        $this->paymentInvoiceService->approvePayment($invoice, null, 'PAYMONGO-'.now()->timestamp);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Subscription activated automatically via '.$provider.' webhook.',
+            'message' => 'Subscription activated automatically via PayMongo webhook.',
         ]);
     }
 
     /**
-     * Auto activate invoice upon successful redirect return.
+     * Verify checkout session status with PayMongo before activating subscription on return.
      */
     public function confirmReturnPayment(string $invoiceUuid, string $provider): JsonResponse
     {
@@ -158,13 +113,45 @@ class PaymentGatewayService
             return response()->json(['status' => 'error', 'message' => 'Invoice not found.'], 404);
         }
 
-        if ($invoice->payment_status !== 'paid' && $invoice->payment_status !== 'approved') {
-            $this->paymentInvoiceService->approvePayment($invoice, null, strtoupper($provider).'-INSTANT-'.now()->timestamp);
+        if ($invoice->payment_status === 'paid' || $invoice->payment_status === 'approved') {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Subscription is active!',
+                'data' => $invoice->fresh(['subscription.plan']),
+            ]);
         }
+
+        $secretKey = config('services.paymongo.secret_key') ?: env('PAYMONGO_SECRET_KEY');
+        $checkoutSessionId = $invoice->transaction_reference;
+
+        if ($secretKey && $checkoutSessionId) {
+            try {
+                $response = Http::withBasicAuth($secretKey, '')
+                    ->get("https://api.paymongo.com/v1/checkout_sessions/{$checkoutSessionId}");
+
+                if ($response->successful()) {
+                    $payments = $response->json('data.attributes.payments') ?? [];
+                    $hasPaidPayment = collect($payments)->contains(function ($payment) {
+                        return ($payment['attributes']['status'] ?? null) === 'paid';
+                    });
+
+                    if (! $hasPaidPayment) {
+                        return response()->json([
+                            'status' => 'pending',
+                            'message' => 'Payment has not been completed yet.',
+                        ], 400);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::error('Error verifying PayMongo checkout session: '.$e->getMessage());
+            }
+        }
+
+        $this->paymentInvoiceService->approvePayment($invoice, null, 'PAYMONGO-INSTANT-'.now()->timestamp);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Payment confirmed and subscription activated instantly!',
+            'message' => 'Payment confirmed and subscription activated successfully!',
             'data' => $invoice->fresh(['subscription.plan']),
         ]);
     }

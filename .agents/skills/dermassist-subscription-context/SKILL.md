@@ -1,26 +1,33 @@
 ---
 name: dermassist-subscription-context
-description: Guidelines and architectural context for DermAssist subscription and payment flows, including automated activation, database models, and UI conventions.
+description: Guidelines and architectural context for DermAssist subscription and payment flows, including PayMongo API configuration, automated activation, database models, and UI conventions.
 ---
 
 # DermAssist Subscription & Payment System Guidelines
 
 This skill provides mandatory architectural context for AI assistants working on the DermAssist Subscription and Payment features.
 
-## 1. Automated Payment Gateway Architecture
+## 1. PayMongo Integration & Environment Configuration
+
+### Required Environment Variable
+For real checkout session generation, the application requires the PayMongo Secret Key in the API `.env` file:
+```env
+PAYMONGO_SECRET_KEY=sk_test_... # Secret key starting with sk_test_ or sk_live_
+FRONTEND_URL=http://localhost:3000
+```
+If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will return a clear configuration error requiring the developer to add their key to `.env`.
 
 ### Automated Subscription Activation Workflow
-- **Single Seamless Online Checkout**:
-  - Manual bank transfers and explicit provider logos/tabs are **REMOVED** from the UI.
-  - The UI presents a clean, unified **"Instant Automated Subscription Activation"** flow.
-  - PayMongo powers the backend checkout session (supporting GCash, Maya, QR Ph, and Credit/Debit Cards).
-- **Checkout Submission**:
-  - Doctor clicks "Proceed to Secure Payment" (`POST /api/subscription/checkout`).
-  - Backend creates a pending `Subscription` and `PaymentInvoice`, returning the gateway `checkout_url`.
-  - Doctor is automatically redirected to the secure payment portal.
+- **Live PayMongo Checkout**:
+  - The Doctor clicks "Proceed to Secure Payment" (`POST /api/subscription/checkout`).
+  - Backend calls `https://api.paymongo.com/v1/checkout_sessions` with line items, user details, and supported payment methods (`gcash`, `paymaya`, `card`, `dob`).
+  - Doctor is redirected directly to the PayMongo hosted checkout page where they input GCash OTP, Maya credentials, or card details.
 - **Instant Activation**:
   - **Webhooks**: `POST /api/webhooks/paymongo` receives payment notifications and triggers `PaymentInvoiceService::approvePayment()` to mark invoice as `paid` and `Subscription.status` as `active`.
-  - **Return Confirmation**: Returning doctors (`/doctor/subscription?status=success&invoice={uuid}`) trigger `/api/subscription/confirm-return-payment` for instant confirmation.
+  - **Return Confirmation**: Returning doctors (`/doctor/subscription?status=success&invoice={uuid}`) trigger `/api/subscription/confirm-return-payment` for instant confirmation after verifying with PayMongo's API.
+- **Admin Side**:
+  - Manual approval/rejection buttons and manual receipt uploads are completely removed.
+  - The Admin panel provides real-time audit logs and transaction history for all PayMongo gateway settlements.
 
 ---
 
@@ -29,7 +36,7 @@ This skill provides mandatory architectural context for AI assistants working on
 - **`Plan`** (`plans` table):
   - Fields: `uuid`, `name`, `slug`, `tier_type` (`basic`, `professional`, `enterprise`), `price_monthly`, `price_annual`, `max_doctors`, `max_clinics`, `features` (json array), `is_active`.
 - **`Subscription`** (`subscriptions` table):
-  - Fields: `uuid`, `user_id`, `plan_id`, `billing_cycle` (`monthly`, `annual`), `status` (`trialing`, `active`, `past_due`, `canceled`), `starts_at`, `ends_at`.
+  - Fields: `uuid`, `user_id`, `plan_id`, `billing_cycle` (`monthly`, `annual`), `status` (`pending`, `trialing`, `active`, `past_due`, `canceled`), `starts_at`, `ends_at`.
 - **`PaymentInvoice`** (`payment_invoices` table):
   - Fields: `uuid`, `subscription_id`, `user_id`, `amount`, `discount_amount`, `final_amount`, `payment_method` (`paymongo`), `payment_status` (`pending`, `paid`, `approved`, `rejected`), `transaction_reference`, `approved_by_user_id`.
 - **`Coupon`** (`coupons` table):
