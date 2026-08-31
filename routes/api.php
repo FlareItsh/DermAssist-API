@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminCouponController;
+use App\Http\Controllers\Admin\AdminFeatureController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminPlanController;
 use App\Http\Controllers\Admin\AdminSubscriptionController;
@@ -100,6 +101,9 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
         Route::apiResource('plans', AdminPlanController::class);
         Route::patch('plans/{plan}/toggle-active', [AdminPlanController::class, 'toggleActive']);
+
+        Route::apiResource('features', AdminFeatureController::class);
+        Route::patch('features/{feature}/toggle-active', [AdminFeatureController::class, 'toggleActive']);
 
         Route::get('/payments', [AdminPaymentController::class, 'index']);
         Route::post('/payments/{invoice}/approve', [AdminPaymentController::class, 'approve']);

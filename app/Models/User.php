@@ -223,4 +223,29 @@ class User extends Authenticatable
 
         return true;
     }
+
+    /**
+     * Check whether the user's active subscription plan includes a specific feature flag.
+     */
+    public function canAccessFeature(string $featureKey): bool
+    {
+        if (! $this->hasActiveSubscription()) {
+            return false;
+        }
+
+        $plan = $this->subscription->plan;
+        if (! $plan) {
+            return false;
+        }
+
+        return $plan->hasFeature($featureKey);
+    }
+
+    /**
+     * Check whether the doctor can execute AI scans based on active plan features.
+     */
+    public function canExecuteScan(): bool
+    {
+        return $this->canAccessFeature('can_execute_scan');
+    }
 }

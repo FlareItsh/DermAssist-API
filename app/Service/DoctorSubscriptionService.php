@@ -21,7 +21,8 @@ class DoctorSubscriptionService
      */
     public function getPlans(): JsonResponse
     {
-        $plans = Plan::where('is_active', true)
+        $plans = Plan::with('planFeatures')
+            ->where('is_active', true)
             ->orderBy('price_monthly', 'asc')
             ->get();
 
@@ -36,7 +37,7 @@ class DoctorSubscriptionService
      */
     public function getMySubscription(User $user): JsonResponse
     {
-        $subscription = Subscription::with('plan')
+        $subscription = Subscription::with('plan.planFeatures')
             ->where('user_id', $user->id)
             ->whereIn('status', ['active', 'trialing'])
             ->orderBy('created_at', 'desc')

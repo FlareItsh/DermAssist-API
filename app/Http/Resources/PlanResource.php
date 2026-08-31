@@ -25,6 +25,7 @@ class PlanResource extends JsonResource
             'max_doctors' => $this->max_doctors,
             'max_clinics' => $this->max_clinics,
             'features' => $this->features ?? [],
+            'plan_features' => FeatureResource::collection($this->whenLoaded('planFeatures')),
             'trial_period_days' => $this->trial_period_days,
             'grace_period_days' => $this->grace_period_days,
             'sort_order' => $this->sort_order,

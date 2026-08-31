@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
@@ -61,5 +62,33 @@ class Plan extends Model
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    /**
+     * Get the normalized features associated with this plan.
+     *
+     * @return BelongsToMany<Feature, $this>
+     */
+    public function planFeatures(): BelongsToMany
+    {
+        return $this->belongsToMany(Feature::class, 'plan_has_features', 'plan_id', 'feature_id')
+            ->withPivot('is_included')
+            ->withTimestamps();
+    }
+
+    /**
+     * Check if a feature code is active and included in this plan.
+     */
+    public function hasFeature(string $code): bool
+    {
+        $feature = $this->planFeatures->firstWhere('code', $code);
+        if ($feature) {
+            return (bool) ($feature->pivot->is_included && $feature->is_active);
+        }
+
+        // Fallback to legacy features JSON if relationship not loaded or empty
+        $legacy = $this->features ?? [];
+
+        return ! empty($legacy[$code]);
     }
 }

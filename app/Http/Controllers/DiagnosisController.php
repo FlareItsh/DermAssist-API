@@ -42,11 +42,11 @@ class DiagnosisController extends Controller
             $data['user'] = $user;
 
             if ($user && $user->role && $user->role->slug === 'doctor') {
-                if (! $user->hasActiveSubscription()) {
+                if (! $user->canExecuteScan()) {
                     return response()->json([
                         'status' => 'error',
-                        'code' => 'SUBSCRIPTION_REQUIRED',
-                        'message' => 'An active subscription is required to execute doctor AI skin scans.',
+                        'code' => 'PLAN_FEATURE_RESTRICTED',
+                        'message' => 'Your current subscription plan does not include Doctor AI Scan Execution.',
                     ], 403);
                 }
                 $data['doctor_uuid'] = $userUuid;
