@@ -78,15 +78,13 @@ The frontend repository utilizes the following official Nuxt modules configured 
 
 ### 1. `@nuxt/icon` (`<Icon />`)
 - **Usage**: Use the `<Icon name="..." />` component for all UI iconography.
-- **Available Collections**:
-  - `lucide:*` (e.g. `<Icon name="lucide:check" />`, `<Icon name="lucide:credit-card" />`)
-  - `heroicons:*` (e.g. `<Icon name="heroicons:chart-bar" />`)
-  - `material-symbols:*` (e.g. `<Icon name="material-symbols:chevron-left-rounded" />`)
-  - `solar:*`, `bx:*`, `tabler:*`, `mingcute:*`, `mynaui:*`
-- **Rule**: Avoid inline raw SVGs. Always use `<Icon />` with appropriate collection identifiers.
+- **Strict Collection Standard**:
+  - **PRIMARY STANDARD**: Use `lucide:*` (e.g. `<Icon name="lucide:layout-dashboard" />`, `<Icon name="lucide:check" />`, `<Icon name="lucide:trash-2" />`) for all primary navigation, action buttons, modals, and list items. This ensures 100% stroke weight and aesthetic consistency.
+  - Other available packages in `package.json`: `heroicons:*`, `material-symbols:*`, `tabler:*`.
+- **Rule**: Never mix multiple icon art styles (e.g. solid filled vs ultra-thin line) within the same view or component hierarchy. Always favor Lucide.
 
 ### 2. `@nuxt/image` (`<NuxtImg />`)
-- **Usage**: Use `<NuxtImg src="..." />` instead of standard `<img>` tags for optimized rendering, lazy-loading, and responsive sizing.
+- **Usage**: Use `<NuxtImg src="..." loading="lazy" />` instead of standard `<img>` tags for optimized rendering, lazy-loading, and responsive sizing.
 - **Storage Images**: Combine with `useStorage().getStorageUrl(path)` or pass absolute public paths.
 
 ### 3. `@nuxt/fonts`
@@ -98,4 +96,26 @@ The frontend repository utilizes the following official Nuxt modules configured 
 
 ### 5. `vue-sonner` (`toast`)
 - **Usage**: Use `toast.success('...')`, `toast.error('...')`, `toast.info('...')` from `vue-sonner` for user feedback and flash alerts.
+
+---
+
+## 5. Design Consistency & Reusable Component Standards
+
+To prevent visual drift and maintain a unified design language:
+
+### 1. Card & Container Geometry
+- **Standard Border Radius**: Use `rounded-2xl` for content cards and `rounded-3xl` / `rounded-4xl` for modals and main sidebars.
+- **Standard Card Style**: Use `bg-card border border-border shadow-sm` with subtle hover elevations `hover:shadow-md hover:border-primary/30 transition-all`.
+
+### 2. Navigation & Buttons
+- **Buttons**: Always use `<AppButton variant="solid"|"outline"|"ghost"|"soft"` size="sm"|"md"|"lg">` instead of raw `<button>` HTML elements.
+- **Badges**: Always use `<AppBadge color="primary"|"success"|"warning"|"danger"|"info"|"gray"` variant="subtle"|"solid"|"outline">`.
+- **Alerts & Banners**: Always use `<AppAlert type="warning"|"error"|"info"|"success" title="..." description="...">`.
+- **Pagination**: Always use `<AppPagination v-model:current-page="..." :total-items="..." :per-page="..." />` on paginated lists.
+- **Search Inputs**: Always use `<AppSearch v-model="..." placeholder="..." />` on search toolbars.
+
+### 3. Typography & Heading Hierarchy
+- **Page Titles**: `text-2xl md:text-3xl font-black text-foreground`
+- **Section Headers**: `text-lg md:text-xl font-bold text-foreground`
+- **Card Subheaders / Meta**: `text-xs font-semibold text-muted-foreground`
 
