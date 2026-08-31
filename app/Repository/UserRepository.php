@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 class UserRepository
 {
-    public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null)
+    public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null, bool $recommendedOnly = false)
     {
         return User::latest()
             ->withCount('diagnoses')
@@ -21,6 +21,19 @@ class UserRepository
             ->when($status, function ($query) use ($status) {
                 $query->whereHas('doctorVerifications', function ($q) use ($status) {
                     $q->where('status', $status);
+                });
+            })
+            ->when($recommendedOnly, function ($query) {
+                $query->whereHas('subscription', function ($subQuery) {
+                    $subQuery->whereIn('status', ['active', 'trialing'])
+                        ->where(function ($q) {
+                            $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
+                        })
+                        ->whereHas('plan.planFeatures', function ($pfQuery) {
+                            $pfQuery->where('code', 'show_in_recommendation')
+                                ->where('is_active', true)
+                                ->where('plan_has_features.is_included', true);
+                        });
                 });
             })
             ->paginate($perPage);

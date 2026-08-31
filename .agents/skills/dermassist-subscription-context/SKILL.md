@@ -36,7 +36,11 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
 ## 2. Key Database Models & Schema Relationships
 
 - **`Plan`** (`plans` table):
-  - Fields: `uuid`, `name`, `slug`, `tier_type` (`basic`, `professional`, `enterprise`), `price_monthly`, `price_annual`, `max_doctors`, `max_clinics`, `features` (json array), `is_active`.
+  - Fields: `uuid`, `name`, `slug`, `tier_type` (`individual`, `doctor_multi_clinic`, `clinic_multi_doctor`), `price_monthly`, `price_annual`, `max_doctors`, `max_clinics`, `features` (json legacy / custom bullet items), `is_active`.
+  - Relations: `planFeatures(): BelongsToMany<Feature>` (via `plan_has_features` pivot table).
+- **`Feature`** (`features` table):
+  - Fields: `uuid`, `name`, `code` (slug / identifier), `description`, `is_active`, `sort_order`.
+  - Pivot table `plan_has_features`: `plan_id`, `feature_id`, `is_included` (boolean).
 - **`Subscription`** (`subscriptions` table):
   - Fields: `uuid`, `user_id`, `plan_id`, `billing_cycle` (`monthly`, `annual`), `status` (`pending`, `trialing`, `active`, `past_due`, `canceled`), `starts_at`, `ends_at`.
 - **`PaymentInvoice`** (`payment_invoices` table):
@@ -46,7 +50,78 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
 
 ---
 
-## 3. UI & Design System Conventions (Nuxt / Frontend)
+## 3. Plan Features Architecture & Usage Guide
+
+Plan features are normalized into dedicated database tables to allow dynamic creating, renaming, toggling, and assigning of features from the Admin Panel (`/admin/subscriptions/features`).
+
+### Core System Features
+| Feature Code | Display Name | Purpose & Enforcement Area |
+| :--- | :--- | :--- |
+| `can_execute_scan` | Allow Doctor AI Scan Execution | Unlocks live skin disease scanning and AI inference for doctors. Gated in `DiagnosisController::store` and `/Doctor/Scan/index.vue`. |
+| `show_in_recommendation` | Show in Patient Scan Recommendations | Controls whether the doctor appears in patient nearby doctor recommendations and specialist discovery. Gated in `UserRepository::paginate` (`recommended_only=1`) and `AppointmentService::createAppointment`. |
+| `export_pdf_reports` | Allow PDF Clinical Report Exports | Unlocks downloading clinical diagnosis reports in PDF format. |
+| `unlimited_appointments` | Enable Teleconsultation Appointments | Allows online/teleconsultation appointment slot booking. |
+
+### How Feature Checking Works in Backend (Laravel)
+1. **Model Helpers on `User`**:
+   ```php
+   // Check any arbitrary feature code
+   $user->canAccessFeature('can_execute_scan'); // returns bool
+
+   // Dedicated shortcuts on User model:
+   $user->canExecuteScan();       // checks 'can_execute_scan'
+   $user->canBeRecommended();     // checks 'show_in_recommendation'
+   ```
+2. **Model Helper on `Plan`**:
+   ```php
+   $plan->hasFeature('can_execute_scan'); // returns bool by checking planFeatures relation
+   ```
+3. **Controller / Service Authorization Gating**:
+   ```php
+   // In API Controllers / Services:
+   if (! $user->canAccessFeature('can_execute_scan')) {
+       return response()->json([
+           'message' => 'Your subscription plan does not include Doctor AI Scan execution.',
+           'error_code' => 'PLAN_FEATURE_RESTRICTED',
+       ], 403);
+   }
+   ```
+
+### How Feature Checking Works in Frontend (Nuxt 3)
+1. **Using `useDoctorSubscription` Composable**:
+   ```ts
+   const {
+     isSubscribed,
+     canExecuteScan,
+     hasFeature,
+     fetchSubscription
+   } = useDoctorSubscription()
+
+   // In template or script:
+   if (!hasFeature('export_pdf_reports')) {
+     toast.error('Your current plan does not include PDF clinical report exports.')
+   }
+   ```
+2. **Route Middleware Protection**:
+   In `views/app/middleware/auth-role.global.ts`, route guards check active subscription capabilities (e.g. `/doctor/scan` checks `canExecuteScan`).
+
+### How to Add a New Feature in the Future
+1. **Admin Panel**: Navigate to `/admin/subscriptions/features` and click **"Create Feature"**. Provide a Feature Name (e.g., *"Custom Clinic Branding"*) and a System Code (e.g., `custom_branding`).
+2. **Plan Builder**: Go to `/admin/subscriptions/plans`, edit the desired plans, and check the checkbox for your newly created feature.
+3. **Add Backend Gate**:
+   - Add a shortcut in `User.php` if needed:
+     ```php
+     public function canUseCustomBranding(): bool {
+         return $this->canAccessFeature('custom_branding');
+     }
+     ```
+   - Enforce it in the respective Controller/Service by calling `$user->canAccessFeature('custom_branding')`.
+4. **Add Frontend Gate**:
+   - Use `hasFeature('custom_branding')` from `useDoctorSubscription()` to show/hide UI buttons or display an upgrade prompt.
+
+---
+
+## 4. UI & Design System Conventions (Nuxt / Frontend)
 
 - **UI Copy & Branding**: Do not explicitly show provider brand names or tab selections to users. Present payment options neutrally as supported methods (e.g. *GCash, Maya, QR Ph, Credit/Debit Cards*).
 - **Reusable Components**: Always use project components in `@/components/App/`:
@@ -55,5 +130,5 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
   - `AppModal` (`v-model`, `title`, `description`, `size="lg"`, `#footer` slot)
   - `AppAlert` (`type="warning"|"error"|"info"|"success"`, `title`, `description`)
 - **Theme & Colors**:
-  - Never hardcode arbitrary Tailwind/hex colors (e.g., `bg-emerald-50`, `text-teal-600`).
-  - Use tokens from `main.css`: `bg-card`, `bg-background`, `text-foreground`, `text-muted-foreground`, `bg-primary`, `text-primary-foreground`, `border-sidebar-border`, `border-border`, `text-destructive`.
+  - Always match existing sibling admin pages (`plans.vue`, `payments.vue`, `coupons.vue`) using clean borders `border-gray-200`, `bg-white`, and `bg-gray-50`.
+

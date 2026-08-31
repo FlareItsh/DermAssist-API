@@ -44,6 +44,20 @@ class AppointmentService
 
     public function createAppointment($user, array $data)
     {
+        $doctor = User::find($data['doctor_id']);
+        if (! $doctor || $doctor->role?->slug !== 'doctor') {
+            abort(404, 'Doctor not found.');
+        }
+
+        // Verify if doctor can receive new appointments from this patient
+        $isExistingPatient = ($user->is_doctor_registered && $user->registered_by_doctor_id == $doctor->id)
+            || Appointment::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists()
+            || Conversation::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists();
+
+        if (! $isExistingPatient && ! $doctor->canBeRecommended()) {
+            abort(403, 'This doctor is currently not accepting new patient scan referrals. Existing registered patients only.');
+        }
+
         // Check availability on current time or a requested time
         $checkDate = isset($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
         $availabilityCheck = $this->availabilityService->checkDoctorAvailability($data['doctor_id'], $checkDate, $user);

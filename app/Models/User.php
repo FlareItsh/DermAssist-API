@@ -248,4 +248,12 @@ class User extends Authenticatable
     {
         return $this->canAccessFeature('can_execute_scan');
     }
+
+    /**
+     * Check whether the doctor is eligible to appear in patient scan recommendations.
+     */
+    public function canBeRecommended(): bool
+    {
+        return $this->canAccessFeature('show_in_recommendation');
+    }
 }
