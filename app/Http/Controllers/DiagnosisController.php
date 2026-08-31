@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\DiagnosisRequest;
+use App\Models\User;
 use App\Service\DiagnosisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -33,11 +34,21 @@ class DiagnosisController extends Controller
             $data['image'] = $request->file('image');
             $userUuid = $request->header('X-User-Uuid') ?? $request->input('user_uuid');
             $data['user_uuid'] = $userUuid;
-            
+
             $user = $request->user();
+            if (! $user && $userUuid) {
+                $user = User::where('uuid', $userUuid)->first();
+            }
             $data['user'] = $user;
 
-            if ($user && $user->role->slug === 'doctor') {
+            if ($user && $user->role && $user->role->slug === 'doctor') {
+                if (! $user->canExecuteScan()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'code' => 'PLAN_FEATURE_RESTRICTED',
+                        'message' => 'Your current subscription plan does not include Doctor AI Scan Execution.',
+                    ], 403);
+                }
                 $data['doctor_uuid'] = $userUuid;
                 $data['patient_uuid'] = $request->input('patient_uuid');
             } else {

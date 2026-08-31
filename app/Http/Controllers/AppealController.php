@@ -2,19 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Appeal;
-use App\Models\User;
+use App\Service\AppealService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AppealController extends Controller
 {
+    public function __construct(private AppealService $appealService) {}
+
     /**
      * Display a listing of the appeals.
      */
     public function index(): JsonResponse
     {
-        $appeals = Appeal::with('user')->where('status', 'pending')->latest()->get();
+        $appeals = $this->appealService->listPendingAppeals();
 
         return response()->json([
             'data' => $appeals,
@@ -33,19 +34,11 @@ class AppealController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        $user = User::where('uuid', $validated['user_uuid'])->firstOrFail();
-
-        $appeal = Appeal::create([
-            'user_id' => $user->id,
-            'diagnosis_label' => $validated['diagnosis_label'],
-            'suggested_label' => $validated['suggested_label'],
-            'description' => $validated['description'],
-            'status' => 'pending',
-        ]);
+        $appeal = $this->appealService->submitAppeal($validated);
 
         return response()->json([
             'message' => 'Appeal submitted successfully.',
             'data' => $appeal,
-        ], 210);
+        ], 201);
     }
 }

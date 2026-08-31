@@ -39,4 +39,9 @@ return [
         'url' => env('AI_SERVER_URL', 'http://127.0.0.1:8001'),
     ],
 
+    'paymongo' => [
+        'secret_key' => env('PAYMONGO_SECRET_KEY'),
+        'public_key' => env('PAYMONGO_PUBLIC_KEY'),
+    ],
+
 ];

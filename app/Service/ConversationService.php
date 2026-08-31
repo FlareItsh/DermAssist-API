@@ -146,4 +146,24 @@ class ConversationService
 
         return true;
     }
+
+    public function sendScanResult(User $sender, string $patientUuid, string $diagnosisUuid): Message
+    {
+        $patient = User::where('uuid', $patientUuid)->firstOrFail();
+
+        $conversation = Conversation::where('doctor_id', $sender->id)
+            ->where('patient_id', $patient->id)
+            ->firstOrFail();
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $sender->id,
+            'message' => '[SCAN_RESULT:'.$diagnosisUuid.']',
+            'is_read' => false,
+        ]);
+
+        $conversation->touch();
+
+        return $message;
+    }
 }

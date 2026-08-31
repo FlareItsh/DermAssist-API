@@ -7,15 +7,18 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'name',
     'slug',
-    'price',
+    'tier_type',
+    'price_monthly',
+    'price_annual',
+    'max_doctors',
+    'max_clinics',
     'features',
-    'interval',
-    'interval_count',
     'trial_period_days',
     'grace_period_days',
     'sort_order',
@@ -36,7 +39,13 @@ class Plan extends Model
         return [
             'features' => 'array',
             'is_active' => 'boolean',
-            'price' => 'decimal:2',
+            'price_monthly' => 'decimal:2',
+            'price_annual' => 'decimal:2',
+            'max_doctors' => 'integer',
+            'max_clinics' => 'integer',
+            'trial_period_days' => 'integer',
+            'grace_period_days' => 'integer',
+            'sort_order' => 'integer',
         ];
     }
 
@@ -53,5 +62,33 @@ class Plan extends Model
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    /**
+     * Get the normalized features associated with this plan.
+     *
+     * @return BelongsToMany<Feature, $this>
+     */
+    public function planFeatures(): BelongsToMany
+    {
+        return $this->belongsToMany(Feature::class, 'plan_has_features', 'plan_id', 'feature_id')
+            ->withPivot('is_included')
+            ->withTimestamps();
+    }
+
+    /**
+     * Check if a feature code is active and included in this plan.
+     */
+    public function hasFeature(string $code): bool
+    {
+        $feature = $this->planFeatures->firstWhere('code', $code);
+        if ($feature) {
+            return (bool) ($feature->pivot->is_included && $feature->is_active);
+        }
+
+        // Fallback to legacy features JSON if relationship not loaded or empty
+        $legacy = $this->features ?? [];
+
+        return ! empty($legacy[$code]);
     }
 }

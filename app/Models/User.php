@@ -169,6 +169,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the active subscription associated with the user.
+     */
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(Subscription::class)->latestOfMany();
+    }
+
+    /**
      * Get the doctor who registered this patient.
      *
      * @return BelongsTo<User, $this>
@@ -194,5 +202,58 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->account_status === 'active';
+    }
+
+    /**
+     * Check whether this user has an active doctor subscription.
+     */
+    public function hasActiveSubscription(): bool
+    {
+        if (! $this->subscription) {
+            return false;
+        }
+
+        if (! in_array($this->subscription->status, ['active', 'trialing'])) {
+            return false;
+        }
+
+        if ($this->subscription->ends_at && $this->subscription->ends_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check whether the user's active subscription plan includes a specific feature flag.
+     */
+    public function canAccessFeature(string $featureKey): bool
+    {
+        if (! $this->hasActiveSubscription()) {
+            return false;
+        }
+
+        $plan = $this->subscription->plan;
+        if (! $plan) {
+            return false;
+        }
+
+        return $plan->hasFeature($featureKey);
+    }
+
+    /**
+     * Check whether the doctor can execute AI scans based on active plan features.
+     */
+    public function canExecuteScan(): bool
+    {
+        return $this->canAccessFeature('can_execute_scan');
+    }
+
+    /**
+     * Check whether the doctor is eligible to appear in patient scan recommendations.
+     */
+    public function canBeRecommended(): bool
+    {
+        return $this->canAccessFeature('show_in_recommendation');
     }
 }

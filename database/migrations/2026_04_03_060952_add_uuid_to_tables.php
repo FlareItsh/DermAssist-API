@@ -14,9 +14,11 @@ return new class extends Migration
         $tables = ['users', 'roles', 'permissions', 'plans', 'subscriptions'];
 
         foreach ($tables as $table) {
-            Schema::table($table, function (Blueprint $table) {
-                $table->uuid('uuid')->unique()->after('id');
-            });
+            if (! Schema::hasColumn($table, 'uuid')) {
+                Schema::table($table, function (Blueprint $table) {
+                    $table->uuid('uuid')->unique()->after('id');
+                });
+            }
         }
     }
 
