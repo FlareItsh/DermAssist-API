@@ -203,4 +203,24 @@ class User extends Authenticatable
     {
         return $this->account_status === 'active';
     }
+
+    /**
+     * Check whether this user has an active doctor subscription.
+     */
+    public function hasActiveSubscription(): bool
+    {
+        if (! $this->subscription) {
+            return false;
+        }
+
+        if (! in_array($this->subscription->status, ['active', 'trialing'])) {
+            return false;
+        }
+
+        if ($this->subscription->ends_at && $this->subscription->ends_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
 }
