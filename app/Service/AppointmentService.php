@@ -123,6 +123,34 @@ class AppointmentService
         return $result;
     }
 
+    public function checkAppointmentConflict(int $doctorId, $start, $end = null, ?int $excludeId = null): void
+    {
+        if (! $start) {
+            return;
+        }
+
+        $startTime = Carbon::parse($start);
+        $endTime = $end ? Carbon::parse($end) : (clone $startTime)->addHour();
+
+        $existingAppointments = Appointment::where('doctor_id', $doctorId)
+            ->whereIn('status', ['scheduled', 'reschedule_proposed', 'reschedule_requested'])
+            ->whereNotNull('scheduled_at')
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->get();
+
+        foreach ($existingAppointments as $appt) {
+            $existingStart = Carbon::parse($appt->scheduled_at);
+            $existingEnd = $appt->scheduled_end_at ? Carbon::parse($appt->scheduled_end_at) : (clone $existingStart)->addHour();
+
+            if ($startTime->lt($existingEnd) && $endTime->gt($existingStart)) {
+                $formattedStart = $existingStart->format('g:i A');
+                $formattedEnd = $existingEnd->format('g:i A');
+                $formattedDate = $existingStart->format('M d, Y');
+                abort(422, "Conflict detected: The doctor already has an appointment scheduled on {$formattedDate} from {$formattedStart} to {$formattedEnd}. Please select a different time slot.");
+            }
+        }
+    }
+
     public function updateAppointmentStatus(Appointment $appointment, array $data, $user)
     {
         $isDoctor = $user->id === $appointment->doctor_id;
@@ -132,6 +160,14 @@ class AppointmentService
 
         if (! $isAdmin && ! $isDoctor && ! $isPatient && ! $isSecretary) {
             abort(403, 'Unauthorized action.');
+        }
+
+        $newStatus = $data['status'] ?? $appointment->status;
+        $newStart = $data['scheduled_at'] ?? $appointment->scheduled_at;
+        $newEnd = $data['scheduled_end_at'] ?? $appointment->scheduled_end_at;
+
+        if ($newStatus === 'scheduled' && $newStart) {
+            $this->checkAppointmentConflict($appointment->doctor_id, $newStart, $newEnd, $appointment->id);
         }
 
         $this->appointmentRepository->updateAppointment($appointment, $data);
@@ -147,6 +183,9 @@ class AppointmentService
 
             if ($data['status'] === 'scheduled') {
                 $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+                if ($appointment->scheduled_end_at) {
+                    $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+                }
                 Message::create([
                     'uuid' => (string) Str::uuid(),
                     'conversation_id' => $conversation->id,
@@ -154,12 +193,26 @@ class AppointmentService
                     'message' => "Appointment scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
                 ]);
             } elseif ($data['status'] === 'declined') {
-                Message::create([
-                    'uuid' => (string) Str::uuid(),
-                    'conversation_id' => $conversation->id,
-                    'sender_id' => $senderId,
-                    'message' => "The appointment has been declined or cancelled.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
-                ]);
+                $wasScheduled = $appointment->status === 'scheduled'
+                    || $appointment->status === 'reschedule_proposed'
+                    || $appointment->status === 'reschedule_requested'
+                    || ! empty($appointment->scheduled_at);
+
+                if ($wasScheduled) {
+                    Message::create([
+                        'uuid' => (string) Str::uuid(),
+                        'conversation_id' => $conversation->id,
+                        'sender_id' => $senderId,
+                        'message' => "The appointment has been cancelled.\n[APPOINTMENT_CANCELLED:{$appointment->uuid}]",
+                    ]);
+                } else {
+                    Message::create([
+                        'uuid' => (string) Str::uuid(),
+                        'conversation_id' => $conversation->id,
+                        'sender_id' => $senderId,
+                        'message' => "The appointment request has been declined.\n[APPOINTMENT_DECLINED:{$appointment->uuid}]",
+                    ]);
+                }
             } elseif ($data['status'] === 'reschedule_requested') {
                 Message::create([
                     'uuid' => (string) Str::uuid(),
@@ -184,6 +237,8 @@ class AppointmentService
             abort(403, 'Only doctors or their secretaries can schedule appointments for patients.');
         }
 
+        $this->checkAppointmentConflict($doctorId, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
+
         $conversation = Conversation::firstOrCreate([
             'doctor_id' => $doctorId,
             'patient_id' => $data['patient_id'],
@@ -195,12 +250,16 @@ class AppointmentService
             'doctor_id' => $doctorId,
             'patient_id' => $data['patient_id'],
             'scheduled_at' => $data['scheduled_at'],
+            'scheduled_end_at' => $data['scheduled_end_at'] ?? null,
             'location' => $data['location'],
             'purpose' => $data['purpose'],
             'status' => 'scheduled',
         ]);
 
         $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+        if ($appointment->scheduled_end_at) {
+            $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+        }
 
         Message::create([
             'uuid' => (string) Str::uuid(),
@@ -227,14 +286,30 @@ class AppointmentService
             abort(404, 'Conversation not found.');
         }
 
-        $this->appointmentRepository->updateAppointment($appointment, [
+        $this->checkAppointmentConflict(
+            $appointment->doctor_id,
+            $data['scheduled_at'],
+            $data['scheduled_end_at'] ?? null,
+            $appointment->id
+        );
+
+        $updateData = [
             'status' => 'reschedule_proposed',
             'scheduled_at' => $data['scheduled_at'],
             'location' => $data['location'],
-        ]);
+        ];
+
+        if (array_key_exists('scheduled_end_at', $data)) {
+            $updateData['scheduled_end_at'] = $data['scheduled_end_at'];
+        }
+
+        $this->appointmentRepository->updateAppointment($appointment, $updateData);
 
         $dateStr = Carbon::parse($data['scheduled_at'])->format('Y-m-d H:i:s');
         $displayDateStr = Carbon::parse($data['scheduled_at'])->format('M d, Y h:i A');
+        if (! empty($data['scheduled_end_at'])) {
+            $displayDateStr .= ' - '.Carbon::parse($data['scheduled_end_at'])->format('h:i A');
+        }
         $loc = $data['location'];
 
         $message = Message::create([
@@ -261,11 +336,21 @@ class AppointmentService
             abort(404, 'Conversation not found.');
         }
 
+        $this->checkAppointmentConflict(
+            $appointment->doctor_id,
+            $appointment->scheduled_at,
+            $appointment->scheduled_end_at,
+            $appointment->id
+        );
+
         $this->appointmentRepository->updateAppointment($appointment, [
             'status' => 'scheduled',
         ]);
 
         $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+        if ($appointment->scheduled_end_at) {
+            $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+        }
 
         Message::create([
             'uuid' => (string) Str::uuid(),

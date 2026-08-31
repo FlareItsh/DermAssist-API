@@ -50,6 +50,30 @@ class MessageResource extends JsonResource
             }
         }
 
+        // Enrich with direct scan result data (no appointment required)
+        if (preg_match('/\[SCAN_RESULT:([a-f0-9-]+)\]/', $this->message, $matches)) {
+            $diagnosisUuid = $matches[1];
+            $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->with('patient')->first();
+
+            if ($diagnosis) {
+                $patientName = $diagnosis->patient
+                    ? trim($diagnosis->patient->first_name.' '.$diagnosis->patient->last_name)
+                    : 'Patient';
+
+                $data['appointment_data'] = [
+                    'status' => 'scan_result',
+                    'diagnosis' => [
+                        'label' => $diagnosis->label,
+                        'confidence' => $diagnosis->confidence,
+                        'image_path' => $diagnosis->image_path,
+                        'patient_name' => $patientName,
+                        'patient_age' => $diagnosis->patient_age ?? ($diagnosis->patient?->age ?? 'N/A'),
+                        'date' => $diagnosis->created_at->format('M d, Y'),
+                    ],
+                ];
+            }
+        }
+
         return $data;
     }
 }

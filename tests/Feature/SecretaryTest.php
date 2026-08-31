@@ -4,6 +4,7 @@ use App\Models\Appointment;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
@@ -28,7 +29,8 @@ it('allows a secretary to schedule an appointment for a patient on behalf of the
 
     $scheduledAt = now()->addDays(2)->format('Y-m-d H:i:s');
 
-    $response = $this->actingAs($secretary)->postJson('/api/appointments/schedule-for-patient', [
+    Sanctum::actingAs($secretary);
+    $response = $this->postJson('/api/appointments/schedule-for-patient', [
         'patient_id' => $patient->id,
         'scheduled_at' => $scheduledAt,
         'location' => 'Room 101',
@@ -66,7 +68,8 @@ it('allows a secretary to list appointments belonging to their doctor', function
         'status' => 'scheduled',
     ]);
 
-    $response = $this->actingAs($secretary)->getJson('/api/appointments');
+    Sanctum::actingAs($secretary);
+    $response = $this->getJson('/api/appointments');
 
     $response->assertOk();
     $response->assertJsonCount(1);
@@ -82,7 +85,8 @@ it('allows a secretary to manage doctor availabilities', function () {
         'doctor_id' => $doctor->id,
     ]);
 
-    $response = $this->actingAs($secretary)->postJson("/api/doctors/{$doctor->uuid}/availabilities", [
+    Sanctum::actingAs($secretary);
+    $response = $this->postJson("/api/doctors/{$doctor->uuid}/availabilities", [
         'available_date' => now()->addDays(5)->format('Y-m-d'),
         'start_time' => '09:00',
         'end_time' => '17:00',

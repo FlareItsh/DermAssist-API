@@ -46,8 +46,6 @@ class ClinicalNoteService
             $validated
         );
 
-        $this->handleFollowUpAppointment($appointment, $validated);
-
         return $clinicalNote;
     }
 
@@ -91,27 +89,6 @@ class ClinicalNoteService
             $validated
         );
 
-        $this->handleFollowUpAppointment($appointment, $validated);
-
         return $clinicalNote;
-    }
-
-    protected function handleFollowUpAppointment(Appointment $appointment, array $validated)
-    {
-        if (! empty($validated['follow_up_date'])) {
-            $exists = Appointment::where('doctor_id', $appointment->doctor_id)
-                ->where('patient_id', $appointment->patient_id)
-                ->where('scheduled_at', $validated['follow_up_date'])
-                ->exists();
-
-            if (! $exists) {
-                Appointment::create([
-                    'doctor_id' => $appointment->doctor_id,
-                    'patient_id' => $appointment->patient_id,
-                    'scheduled_at' => $validated['follow_up_date'],
-                    'status' => 'scheduled',
-                ]);
-            }
-        }
     }
 }
