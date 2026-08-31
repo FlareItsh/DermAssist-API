@@ -3,6 +3,8 @@
 namespace App\Service;
 
 use App\Http\Resources\ConversationResource;
+use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\User;
 use App\Repository\ConversationRepository;
 use Illuminate\Validation\ValidationException;
@@ -18,7 +20,42 @@ class ConversationService
 
     public function listConversations(User $user, int $perPage = 15)
     {
-        $effectiveUserId = ($user->role->slug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
+        if ($user->is_doctor_registered && $user->registered_by_doctor_id) {
+            $conversation = Conversation::firstOrCreate([
+                'doctor_id' => $user->registered_by_doctor_id,
+                'patient_id' => $user->id,
+            ]);
+
+            if ($conversation->messages()->count() === 0) {
+                Message::create([
+                    'conversation_id' => $conversation->id,
+                    'sender_id' => $user->registered_by_doctor_id,
+                    'message' => 'Welcome! Your account has been registered. You can send messages and scan findings directly here.',
+                    'is_read' => false,
+                ]);
+            }
+        }
+
+        if ($user->role?->slug === 'doctor') {
+            $registeredPatients = User::where('registered_by_doctor_id', $user->id)->get();
+            foreach ($registeredPatients as $patient) {
+                $conversation = Conversation::firstOrCreate([
+                    'doctor_id' => $user->id,
+                    'patient_id' => $patient->id,
+                ]);
+
+                if ($conversation->messages()->count() === 0) {
+                    Message::create([
+                        'conversation_id' => $conversation->id,
+                        'sender_id' => $user->id,
+                        'message' => 'Welcome! Your account has been registered. You can send messages and scan findings directly here.',
+                        'is_read' => false,
+                    ]);
+                }
+            }
+        }
+
+        $effectiveUserId = ($user->role?->slug === 'secretary' && $user->doctor_id) ? $user->doctor_id : $user->id;
         $collection = $this->conversationRepository->paginateForUser($effectiveUserId, $perPage);
 
         return ConversationResource::collection($collection);
