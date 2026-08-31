@@ -58,6 +58,7 @@ pnpm make:service {ResourceName}
   - `AppBadge` (`color="primary"|"success"|"warning"|"danger"|"info"|"gray"`, `variant="subtle"|"solid"|"outline"`)
   - `AppModal` (`v-model`, `title`, `description`, `size="lg"`, `#footer` slot)
   - `AppAlert` (`type="warning"|"error"|"info"|"success"`, `title`, `description`)
+  - `AppPagination` (`v-model:currentPage`, `:total-items`, `:per-page`, `item-label`)
 - If a new UI pattern is required, create a reusable component in `views/app/components/App/` first.
 
 ### Strictly No Hardcoded Colors

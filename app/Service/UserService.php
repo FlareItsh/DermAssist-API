@@ -364,4 +364,44 @@ class UserService
 
         return new UserResource($user);
     }
+
+    public function listDoctorSecretaries(User $doctor)
+    {
+        if ($doctor->role?->slug !== 'doctor') {
+            abort(403, 'Unauthorized. Doctor role required.');
+        }
+
+        $secretaries = $this->userRepository->getDoctorSecretaries($doctor->id);
+
+        return UserResource::collection($secretaries);
+    }
+
+    public function createDoctorSecretary(User $doctor, array $validated)
+    {
+        if ($doctor->role?->slug !== 'doctor') {
+            abort(403, 'Unauthorized. Doctor role required.');
+        }
+
+        return DB::transaction(function () use ($validated, $doctor) {
+            $secretary = $this->userRepository->createDoctorSecretary($validated, $doctor->id);
+
+            return response()->json([
+                'message' => 'Secretary created successfully.',
+                'data' => new UserResource($secretary),
+            ], 201);
+        });
+    }
+
+    public function deleteDoctorSecretary(User $doctor, string $uuid)
+    {
+        if ($doctor->role?->slug !== 'doctor') {
+            abort(403, 'Unauthorized. Doctor role required.');
+        }
+
+        $this->userRepository->deleteDoctorSecretary($uuid, $doctor->id);
+
+        return response()->json([
+            'message' => 'Secretary removed successfully.',
+        ], 200);
+    }
 }

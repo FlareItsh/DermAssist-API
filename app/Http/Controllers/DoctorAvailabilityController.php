@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Resources\DoctorAvailabilityResource;
 use App\Http\Resources\UserResource;
 use App\Models\DoctorAvailability;
-use App\Models\User;
 use App\Service\DoctorAvailabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -20,10 +19,9 @@ class DoctorAvailabilityController extends Controller
         $this->service = $service;
     }
 
-    public function index(string $doctorUuid): JsonResponse
+    public function index(Request $request, string $doctorUuid): JsonResponse
     {
-        $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
-        $availabilities = $this->service->getAvailabilities($doctor);
+        $availabilities = $this->service->getAvailabilities($request->user(), $doctorUuid);
 
         return response()->json(DoctorAvailabilityResource::collection($availabilities));
     }
@@ -74,11 +72,10 @@ class DoctorAvailabilityController extends Controller
 
     public function check(Request $request, string $doctorUuid): JsonResponse
     {
-        $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
         $dateParam = $request->query('date');
         $date = $dateParam ? Carbon::parse($dateParam) : now();
 
-        $result = $this->service->checkDoctorAvailability($doctor->id, $date, $request->user());
+        $result = $this->service->checkDoctorAvailabilityByUuid($doctorUuid, $date, $request->user());
 
         return response()->json([
             'checked_at' => $date->toDateTimeString(),

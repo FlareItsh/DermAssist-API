@@ -2,7 +2,10 @@
 
 namespace App\Repository;
 
+use App\Models\Role;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserRepository
 {
@@ -90,5 +93,42 @@ class UserRepository
             ->withCount('diagnoses')
             ->latest()
             ->paginate($perPage);
+    }
+
+    public function getDoctorSecretaries(int $doctorId)
+    {
+        return User::where('doctor_id', $doctorId)
+            ->whereHas('role', function ($q) {
+                $q->where('slug', 'secretary');
+            })
+            ->latest()
+            ->get();
+    }
+
+    public function createDoctorSecretary(array $payload, int $doctorId): User
+    {
+        $secretaryRole = Role::where('slug', 'secretary')->firstOrFail();
+
+        $secretary = User::create([
+            'first_name' => $payload['firstName'],
+            'middle_name' => $payload['middleName'] ?? null,
+            'last_name' => $payload['lastName'],
+            'email' => $payload['email'],
+            'password' => Hash::make($payload['password']),
+            'role_id' => $secretaryRole->id,
+            'doctor_id' => $doctorId,
+            'uuid' => (string) Str::uuid(),
+        ]);
+
+        return $secretary->load('role', 'doctor');
+    }
+
+    public function deleteDoctorSecretary(string $uuid, int $doctorId): bool
+    {
+        $secretary = User::where('uuid', $uuid)
+            ->where('doctor_id', $doctorId)
+            ->firstOrFail();
+
+        return (bool) $secretary->delete();
     }
 }

@@ -20,14 +20,16 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
 ### Automated Subscription Activation Workflow
 - **Live PayMongo Checkout**:
   - The Doctor clicks "Proceed to Secure Payment" (`POST /api/subscription/checkout`).
-  - Backend calls `https://api.paymongo.com/v1/checkout_sessions` with line items, user details, and supported payment methods (`gcash`, `paymaya`, `card`, `dob`).
+  - Backend cleans up any abandoned/unpaid `pending` checkout sessions and invoices for the doctor so only completed transactions persist.
+  - Backend calls `https://api.paymongo.com/v1/checkout_sessions` with line items, doctor details, and supported payment methods (`gcash`, `paymaya`, `card`, `dob`, `dob_ubp`).
   - Doctor is redirected directly to the PayMongo hosted checkout page where they input GCash OTP, Maya credentials, or card details.
-- **Instant Activation**:
-  - **Webhooks**: `POST /api/webhooks/paymongo` receives payment notifications and triggers `PaymentInvoiceService::approvePayment()` to mark invoice as `paid` and `Subscription.status` as `active`.
-  - **Return Confirmation**: Returning doctors (`/doctor/subscription?status=success&invoice={uuid}`) trigger `/api/subscription/confirm-return-payment` for instant confirmation after verifying with PayMongo's API.
+- **Instant Activation & Dynamic Channel Resolution**:
+  - **Return Confirmation**: Returning doctors (`/doctor/subscription?status=success&invoice={uuid}`) trigger `/api/subscription/confirm-return-payment`.
+  - Backend queries PayMongo (`GET /v1/checkout_sessions/{id}`) to verify paid status, extracts the specific channel chosen by the doctor (e.g. `GCash`, `Maya`, `Credit / Debit Card`, `Online Bank Transfer`, `QR Ph`), updates `payment_invoices.payment_method`, and records the exact PayMongo payment ID (`pay_...`) in `transaction_reference`.
+  - **Webhooks**: `POST /api/webhooks/paymongo` receives async payment notifications and triggers `PaymentInvoiceService::approvePayment()` to mark invoice as `paid` and `Subscription.status` as `active`.
 - **Admin Side**:
   - Manual approval/rejection buttons and manual receipt uploads are completely removed.
-  - The Admin panel provides real-time audit logs and transaction history for all PayMongo gateway settlements.
+  - The Admin panel provides a read-only real-time audit ledger and transaction history for all PayMongo gateway settlements with filter tabs (`All Transactions`, `Paid & Settled`, `Pending Checkout`, `Failed / Rejected`).
 
 ---
 
@@ -38,7 +40,7 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
 - **`Subscription`** (`subscriptions` table):
   - Fields: `uuid`, `user_id`, `plan_id`, `billing_cycle` (`monthly`, `annual`), `status` (`pending`, `trialing`, `active`, `past_due`, `canceled`), `starts_at`, `ends_at`.
 - **`PaymentInvoice`** (`payment_invoices` table):
-  - Fields: `uuid`, `subscription_id`, `user_id`, `amount`, `discount_amount`, `final_amount`, `payment_method` (`paymongo`), `payment_status` (`pending`, `paid`, `approved`, `rejected`), `transaction_reference`, `approved_by_user_id`.
+  - Fields: `uuid`, `subscription_id`, `user_id`, `amount`, `discount_amount`, `final_amount`, `payment_method` (`GCash`, `Maya`, `Credit / Debit Card`, `Online Bank Transfer`, `QR Ph`), `payment_status` (`pending`, `paid`, `approved`, `rejected`), `transaction_reference` (PayMongo `pay_...` ID), `approved_by_user_id`.
 - **`Coupon`** (`coupons` table):
   - Fields: `code`, `discount_type` (`percentage`, `fixed`), `value`, `valid_from`, `valid_until`, `max_redemptions`, `times_redeemed`, `is_active`.
 

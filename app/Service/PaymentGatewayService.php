@@ -124,6 +124,9 @@ class PaymentGatewayService
         $secretKey = config('services.paymongo.secret_key') ?: env('PAYMONGO_SECRET_KEY');
         $checkoutSessionId = $invoice->transaction_reference;
 
+        $specificPaymentMethod = 'paymongo';
+        $gatewayTransactionId = 'PAYMONGO-INSTANT-'.now()->timestamp;
+
         if ($secretKey && $checkoutSessionId) {
             try {
                 $response = Http::withBasicAuth($secretKey, '')
@@ -131,15 +134,33 @@ class PaymentGatewayService
 
                 if ($response->successful()) {
                     $payments = $response->json('data.attributes.payments') ?? [];
-                    $hasPaidPayment = collect($payments)->contains(function ($payment) {
+                    $paidPayment = collect($payments)->first(function ($payment) {
                         return ($payment['attributes']['status'] ?? null) === 'paid';
                     });
 
-                    if (! $hasPaidPayment) {
+                    if (! $paidPayment) {
                         return response()->json([
                             'status' => 'pending',
                             'message' => 'Payment has not been completed yet.',
                         ], 400);
+                    }
+
+                    // Extract actual payment source type (e.g. gcash, paymaya, card, dob)
+                    $sourceType = $paidPayment['attributes']['source']['type'] ?? null;
+                    if ($sourceType) {
+                        $specificPaymentMethod = match ($sourceType) {
+                            'gcash' => 'GCash',
+                            'paymaya' => 'Maya',
+                            'card' => 'Credit / Debit Card',
+                            'dob', 'dob_ubp' => 'Online Bank Transfer',
+                            'qrph' => 'QR Ph',
+                            default => strtoupper($sourceType),
+                        };
+                    }
+
+                    $payId = $paidPayment['id'] ?? null;
+                    if ($payId) {
+                        $gatewayTransactionId = $payId;
                     }
                 }
             } catch (\Throwable $e) {
@@ -147,7 +168,12 @@ class PaymentGatewayService
             }
         }
 
-        $this->paymentInvoiceService->approvePayment($invoice, null, 'PAYMONGO-INSTANT-'.now()->timestamp);
+        // Update payment method to the specific channel used
+        $invoice->update([
+            'payment_method' => $specificPaymentMethod,
+        ]);
+
+        $this->paymentInvoiceService->approvePayment($invoice, null, $gatewayTransactionId);
 
         return response()->json([
             'status' => 'success',
