@@ -95,7 +95,12 @@ The frontend repository utilizes the following official Nuxt modules configured 
 - **Usage**: Provides headless component primitives, accessibility utilities, and UI foundation.
 
 ### 5. `vue-sonner` (`toast`)
-- **Usage**: Use `toast.success('...')`, `toast.error('...')`, `toast.info('...')` from `vue-sonner` for user feedback and flash alerts.
+- **Usage**: Use `import { toast } from 'vue-sonner'` for all asynchronous action feedback (mutations, deletions, status changes, copies, approvals, rejections).
+- **Mandatory Toast Triggers**:
+  - `toast.success('...')`: Triggered upon successful creation, update, deletion, approval, status change, or upload.
+  - `toast.error('...')`: Triggered upon network failure, validation errors, or API exception.
+  - `toast.info('...')`: Triggered upon informational status toggles (e.g. restoring an appeal to pending).
+- **Rule**: Avoid relying solely on console logs or silent page updates. Always provide immediate visual confirmation with `toast.*`.
 
 ---
 
@@ -118,4 +123,5 @@ To prevent visual drift and maintain a unified design language:
 - **Page Titles**: `text-2xl md:text-3xl font-black text-foreground`
 - **Section Headers**: `text-lg md:text-xl font-bold text-foreground`
 - **Card Subheaders / Meta**: `text-xs font-semibold text-muted-foreground`
+
 
