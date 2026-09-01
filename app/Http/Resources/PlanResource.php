@@ -24,6 +24,7 @@ class PlanResource extends JsonResource
             'price_annual' => (float) $this->price_annual,
             'max_doctors' => $this->max_doctors,
             'max_clinics' => $this->max_clinics,
+            'max_secretaries' => $this->max_secretaries,
             'features' => $this->features ?? [],
             'plan_features' => FeatureResource::collection($this->whenLoaded('planFeatures')),
             'trial_period_days' => $this->trial_period_days,

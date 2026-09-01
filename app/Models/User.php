@@ -256,4 +256,35 @@ class User extends Authenticatable
     {
         return $this->canAccessFeature('show_in_recommendation');
     }
+
+    /**
+     * Check whether the doctor is eligible to have secretary accounts.
+     */
+    public function canHaveSecretary(): bool
+    {
+        if (! $this->hasActiveSubscription()) {
+            return false;
+        }
+
+        $plan = $this->subscription?->plan;
+        if (! $plan) {
+            return false;
+        }
+
+        // Must either have can_have_secretary feature or max_secretaries > 0 (or null for unlimited)
+        return $this->canAccessFeature('can_have_secretary') || ($plan->max_secretaries === null || $plan->max_secretaries > 0);
+    }
+
+    /**
+     * Get the maximum allowed secretaries for this doctor's subscription plan.
+     * Returns null if unlimited, or integer limit.
+     */
+    public function getMaxSecretaries(): ?int
+    {
+        if (! $this->hasActiveSubscription()) {
+            return 0;
+        }
+
+        return $this->subscription?->plan?->max_secretaries;
+    }
 }

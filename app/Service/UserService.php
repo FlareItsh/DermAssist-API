@@ -382,6 +382,18 @@ class UserService
             abort(403, 'Unauthorized. Doctor role required.');
         }
 
+        if (! $doctor->canHaveSecretary()) {
+            abort(403, 'Your current subscription plan does not support secretary accounts. Please upgrade to a plan that includes secretary management.');
+        }
+
+        $maxSecretaries = $doctor->getMaxSecretaries();
+        if ($maxSecretaries !== null) {
+            $currentSecretariesCount = $this->userRepository->getDoctorSecretaries($doctor->id)->count();
+            if ($currentSecretariesCount >= $maxSecretaries) {
+                abort(403, "You have reached your plan limit of {$maxSecretaries} secretary account(s). Please upgrade your subscription to add more.");
+            }
+        }
+
         return DB::transaction(function () use ($validated, $doctor) {
             $secretary = $this->userRepository->createDoctorSecretary($validated, $doctor->id);
 
