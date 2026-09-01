@@ -13,6 +13,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
+use App\Http\Controllers\DoctorClinicController;
 use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
@@ -123,6 +124,12 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/doctor/patients/{uuid}/cancel-schedule', [DoctorPatientController::class, 'cancelSchedule']);
     Route::post('/doctor/patients/{uuid}/send-scan', [DoctorPatientController::class, 'sendScanResult']);
     Route::post('/doctor/patients/{uuid}/schedule-appointment', [DoctorPatientController::class, 'scheduleAppointment']);
+
+    // Doctor Clinics Routes
+    Route::get('/doctor/clinics', [DoctorClinicController::class, 'index']);
+    Route::post('/doctor/clinics', [DoctorClinicController::class, 'store']);
+    Route::put('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'update']);
+    Route::delete('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'destroy']);
 });
 
 // Unauthenticated Payment Webhooks

@@ -258,6 +258,41 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the clinics owned by this doctor.
+     *
+     * @return HasMany<Clinic, $this>
+     */
+    public function ownedClinics(): HasMany
+    {
+        return $this->hasMany(Clinic::class, 'owner_doctor_id');
+    }
+
+    /**
+     * Get the clinic memberships where this doctor is an associate or member.
+     *
+     * @return BelongsToMany<Clinic, $this>
+     */
+    public function clinicMemberships(): BelongsToMany
+    {
+        return $this->belongsToMany(Clinic::class, 'clinic_doctors', 'doctor_user_id', 'clinic_id')
+            ->withPivot('role', 'status')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get the maximum allowed clinics for this doctor's subscription plan.
+     * Returns null if unlimited, or integer limit (default 1).
+     */
+    public function getMaxClinics(): ?int
+    {
+        if (! $this->hasActiveSubscription()) {
+            return 1;
+        }
+
+        return $this->subscription?->plan?->max_clinics ?? 1;
+    }
+
+    /**
      * Check whether the doctor is eligible to have secretary accounts.
      */
     public function canHaveSecretary(): bool
