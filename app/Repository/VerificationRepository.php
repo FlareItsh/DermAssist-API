@@ -3,14 +3,13 @@
 namespace App\Repository;
 
 use App\Models\DoctorVerification as Verification;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class VerificationRepository
 {
     public function paginate(int $perPage = 15, ?string $status = null, ?string $search = null)
     {
         return Verification::with(['user', 'user.role'])
-            ->when($status, fn($query) => $query->where('status', $status))
+            ->when($status, fn ($query) => $query->where('status', $status))
             ->when($search, function ($query) use ($search) {
                 $query->whereHas('user', function ($q) use ($search) {
                     $q->where('first_name', 'like', "%{$search}%")
@@ -41,12 +40,14 @@ class VerificationRepository
     {
         $model = $this->findByUuid($uuid);
         $model->update($payload);
+
         return $model;
     }
 
     public function delete(string $uuid)
     {
         $model = $this->findByUuid($uuid);
+
         return $model->delete();
     }
 
@@ -54,6 +55,7 @@ class VerificationRepository
     {
         $model = Verification::withTrashed()->where('uuid', $uuid)->firstOrFail();
         $model->restore();
+
         return $model;
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Repository;
 
 use App\Models\Diagnosis;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class RecordRepository
 {
@@ -12,7 +11,7 @@ class RecordRepository
         return Diagnosis::with(['clinicalNote.doctor', 'doctor'])
             ->where(function ($q) use ($userUuid) {
                 $q->where('patient_uuid', $userUuid)
-                  ->orWhere('user_uuid', $userUuid);
+                    ->orWhere('user_uuid', $userUuid);
             })
             ->orderBy('created_at', 'desc')
             ->get();
@@ -25,7 +24,7 @@ class RecordRepository
                 $q->whereHas('clinicalNote', function ($query) use ($doctorId) {
                     $query->where('doctor_id', $doctorId);
                 })
-                ->orWhere('doctor_uuid', $doctorUuid);
+                    ->orWhere('doctor_uuid', $doctorUuid);
             })
             ->orderBy('created_at', 'desc')
             ->get();

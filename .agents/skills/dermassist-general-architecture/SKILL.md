@@ -67,6 +67,8 @@ _Executed via `views/scripts/make-service.js`. Generates TypeScript service clas
     - `AppModal` (`v-model`, `title`, `description`, `size="lg"`, `#footer` slot)
     - `AppAlert` (`type="warning"|"error"|"info"|"success"`, `title`, `description`)
     - `AppPagination` (`v-model:currentPage`, `:total-items`, `:per-page`, `item-label`)
+    - `AppTimeRangePicker` (`v-model:startTime`, `v-model:endTime`, `:blocked-slots`, `:existing-appointments`, `label`)
+    - `AppWeeklyTimetable` (`:doctor-uuid`, `:initial-view-date`, `:clinic-filter`, `@select-appointment`, `@select-slot`)
 - If a new UI pattern is required, create a reusable component in `views/app/components/App/` first.
 
 ### Strictly No Hardcoded Colors

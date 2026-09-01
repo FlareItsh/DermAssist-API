@@ -136,8 +136,59 @@ public function canAccessFeature(string $featureKey): bool
 
 ---
 
-## 5. Summary Checklist for Adding Multi-Doctor Features
+## 5. Multi-Clinic Management & Duty Hour Presets
+
+### Architecture & Models:
+1. **Clinic Branch Registration**:
+   - Each doctor can register multiple clinic branches or hospital suites (`clinics` table with `owner_doctor_id`).
+   - Managed via `useDoctorClinics()` composable (`/doctor/clinics` or Doctor Settings Workspace).
+2. **Duty Hour Presets with Clinic Assignment**:
+   - `doctor_availabilities` table links a day of the week (`day_of_week`), start time, end time, and an optional `clinic_id` (foreign key -> `clinics.id`).
+   - Doctors configure when they are stationed at specific clinics (e.g. *Monday 9 AM - 5 PM at St. Luke's*, *Tuesday 1 PM - 7 PM at Makati Skin Clinic*).
+3. **Seeder Setup (`DoctorAvailabilitySeeder`)**:
+   - Ensures all active doctor accounts have sample clinic branches and full weekday duty shifts pre-configured for scheduling.
+
+---
+
+## 6. Interactive Weekly Timetable Matrix (`AppWeeklyTimetable.vue`)
+
+- **Component**: `views/app/components/App/AppWeeklyTimetable.vue`
+- **Features**:
+  - 7-Day Matrix (Monday to Sunday) spanning working hours (7:00 AM to 8:00 PM).
+  - Multi-Layer Visualization:
+    - 🟢 **Clinic Duty Shifts**: Soft green background band with clinic name and duty hours.
+    - 🔴 **Blocked / Away Periods**: Red/striped hazard overlay with away reason.
+    - 🔵 **Booked Patient Consultations**: Clickable patient appointment cards with status indicators and quick-view actions.
+  - Controls: Week Navigation (`< Previous`, `Next >`, `Today`) and Clinic Filter dropdown.
+  - Used in: Doctor Appointments (`Doctor/appointments.vue`), Secretary Appointments (`Secretary/appointments.vue`), and Schedule Settings (`Doctor/profile.vue`).
+
+---
+
+## 7. Intelligent Clinic Autofill in Follow-Up Appointments
+
+- **Rule**: When scheduling patient consultations (in `ScheduleModal.vue` or scan follow-up assessment in `ClinicalNoteForm.vue`), clinic locations must **NEVER** require manual typing.
+- **Implementation**:
+  1. Retrieve doctor clinics via `useDoctorClinics()`.
+  2. Watch `[targetDate, startTime, endTime]` and query `getDutyClinicForDateAndTime(date, start, end)` from `useBlockedDates()`.
+  3. If a matching duty shift is found, automatically select the corresponding clinic dropdown option and render an `Autofilled from Duty Preset` badge.
+  4. Display quick interval buttons (`+1 Week`, `+2 Weeks`, `+1 Month`) to jump calendar dates rapidly.
+
+---
+
+## 8. Doctor Settings Workspace with Inner Sidebar Layout
+
+- **Page**: `views/app/pages/Doctor/profile.vue`
+- **Pattern**:
+  - **Left Inner Sidebar (`w-64`)**: Compact Doctor Identity Card + Tab navigation menu (`Profile & Bio`, `Clinic Branches`, `Duty & Away Presets`, `Subscription & Limits`, `Account & Security`).
+  - **Right Main Content (`flex-1 min-w-0`)**: Dedicated, focused workspaces for each tab with URL query deep-linking (`?tab=clinics`, `#blocked-dates`).
+  - **Subscription & Limits Tab**: Live status card with plan limits/quotas + High-contrast upgrade hero promoting Multi-Doctor Pooling, Secretary Delegation, and Multi-Branch Expansion.
+
+---
+
+## 9. Summary Checklist for Adding Multi-Doctor Features
 
 1. **Plan Setup**: Set `tier_type: 'clinic_multi_doctor'`, `max_doctors: N` in `/admin/subscriptions/plans`.
 2. **User Capability Resolution**: Use `getEffectiveSubscription()` so all existing feature checks (`canExecuteScan`, `canBeRecommended`, etc.) automatically cover associate doctors.
 3. **Clinic Management UI**: Provide a seat-usage widget (`X / Y Doctor Seats Assigned`) with invite and revoke buttons in the Doctor Clinic Portal.
+4. **Duty & Schedule Sync**: Ensure new clinics integrate with `doctor_availabilities` and are reflected in `AppWeeklyTimetable`.
+
