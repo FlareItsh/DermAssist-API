@@ -205,23 +205,46 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the resolved active subscription (direct or inherited via clinic).
+     */
+    public function getActiveSubscription(): ?Subscription
+    {
+        // 1. Direct active subscription
+        $sub = $this->subscriptions()
+            ->with('plan.planFeatures')
+            ->whereIn('status', ['active', 'trialing'])
+            ->where(function ($q) {
+                $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
+            })
+            ->latest('id')
+            ->first();
+
+        if ($sub) {
+            return $sub;
+        }
+
+        if ($this->subscription && $this->subscription->isActive()) {
+            return $this->subscription;
+        }
+
+        // 2. Inherited Clinic Subscription (for Associate Doctors)
+        $clinicMembership = $this->clinicMemberships()
+            ->where('status', 'active')
+            ->first();
+
+        if ($clinicMembership && $clinicMembership->clinic?->owner) {
+            return $clinicMembership->clinic->owner->getActiveSubscription();
+        }
+
+        return null;
+    }
+
+    /**
      * Check whether this user has an active doctor subscription.
      */
     public function hasActiveSubscription(): bool
     {
-        if (! $this->subscription) {
-            return false;
-        }
-
-        if (! in_array($this->subscription->status, ['active', 'trialing'])) {
-            return false;
-        }
-
-        if ($this->subscription->ends_at && $this->subscription->ends_at->isPast()) {
-            return false;
-        }
-
-        return true;
+        return $this->getActiveSubscription() !== null;
     }
 
     /**
@@ -229,16 +252,12 @@ class User extends Authenticatable
      */
     public function canAccessFeature(string $featureKey): bool
     {
-        if (! $this->hasActiveSubscription()) {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
             return false;
         }
 
-        $plan = $this->subscription->plan;
-        if (! $plan) {
-            return false;
-        }
-
-        return $plan->hasFeature($featureKey);
+        return $subscription->plan->hasFeature($featureKey);
     }
 
     /**
@@ -285,11 +304,12 @@ class User extends Authenticatable
      */
     public function getMaxClinics(): ?int
     {
-        if (! $this->hasActiveSubscription()) {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
             return 1;
         }
 
-        return $this->subscription?->plan?->max_clinics ?? 1;
+        return $subscription->plan->max_clinics ?? 1;
     }
 
     /**
@@ -297,14 +317,12 @@ class User extends Authenticatable
      */
     public function canHaveSecretary(): bool
     {
-        if (! $this->hasActiveSubscription()) {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
             return false;
         }
 
-        $plan = $this->subscription?->plan;
-        if (! $plan) {
-            return false;
-        }
+        $plan = $subscription->plan;
 
         // Must either have can_have_secretary feature or max_secretaries > 0 (or null for unlimited)
         return $this->canAccessFeature('can_have_secretary') || ($plan->max_secretaries === null || $plan->max_secretaries > 0);
@@ -316,10 +334,11 @@ class User extends Authenticatable
      */
     public function getMaxSecretaries(): ?int
     {
-        if (! $this->hasActiveSubscription()) {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
             return 0;
         }
 
-        return $this->subscription?->plan?->max_secretaries;
+        return $subscription->plan->max_secretaries;
     }
 }

@@ -37,11 +37,19 @@ class DoctorSubscriptionService
      */
     public function getMySubscription(User $user): JsonResponse
     {
-        $subscription = Subscription::with('plan.planFeatures')
-            ->where('user_id', $user->id)
-            ->whereIn('status', ['active', 'trialing'])
-            ->orderBy('created_at', 'desc')
-            ->first();
+        $subscription = $user->getActiveSubscription();
+
+        if (! $subscription) {
+            $subscription = Subscription::with('plan.planFeatures')
+                ->where('user_id', $user->id)
+                ->whereIn('status', ['active', 'trialing'])
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
+        if ($subscription && ! $subscription->relationLoaded('plan')) {
+            $subscription->load('plan.planFeatures');
+        }
 
         $invoices = PaymentInvoice::with('subscription.plan')
             ->where('user_id', $user->id)
