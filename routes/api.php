@@ -137,6 +137,9 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::get('/doctor/clinic-doctors/search', [DoctorClinicDoctorController::class, 'search']);
     Route::post('/doctor/clinic-doctors', [DoctorClinicDoctorController::class, 'store']);
     Route::delete('/doctor/clinic-doctors/{id}', [DoctorClinicDoctorController::class, 'destroy']);
+    Route::get('/doctor/clinic-doctors/invitations', [DoctorClinicDoctorController::class, 'invitations']);
+    Route::post('/doctor/clinic-doctors/invitations/{id}/accept', [DoctorClinicDoctorController::class, 'acceptInvitation']);
+    Route::post('/doctor/clinic-doctors/invitations/{id}/decline', [DoctorClinicDoctorController::class, 'declineInvitation']);
 });
 
 // Unauthenticated Payment Webhooks

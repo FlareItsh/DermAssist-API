@@ -428,11 +428,11 @@ class User extends Authenticatable
     {
         $maxDoctors = $this->getMaxDoctors();
 
-        // Count distinct active associate doctors across all clinics owned by this doctor
+        // Count distinct active and pending associate doctors across all clinics owned by this doctor
         $distinctAssociatesCount = DB::table('clinic_doctors')
             ->join('clinics', 'clinic_doctors.clinic_id', '=', 'clinics.id')
             ->where('clinics.owner_doctor_id', $this->id)
-            ->where('clinic_doctors.status', 'active')
+            ->whereIn('clinic_doctors.status', ['active', 'pending'])
             ->distinct('clinic_doctors.doctor_user_id')
             ->count('clinic_doctors.doctor_user_id');
 

@@ -169,19 +169,76 @@ class DoctorClinicDoctorService
         }
 
         $role = $payload['role'] ?? 'associate';
-        $pivotId = $this->clinicDoctorRepository->assignDoctorToClinic($clinic->id, $doctor->id, $role, 'active');
+        $pivotId = $this->clinicDoctorRepository->assignDoctorToClinic($clinic->id, $doctor->id, $role, 'pending');
 
         $freshSeatUsage = $user->fresh()->getDoctorSeatUsage();
 
         return response()->json([
             'status' => 'success',
-            'message' => "Dr. {$doctor->first_name} {$doctor->last_name} has been assigned to {$clinic->name}.",
+            'message' => "An invitation has been sent to Dr. {$doctor->first_name} {$doctor->last_name} for {$clinic->name}.",
             'seat_usage' => $freshSeatUsage,
             'data' => [
                 'pivot_id' => $pivotId,
+                'status' => 'pending',
                 'seat_usage' => $freshSeatUsage,
             ],
         ], 201);
+    }
+
+    /**
+     * Get pending clinic seat invitations for the authenticated doctor.
+     */
+    public function getPendingInvitations(User $user): JsonResponse
+    {
+        $this->ensureDoctorRole($user);
+
+        $invitations = $this->clinicDoctorRepository->getPendingInvitationsForDoctor($user->id);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $invitations,
+        ]);
+    }
+
+    /**
+     * Accept a clinic seat invitation.
+     */
+    public function acceptInvitation(User $user, int $pivotId): JsonResponse
+    {
+        $this->ensureDoctorRole($user);
+
+        $accepted = $this->clinicDoctorRepository->acceptInvitation($pivotId, $user->id);
+
+        if (! $accepted) {
+            abort(404, 'Pending invitation not found or already processed.');
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Clinic seat invitation accepted successfully. You now have full access under this clinic group.',
+            'data' => [
+                'subscription' => $user->fresh()->getActiveSubscription(),
+            ],
+        ]);
+    }
+
+    /**
+     * Decline a clinic seat invitation.
+     */
+    public function declineInvitation(User $user, int $pivotId): JsonResponse
+    {
+        $this->ensureDoctorRole($user);
+
+        $declined = $this->clinicDoctorRepository->declineInvitation($pivotId, $user->id);
+
+        if (! $declined) {
+            abort(404, 'Pending invitation not found or already processed.');
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Clinic seat invitation declined.',
+        ]);
     }
 
     /**
