@@ -159,6 +159,16 @@ class UserSeeder extends Seeder
                 'gender' => 'Female',
                 'barangay' => 'Guzman',
             ],
+            [
+                'email' => 'dr.miguel.tan@dermassist.com',
+                'first_name' => 'Miguel',
+                'last_name' => 'Tan',
+                'prc_number' => 'PRC-0067890',
+                'affiliation' => 'Davao Derm Laser & Skin Clinic',
+                'age' => 43,
+                'gender' => 'Male',
+                'barangay' => 'Bajada',
+            ],
         ];
 
         $createdDoctors = [$mainDoctor];
