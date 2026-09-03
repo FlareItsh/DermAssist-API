@@ -14,6 +14,7 @@ use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
 use App\Http\Controllers\DoctorClinicController;
+use App\Http\Controllers\DoctorClinicDoctorController;
 use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
@@ -130,6 +131,12 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::post('/doctor/clinics', [DoctorClinicController::class, 'store']);
     Route::put('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'update']);
     Route::delete('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'destroy']);
+
+    // Doctor Clinic Doctors (Multi-Doctor Seat Delegation)
+    Route::get('/doctor/clinic-doctors', [DoctorClinicDoctorController::class, 'index']);
+    Route::get('/doctor/clinic-doctors/search', [DoctorClinicDoctorController::class, 'search']);
+    Route::post('/doctor/clinic-doctors', [DoctorClinicDoctorController::class, 'store']);
+    Route::delete('/doctor/clinic-doctors/{id}', [DoctorClinicDoctorController::class, 'destroy']);
 });
 
 // Unauthenticated Payment Webhooks

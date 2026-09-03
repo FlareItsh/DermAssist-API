@@ -56,11 +56,14 @@ class DoctorSubscriptionService
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $doctorSeatUsage = $user->role?->slug === 'doctor' ? $user->getDoctorSeatUsage() : null;
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'subscription' => $subscription ? new SubscriptionResource($subscription) : null,
                 'invoices' => $invoices,
+                'doctor_seat_usage' => $doctorSeatUsage,
             ],
         ]);
     }

@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -229,11 +231,11 @@ class User extends Authenticatable
 
         // 2. Inherited Clinic Subscription (for Associate Doctors)
         $clinicMembership = $this->clinicMemberships()
-            ->where('status', 'active')
+            ->wherePivot('status', 'active')
             ->first();
 
-        if ($clinicMembership && $clinicMembership->clinic?->owner) {
-            return $clinicMembership->clinic->owner->getActiveSubscription();
+        if ($clinicMembership && $clinicMembership->owner) {
+            return $clinicMembership->owner->getActiveSubscription();
         }
 
         return null;
@@ -340,5 +342,59 @@ class User extends Authenticatable
         }
 
         return $subscription->plan->max_secretaries;
+    }
+
+    /**
+     * Get the maximum allowed doctors for this doctor's subscription plan.
+     * Returns null if unlimited, or integer limit (default 1).
+     */
+    public function getMaxDoctors(): ?int
+    {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
+            return 1;
+        }
+
+        return $subscription->plan->max_doctors;
+    }
+
+    /**
+     * Check whether the doctor can add associate doctors.
+     */
+    public function canAddDoctor(): bool
+    {
+        $maxDoctors = $this->getMaxDoctors();
+
+        return $maxDoctors === null || $maxDoctors > 1;
+    }
+
+    /**
+     * Get the doctor seat quota statistics.
+     *
+     * @return array{max_doctors: ?int, used_seats: int, available_seats: ?int, can_add: bool}
+     */
+    public function getDoctorSeatUsage(): array
+    {
+        $maxDoctors = $this->getMaxDoctors();
+
+        // Count distinct active associate doctors across all clinics owned by this doctor
+        $distinctAssociatesCount = DB::table('clinic_doctors')
+            ->join('clinics', 'clinic_doctors.clinic_id', '=', 'clinics.id')
+            ->where('clinics.owner_doctor_id', $this->id)
+            ->where('clinic_doctors.status', 'active')
+            ->distinct('clinic_doctors.doctor_user_id')
+            ->count('clinic_doctors.doctor_user_id');
+
+        // Total used seats = 1 (Owner) + distinct associates
+        $usedSeats = 1 + $distinctAssociatesCount;
+        $availableSeats = $maxDoctors !== null ? max(0, $maxDoctors - $usedSeats) : null;
+        $canAdd = $maxDoctors === null || $availableSeats > 0;
+
+        return [
+            'max_doctors' => $maxDoctors,
+            'used_seats' => $usedSeats,
+            'available_seats' => $availableSeats,
+            'can_add' => $canAdd,
+        ];
     }
 }
