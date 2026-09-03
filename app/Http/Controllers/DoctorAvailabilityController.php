@@ -33,6 +33,8 @@ class DoctorAvailabilityController extends Controller
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
             'is_available' => 'sometimes|boolean',
+            'clinic_id' => 'nullable|exists:clinics,id',
+            'location_name' => 'nullable|string|max:255',
         ]);
 
         $availability = $this->service->createAvailability($request->user(), $request->only([
@@ -40,9 +42,11 @@ class DoctorAvailabilityController extends Controller
             'start_time',
             'end_time',
             'is_available',
+            'clinic_id',
+            'location_name',
         ]));
 
-        return response()->json(new DoctorAvailabilityResource($availability), 201);
+        return response()->json(new DoctorAvailabilityResource($availability->load('clinic')), 201);
     }
 
     public function update(Request $request, DoctorAvailability $availability): JsonResponse
@@ -52,15 +56,17 @@ class DoctorAvailabilityController extends Controller
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'is_available' => 'sometimes|boolean',
+            'clinic_id' => 'nullable|exists:clinics,id',
+            'location_name' => 'nullable|string|max:255',
         ]);
 
         $updated = $this->service->updateAvailability(
             $availability,
-            $request->only(['available_date', 'start_time', 'end_time', 'is_available']),
+            $request->only(['available_date', 'start_time', 'end_time', 'is_available', 'clinic_id', 'location_name']),
             $request->user()
         );
 
-        return response()->json(new DoctorAvailabilityResource($updated));
+        return response()->json(new DoctorAvailabilityResource($updated->load('clinic')));
     }
 
     public function destroy(Request $request, DoctorAvailability $availability): JsonResponse

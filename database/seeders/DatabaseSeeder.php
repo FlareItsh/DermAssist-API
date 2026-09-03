@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             PlanSeeder::class,
             SubscriptionSeeder::class,
             ConversationSeeder::class,
+            DoctorAvailabilitySeeder::class,
         ]);
     }
 }

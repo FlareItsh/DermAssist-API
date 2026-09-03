@@ -15,12 +15,12 @@ class RecordResource extends JsonResource
     public function toArray(Request $request): array
     {
         $type = $this->clinicalNote ? 'doctor_diagnosis' : 'scan';
-        $title = $type === 'doctor_diagnosis' 
-            ? 'Doctor\'s Diagnosis' 
+        $title = $type === 'doctor_diagnosis'
+            ? 'Doctor\'s Diagnosis'
             : 'AI Scan Result';
 
         if ($this->label && $this->label !== 'None') {
-            $title .= ': ' . $this->label;
+            $title .= ': '.$this->label;
         }
 
         return [

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -17,8 +18,8 @@ return new class extends Migration
         });
 
         // Data migration: map user_uuid to patient_uuid
-        \Illuminate\Support\Facades\DB::table('diagnoses')->update([
-            'patient_uuid' => \Illuminate\Support\Facades\DB::raw('user_uuid')
+        DB::table('diagnoses')->update([
+            'patient_uuid' => DB::raw('user_uuid'),
         ]);
     }
 

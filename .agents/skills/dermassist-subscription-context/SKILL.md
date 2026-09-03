@@ -36,7 +36,7 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
 ## 2. Key Database Models & Schema Relationships
 
 - **`Plan`** (`plans` table):
-  - Fields: `uuid`, `name`, `slug`, `tier_type` (`individual`, `doctor_multi_clinic`, `clinic_multi_doctor`), `price_monthly`, `price_annual`, `max_doctors`, `max_clinics`, `features` (json legacy / custom bullet items), `is_active`.
+  - Fields: `uuid`, `name`, `slug`, `tier_type` (`individual`, `doctor_multi_clinic`, `clinic_multi_doctor`), `price_monthly`, `price_annual`, `max_doctors`, `max_clinics`, `max_secretaries`, `features` (json legacy / custom bullet items), `is_active`.
   - Relations: `planFeatures(): BelongsToMany<Feature>` (via `plan_has_features` pivot table).
 - **`Feature`** (`features` table):
   - Fields: `uuid`, `name`, `code` (slug / identifier), `description`, `is_active`, `sort_order`.
@@ -61,6 +61,7 @@ Plan features are normalized into dedicated database tables to allow dynamic cre
 | `show_in_recommendation` | Show in Patient Scan Recommendations | Controls whether the doctor appears in patient nearby doctor recommendations and specialist discovery. Gated in `UserRepository::paginate` (`recommended_only=1`) and `AppointmentService::createAppointment`. |
 | `export_pdf_reports` | Allow PDF Clinical Report Exports | Unlocks downloading clinical diagnosis reports in PDF format. |
 | `unlimited_appointments` | Enable Teleconsultation Appointments | Allows online/teleconsultation appointment slot booking. |
+| `can_have_secretary` | Dedicated Secretary Account Access | Unlocks registering and delegating work to clinic secretary accounts. Gated in `UserService::createDoctorSecretary` alongside plan `max_secretaries` capacity check. |
 
 ### How Feature Checking Works in Backend (Laravel)
 1. **Model Helpers on `User`**:

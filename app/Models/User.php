@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -205,23 +207,82 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the resolved active subscription (direct or inherited via clinic).
+     */
+    /**
+     * Get the doctor's direct personal subscription (ignoring inherited clinic seats).
+     */
+    public function getDirectSubscription(): ?Subscription
+    {
+        $directSub = $this->subscriptions()
+            ->with('plan.planFeatures')
+            ->whereIn('status', ['active', 'trialing'])
+            ->where(function ($q) {
+                $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
+            })
+            ->latest('id')
+            ->first();
+
+        if (! $directSub && $this->subscription && $this->subscription->isActive()) {
+            $directSub = $this->subscription;
+        }
+
+        return $directSub;
+    }
+
+    /**
+     * Get the resolved active subscription (direct or inherited via clinic).
+     * If a doctor has both a personal subscription and an associate clinic seat,
+     * the superior / higher tier plan (e.g. Clinic Group Plan) takes precedence.
+     */
+    public function getActiveSubscription(): ?Subscription
+    {
+        $directSub = $this->getDirectSubscription();
+
+        // 2. Inherited Clinic Subscription (for Associate Doctors)
+        $inheritedSub = null;
+        $clinicMemberships = $this->clinicMemberships()
+            ->wherePivot('status', 'active')
+            ->with('owner')
+            ->get();
+
+        foreach ($clinicMemberships as $clinic) {
+            if ($clinic->owner && $clinic->owner->id !== $this->id) {
+                $ownerSub = $clinic->owner->getActiveSubscription();
+                if ($ownerSub && $ownerSub->isActive()) {
+                    // Choose the highest tier / highest value plan if associated with multiple clinics
+                    if (! $inheritedSub || ($ownerSub->plan?->price_monthly ?? 0) > ($inheritedSub->plan?->price_monthly ?? 0)) {
+                        $inheritedSub = $ownerSub;
+                    }
+                }
+            }
+        }
+
+        // 3. Resolve precedence when doctor has both direct and inherited subscriptions
+        if ($directSub && $inheritedSub) {
+            // If the inherited subscription is a Clinic Group Plan (clinic_multi_doctor) or higher tier,
+            // the associate enjoys the superior Clinic Group Plan benefits.
+            if ($inheritedSub->plan?->tier_type === 'clinic_multi_doctor' && $directSub->plan?->tier_type !== 'clinic_multi_doctor') {
+                return $inheritedSub;
+            }
+
+            // Or if inherited plan price is higher than direct plan
+            if (($inheritedSub->plan?->price_monthly ?? 0) > ($directSub->plan?->price_monthly ?? 0)) {
+                return $inheritedSub;
+            }
+
+            return $directSub;
+        }
+
+        return $directSub ?: $inheritedSub;
+    }
+
+    /**
      * Check whether this user has an active doctor subscription.
      */
     public function hasActiveSubscription(): bool
     {
-        if (! $this->subscription) {
-            return false;
-        }
-
-        if (! in_array($this->subscription->status, ['active', 'trialing'])) {
-            return false;
-        }
-
-        if ($this->subscription->ends_at && $this->subscription->ends_at->isPast()) {
-            return false;
-        }
-
-        return true;
+        return $this->getActiveSubscription() !== null;
     }
 
     /**
@@ -229,16 +290,25 @@ class User extends Authenticatable
      */
     public function canAccessFeature(string $featureKey): bool
     {
-        if (! $this->hasActiveSubscription()) {
-            return false;
+        // 1. Check primary active subscription
+        $subscription = $this->getActiveSubscription();
+        if ($subscription?->plan?->hasFeature($featureKey)) {
+            return true;
         }
 
-        $plan = $this->subscription->plan;
-        if (! $plan) {
-            return false;
+        // 2. Also check active associate clinic membership if direct subscription lacks the feature
+        $clinicMembership = $this->clinicMemberships()
+            ->wherePivot('status', 'active')
+            ->first();
+
+        if ($clinicMembership && $clinicMembership->owner) {
+            $inheritedSub = $clinicMembership->owner->getActiveSubscription();
+            if ($inheritedSub?->plan?->hasFeature($featureKey)) {
+                return true;
+            }
         }
 
-        return $plan->hasFeature($featureKey);
+        return false;
     }
 
     /**
@@ -255,5 +325,127 @@ class User extends Authenticatable
     public function canBeRecommended(): bool
     {
         return $this->canAccessFeature('show_in_recommendation');
+    }
+
+    /**
+     * Get the clinics owned by this doctor.
+     *
+     * @return HasMany<Clinic, $this>
+     */
+    public function ownedClinics(): HasMany
+    {
+        return $this->hasMany(Clinic::class, 'owner_doctor_id');
+    }
+
+    /**
+     * Get the clinic memberships where this doctor is an associate or member.
+     *
+     * @return BelongsToMany<Clinic, $this>
+     */
+    public function clinicMemberships(): BelongsToMany
+    {
+        return $this->belongsToMany(Clinic::class, 'clinic_doctors', 'doctor_user_id', 'clinic_id')
+            ->withPivot('role', 'status')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get the maximum allowed clinics for this doctor's subscription plan.
+     * Direct plan governs how many clinics the doctor can personally create/own.
+     * Returns null if unlimited, or integer limit (default 1).
+     */
+    public function getMaxClinics(): ?int
+    {
+        $directSub = $this->getDirectSubscription();
+        if ($directSub && $directSub->plan) {
+            return $directSub->plan->max_clinics ?? 1;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Check whether the doctor is eligible to have secretary accounts.
+     */
+    public function canHaveSecretary(): bool
+    {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
+            return false;
+        }
+
+        $plan = $subscription->plan;
+
+        // Must either have can_have_secretary feature or max_secretaries > 0 (or null for unlimited)
+        return $this->canAccessFeature('can_have_secretary') || ($plan->max_secretaries === null || $plan->max_secretaries > 0);
+    }
+
+    /**
+     * Get the maximum allowed secretaries for this doctor's subscription plan.
+     * Returns null if unlimited, or integer limit.
+     */
+    public function getMaxSecretaries(): ?int
+    {
+        $subscription = $this->getActiveSubscription();
+        if (! $subscription || ! $subscription->plan) {
+            return 0;
+        }
+
+        return $subscription->plan->max_secretaries;
+    }
+
+    /**
+     * Get the maximum allowed doctors for this doctor's subscription plan.
+     * Direct plan governs how many seats the doctor can delegate.
+     * Returns null if unlimited, or integer limit (default 1).
+     */
+    public function getMaxDoctors(): ?int
+    {
+        $directSub = $this->getDirectSubscription();
+        if ($directSub && $directSub->plan) {
+            return $directSub->plan->max_doctors ?? 1;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Check whether the doctor can add associate doctors.
+     */
+    public function canAddDoctor(): bool
+    {
+        $maxDoctors = $this->getMaxDoctors();
+
+        return $maxDoctors === null || $maxDoctors > 1;
+    }
+
+    /**
+     * Get the doctor seat quota statistics.
+     *
+     * @return array{max_doctors: ?int, used_seats: int, available_seats: ?int, can_add: bool}
+     */
+    public function getDoctorSeatUsage(): array
+    {
+        $maxDoctors = $this->getMaxDoctors();
+
+        // Count distinct active associate doctors across all clinics owned by this doctor
+        $distinctAssociatesCount = DB::table('clinic_doctors')
+            ->join('clinics', 'clinic_doctors.clinic_id', '=', 'clinics.id')
+            ->where('clinics.owner_doctor_id', $this->id)
+            ->where('clinic_doctors.status', 'active')
+            ->distinct('clinic_doctors.doctor_user_id')
+            ->count('clinic_doctors.doctor_user_id');
+
+        // Total used seats = 1 (Owner) + distinct associates
+        $usedSeats = 1 + $distinctAssociatesCount;
+        $availableSeats = $maxDoctors !== null ? max(0, $maxDoctors - $usedSeats) : null;
+        $canAdd = $maxDoctors === null || $availableSeats > 0;
+
+        return [
+            'max_doctors' => $maxDoctors,
+            'used_seats' => $usedSeats,
+            'available_seats' => $availableSeats,
+            'can_add' => $canAdd,
+        ];
     }
 }

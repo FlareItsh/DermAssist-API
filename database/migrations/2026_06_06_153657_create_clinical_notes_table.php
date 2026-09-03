@@ -18,24 +18,24 @@ return new class extends Migration
             $table->foreignId('doctor_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('patient_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('diagnosis_id')->nullable()->constrained('diagnoses')->nullOnDelete();
-            
+
             // Subjective
             $table->text('history_of_present_illness')->nullable();
             $table->text('systemic_symptoms')->nullable();
-            
+
             // Objective
             $table->text('physical_exam')->nullable();
-            
+
             // Assessment
             $table->text('differential_diagnosis')->nullable();
             $table->string('final_diagnosis')->nullable();
-            
+
             // Plan
             $table->text('prescription')->nullable();
             $table->text('patient_education')->nullable();
             $table->date('follow_up_date')->nullable();
             $table->text('follow_up_instructions')->nullable();
-            
+
             $table->timestamps();
         });
     }

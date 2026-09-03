@@ -37,22 +37,77 @@ class DoctorSubscriptionService
      */
     public function getMySubscription(User $user): JsonResponse
     {
-        $subscription = Subscription::with('plan.planFeatures')
-            ->where('user_id', $user->id)
-            ->whereIn('status', ['active', 'trialing'])
-            ->orderBy('created_at', 'desc')
-            ->first();
+        $subscription = $user->getActiveSubscription();
+
+        if (! $subscription) {
+            $subscription = Subscription::with('plan.planFeatures')
+                ->where('user_id', $user->id)
+                ->whereIn('status', ['active', 'trialing'])
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
+        if ($subscription && ! $subscription->relationLoaded('plan')) {
+            $subscription->load('plan.planFeatures');
+        }
 
         $invoices = PaymentInvoice::with('subscription.plan')
             ->where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $doctorSeatUsage = $user->role?->slug === 'doctor' ? $user->getDoctorSeatUsage() : null;
+
+        // Associate Clinic Membership Check
+        $associateCoverage = null;
+        $clinicMemberships = $user->clinicMemberships()
+            ->wherePivot('status', 'active')
+            ->with('owner')
+            ->get();
+
+        // Match the specific clinic membership whose owner sponsors the subscription
+        $sponsoringClinic = null;
+        if ($subscription && $subscription->user_id !== $user->id) {
+            $sponsoringClinic = $clinicMemberships->first(fn ($c) => $c->owner_doctor_id === $subscription->user_id);
+        }
+
+        if (! $sponsoringClinic) {
+            $sponsoringClinic = $clinicMemberships->first(fn ($c) => $c->owner?->getActiveSubscription() !== null);
+        }
+
+        if (! $sponsoringClinic) {
+            $sponsoringClinic = $clinicMemberships->first();
+        }
+
+        if ($sponsoringClinic && $sponsoringClinic->owner) {
+            $ownerSub = $sponsoringClinic->owner->getActiveSubscription();
+            $associateCoverage = [
+                'clinic_id' => $sponsoringClinic->id,
+                'clinic_uuid' => $sponsoringClinic->uuid,
+                'clinic_name' => $sponsoringClinic->name,
+                'owner_name' => trim($sponsoringClinic->owner->first_name.' '.$sponsoringClinic->owner->last_name),
+                'role' => $sponsoringClinic->pivot->role ?? 'associate',
+                'plan_name' => $ownerSub?->plan?->name ?? 'Clinic Group Plan',
+                'is_active' => $ownerSub !== null,
+            ];
+        }
+
+        $directSub = $user->getDirectSubscription();
+        if ($directSub && ! $directSub->relationLoaded('plan')) {
+            $directSub->load('plan.planFeatures');
+        }
+
+        $isInherited = $subscription && $subscription->user_id !== $user->id;
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'subscription' => $subscription ? new SubscriptionResource($subscription) : null,
+                'direct_subscription' => $directSub ? new SubscriptionResource($directSub) : null,
                 'invoices' => $invoices,
+                'doctor_seat_usage' => $doctorSeatUsage,
+                'is_inherited' => $isInherited,
+                'associate_coverage' => $associateCoverage,
             ],
         ]);
     }

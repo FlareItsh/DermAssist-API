@@ -11,7 +11,8 @@ class DoctorAvailabilityRepository
 {
     public function getAvailabilitiesForDoctor(User $doctor): Collection
     {
-        return DoctorAvailability::where('doctor_id', $doctor->id)
+        return DoctorAvailability::with('clinic')
+            ->where('doctor_id', $doctor->id)
             ->orderBy('available_date', 'asc')
             ->orderBy('start_time', 'asc')
             ->get();
