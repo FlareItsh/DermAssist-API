@@ -26,6 +26,13 @@ class ClinicResource extends JsonResource
             'geo_longitude' => $this->geo_longitude,
             'is_active' => (bool) $this->is_active,
             'is_owner' => $request->user() ? $this->owner_doctor_id === $request->user()->id : false,
+            'owner_doctor' => $this->owner ? [
+                'id' => $this->owner->id,
+                'uuid' => $this->owner->uuid,
+                'full_name' => trim($this->owner->first_name.' '.$this->owner->last_name),
+                'email' => $this->owner->email,
+            ] : null,
+            'my_role' => $this->pivot?->role ?? null,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

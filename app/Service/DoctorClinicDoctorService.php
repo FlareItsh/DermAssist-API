@@ -14,19 +14,79 @@ class DoctorClinicDoctorService
     ) {}
 
     /**
-     * Get all associate doctors and seat usage quota for the authenticated owner doctor.
+     * Get associate doctors and seat usage quota.
+     * If user is the owner, returns their delegated seats.
+     * If user is an associate doctor, returns the Practice Head details and all colleague doctors in the clinic group.
      */
     public function getClinicDoctors(User $user): JsonResponse
     {
         $this->ensureDoctorRole($user);
 
-        $seatUsage = $user->getDoctorSeatUsage();
-        $doctors = $this->clinicDoctorRepository->getDoctorsForOwner($user->id);
+        // 1. If user is the owner with a multi-doctor plan:
+        if ($user->canAddDoctor()) {
+            $seatUsage = $user->getDoctorSeatUsage();
+            $doctors = $this->clinicDoctorRepository->getDoctorsForOwner($user->id);
 
+            return response()->json([
+                'status' => 'success',
+                'is_owner' => true,
+                'owner' => null,
+                'sponsoring_clinic' => null,
+                'seat_usage' => $seatUsage,
+                'data' => ClinicDoctorResource::collection($doctors),
+            ]);
+        }
+
+        // 2. Check if user is an associate in any active clinic membership
+        $clinicMemberships = $user->clinicMemberships()
+            ->wherePivot('status', 'active')
+            ->with(['owner.subscriptions.plan'])
+            ->get();
+
+        $activeMembership = $clinicMemberships->first(fn ($c) => $c->owner && $c->owner->getActiveSubscription() !== null)
+            ?: $clinicMemberships->first();
+
+        if ($activeMembership && $activeMembership->owner) {
+            $owner = $activeMembership->owner;
+            $ownerSeatUsage = $owner->getDoctorSeatUsage();
+            // Get all associate doctors across this owner's clinics
+            $associatedDoctors = $this->clinicDoctorRepository->getDoctorsForOwner($owner->id);
+
+            return response()->json([
+                'status' => 'success',
+                'is_owner' => false,
+                'owner' => [
+                    'id' => $owner->id,
+                    'uuid' => $owner->uuid,
+                    'first_name' => $owner->first_name,
+                    'last_name' => $owner->last_name,
+                    'full_name' => trim($owner->first_name.' '.$owner->last_name),
+                    'email' => $owner->email,
+                    'prc_number' => $owner->prc_number,
+                    'affiliation' => $owner->affiliation,
+                    'avatar_path' => $owner->avatar_path,
+                    'plan_name' => $owner->getActiveSubscription()?->plan?->name ?? 'Clinic Group Plan',
+                ],
+                'sponsoring_clinic' => [
+                    'id' => $activeMembership->id,
+                    'uuid' => $activeMembership->uuid,
+                    'name' => $activeMembership->name,
+                    'address' => $activeMembership->address,
+                    'role' => $activeMembership->pivot->role ?? 'associate',
+                ],
+                'seat_usage' => $ownerSeatUsage,
+                'data' => ClinicDoctorResource::collection($associatedDoctors),
+            ]);
+        }
+
+        // 3. Fallback for solo doctor (single seat, no associates)
         return response()->json([
             'status' => 'success',
-            'seat_usage' => $seatUsage,
-            'data' => ClinicDoctorResource::collection($doctors),
+            'is_owner' => true,
+            'owner' => null,
+            'sponsoring_clinic' => null,
+            'seat_usage' => $user->getDoctorSeatUsage(),
+            'data' => [],
         ]);
     }
 

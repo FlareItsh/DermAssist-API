@@ -13,7 +13,8 @@ class ClinicRepository
      */
     public function getClinicsForDoctor(User $doctor): Collection
     {
-        return Clinic::where('owner_doctor_id', $doctor->id)
+        return Clinic::with('owner')
+            ->where('owner_doctor_id', $doctor->id)
             ->orWhereHas('doctors', function ($query) use ($doctor) {
                 $query->where('doctor_user_id', $doctor->id)
                     ->where('status', 'active');
