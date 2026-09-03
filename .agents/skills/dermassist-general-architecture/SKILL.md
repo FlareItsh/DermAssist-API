@@ -81,6 +81,12 @@ _Executed via `views/scripts/make-service.js`. Generates TypeScript service clas
     - `border-border`, `border-sidebar-border`
     - `text-destructive`
 
+### Strictly No Native Browser Prompts (`alert`, `confirm`, `prompt`)
+
+- **NEVER** use browser popups: `alert()`, `confirm()`, `prompt()`, `window.alert()`, `window.confirm()`.
+- **Destructive / Confirmation Dialogs**: **ALWAYS** use `<AppModalConfirmation>` (`views/app/components/App/Modal/Confirmation.vue`).
+- **User Feedback & Status Updates**: **ALWAYS** use `toast` from `'vue-sonner'` (`toast.success()`, `toast.error()`, `toast.warning()`).
+
 ---
 
 ## 4. Nuxt Modules Usage & Conventions (`nuxt.config.ts`)
