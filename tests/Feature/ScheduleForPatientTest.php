@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\DoctorAvailability;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +21,16 @@ it('allows a doctor to schedule a new appointment for a patient', function () {
     $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
     $patient = User::factory()->create(['role_id' => $patientRole->id]);
 
-    $scheduledAt = now()->addDays(3)->format('Y-m-d H:i:s');
+    $targetDate = now()->addDays(3);
+    $scheduledAt = $targetDate->copy()->setTime(10, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDate->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
 
     $response = $this->actingAs($doctor)->postJson('/api/appointments/schedule-for-patient', [
         'patient_id' => $patient->id,

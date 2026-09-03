@@ -26,16 +26,31 @@ class AppointmentService
         $this->availabilityService = $availabilityService;
     }
 
-    public function getAppointmentsForUser($user)
+    public function getAppointmentsForUser($user, $doctorId = null, $doctorUuid = null)
     {
-        $appointments = $this->appointmentRepository->getAppointmentsForUser($user);
+        $appointments = $this->appointmentRepository->getAppointmentsForUser($user, $doctorId, $doctorUuid);
 
-        $appointments->each(function ($appointment) {
+        $isStaff = $user->role?->slug === 'admin'
+            || ($user->role?->slug === 'doctor' && (! $doctorId || $doctorId == $user->id))
+            || ($user->role?->slug === 'secretary' && (! $doctorId || $doctorId == $user->doctor_id));
+
+        $appointments->each(function ($appointment) use ($user, $isStaff, $doctorId, $doctorUuid) {
             $conversation = Conversation::where('doctor_id', $appointment->doctor_id)
                 ->where('patient_id', $appointment->patient_id)
                 ->first();
             if ($conversation) {
                 $appointment->conversation_uuid = $conversation->uuid;
+            }
+
+            // If queried specifically for a doctor by a non-staff user (e.g. another patient), sanitize private patient details
+            if (! $isStaff && ($doctorId || $doctorUuid) && $appointment->patient_id !== $user->id) {
+                $appointment->unsetRelation('diagnosis');
+                $appointment->unsetRelation('clinicalNote');
+                $appointment->setRelation('patient', new User([
+                    'id' => 0,
+                    'first_name' => 'Booked',
+                    'last_name' => 'Patient',
+                ]));
             }
         });
 
@@ -47,6 +62,10 @@ class AppointmentService
         $doctor = User::find($data['doctor_id']);
         if (! $doctor || $doctor->role?->slug !== 'doctor') {
             abort(404, 'Doctor not found.');
+        }
+
+        if (! empty($data['scheduled_at'])) {
+            $this->checkAppointmentConflict($data['doctor_id'], $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
         }
 
         // Verify if doctor can receive new appointments from this patient
@@ -146,6 +165,38 @@ class AppointmentService
         $startTime = Carbon::parse($start);
         $endTime = $end ? Carbon::parse($end) : (clone $startTime)->addHour();
 
+        $startTimeStr = $startTime->format('H:i:s');
+        $endTimeStr = $endTime->format('H:i:s');
+        $formattedDate = $startTime->format('M d, Y');
+        $formattedStart = $startTime->format('g:i A');
+        $formattedEnd = $endTime->format('g:i A');
+
+        // 1. Verify that appointment is strictly within doctor's active duty hours
+        $isOnDuty = $this->availabilityService->isDoctorOnDuty($doctorId, $startTime, $startTimeStr, $endTimeStr);
+        if (! $isOnDuty) {
+            $dutySlots = $this->availabilityService->getDutySlotsForDate($doctorId, $startTime);
+
+            if ($dutySlots->isEmpty()) {
+                abort(422, "Conflict detected: The doctor has no scheduled duty hours on {$formattedDate}. Please select an available date.");
+            }
+
+            $dutyRanges = $dutySlots->map(function ($slot) {
+                return Carbon::parse($slot->start_time)->format('g:i A').' – '.Carbon::parse($slot->end_time)->format('g:i A');
+            })->join(', ');
+
+            abort(422, "Conflict detected: The selected time ({$formattedStart} to {$formattedEnd}) is outside the doctor's duty hours on {$formattedDate}. Active duty hours: {$dutyRanges}.");
+        }
+
+        // 2. Verify that appointment does not overlap with any blocked hours (lunch, transit, breaks, etc.)
+        $blockedSlot = $this->availabilityService->hasBlockedOverlap($doctorId, $startTime, $startTimeStr, $endTimeStr);
+        if ($blockedSlot) {
+            $blockedStart = Carbon::parse($blockedSlot->start_time)->format('g:i A');
+            $blockedEnd = Carbon::parse($blockedSlot->end_time)->format('g:i A');
+            $reason = $blockedSlot->location_name ? " ({$blockedSlot->location_name})" : '';
+            abort(422, "Conflict detected: The selected time ({$formattedStart} to {$formattedEnd}) overlaps with doctor's blocked hours{$reason} from {$blockedStart} to {$blockedEnd}. Please select a different time slot.");
+        }
+
+        // 3. Verify that appointment does not overlap with existing scheduled appointments
         $existingAppointments = Appointment::where('doctor_id', $doctorId)
             ->whereIn('status', ['scheduled', 'reschedule_proposed', 'reschedule_requested'])
             ->whereNotNull('scheduled_at')
@@ -157,10 +208,9 @@ class AppointmentService
             $existingEnd = $appt->scheduled_end_at ? Carbon::parse($appt->scheduled_end_at) : (clone $existingStart)->addHour();
 
             if ($startTime->lt($existingEnd) && $endTime->gt($existingStart)) {
-                $formattedStart = $existingStart->format('g:i A');
-                $formattedEnd = $existingEnd->format('g:i A');
-                $formattedDate = $existingStart->format('M d, Y');
-                abort(422, "Conflict detected: The doctor already has an appointment scheduled on {$formattedDate} from {$formattedStart} to {$formattedEnd}. Please select a different time slot.");
+                $existingStartFmt = $existingStart->format('g:i A');
+                $existingEndFmt = $existingEnd->format('g:i A');
+                abort(422, "Conflict detected: The doctor already has an appointment scheduled on {$formattedDate} from {$existingStartFmt} to {$existingEndFmt}. Please select a different time slot.");
             }
         }
     }

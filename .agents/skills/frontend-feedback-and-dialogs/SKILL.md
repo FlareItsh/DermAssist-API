@@ -122,3 +122,34 @@ const handleExecuteDelete = async () => {
 ## 4. Complex Form Dialogs (`AppModal`)
 
 For detailed forms (adding clinics, assigning doctors, scheduling appointments), use `<AppModal>` with custom inputs and `<AppButton>` controls. Never mix native dialogs with modal forms.
+
+---
+
+## 5. Notification Inspection & Detail Modal Standard (`AppModalNotificationDetail`)
+
+When users interact with in-app notifications (via the Utility Bar bell dropdown or the dedicated Notifications page):
+
+1. **Modal Inspection Over Immediate Navigation**:
+   - **Never** jump routes immediately or show an abrupt native dialog.
+   - **Always** open `<AppModalNotificationDetail>` (`views/app/components/App/Modal/NotificationDetail.vue`) to allow the user to review the full details and context.
+
+2. **Clinic Seat Invitations (`type === 'clinic_invitation'`)**:
+   - Must render the inviting head doctor's profile card (avatar, full name, email, PRC license number).
+   - Must show the clinic branch name, physical address, and assigned role badge.
+   - Must list the granted clinical subscription privileges.
+   - Must offer explicit action buttons:
+     - **Accept Invitation**: Calls `acceptInvitation(id)` with loading state -> grants active subscription privileges upon success.
+     - **Decline**: Calls `declineInvitation(id)` with loading state -> frees seat quota.
+     - **Decide Later**: Closes modal without altering invitation status.
+
+3. **General System & Appointment Notifications**:
+   - Displays full descriptive text, category badge, and formatted timestamp.
+   - Provides a direct primary CTA button to navigate to the referenced record or conversation if `to` is present.
+
+4. **Read State Persistence**:
+   - Opening a notification in `<AppModalNotificationDetail>` must automatically mark that notification as read via `markAsRead(notification.id)`.
+
+5. **"Show All Notifications" & Dedicated Pages**:
+   - The notification bell dropdown footer must provide a **"Show All Notifications"** link.
+   - Routes: `/doctor/notifications`, `/patient/notifications`, `/secretary/notifications`, `/notifications`.
+   - Features filter tabs (**All**, **Unread**, **Invitations**), bulk "Mark all as read", and triggers the same `<AppModalNotificationDetail>` on item click.

@@ -137,14 +137,31 @@ To prevent visual drift and maintain a unified design language:
 
 ### 2. Navigation & Buttons
 
-- **Buttons**: Always use `<AppButton variant="solid"|"outline"|"ghost"|"soft"` size="sm"|"md"|"lg">`instead of raw`<button>` HTML elements.
+- **Buttons**: Always use `<AppButton variant="solid"|"outline"|"ghost"|"soft"|"destructive"|"unstyled"` size="sm"|"md"|"lg">` instead of raw `<button>` or unstyled `<NuxtLink>` HTML elements.
+- **Button Styling Safety (Tailwind v4 Specific)**:
+  - **NEVER** pass conflicting color utilities (like `bg-white` or `text-indigo-950`) to an `<AppButton variant="solid">`. Because `variant="solid"` injects `text-primary-foreground` (white), passing `bg-white` results in invisible white-on-white text until hovered.
+  - For solid primary buttons, use `<AppButton variant="solid" size="md">` with its default tokens (`bg-primary text-primary-foreground hover:bg-primary-dark`).
+  - If custom colors are strictly necessary on dark cards, use `variant="unstyled"` with your custom classes so `variantClasses` do not clash.
+  - Ensure high visual contrast in both idle and hover states.
 - **Badges**: Always use `<AppBadge color="primary"|"success"|"warning"|"danger"|"info"|"gray"` variant="subtle"|"solid"|"outline">`.
 - **Alerts & Banners**: Always use `<AppAlert type="warning"|"error"|"info"|"success" title="..." description="...">`.
 - **Pagination**: Always use `<AppPagination v-model:current-page="..." :total-items="..." :per-page="..." />` on paginated lists.
 - **Search Inputs**: Always use `<AppSearch v-model="..." placeholder="..." />` on search toolbars.
 
-### 3. Typography & Heading Hierarchy
+### 3. Strictly No Unicode Emojis in Navigation or Buttons
+- **Prohibition**: **NEVER** use unicode emojis (e.g. 🏢, 👥, 🗓️, 💳, ⚙️) in sidebar links, tab menus, headers, buttons, or badge labels.
+- **Icon Standard**: Always pair navigation items with standardized `<Icon name="lucide:..." />` icons.
+
+### 4. Typography & Heading Hierarchy
 
 - **Page Titles**: `text-2xl md:text-3xl font-black text-foreground`
 - **Section Headers**: `text-lg md:text-xl font-bold text-foreground`
 - **Card Subheaders / Meta**: `text-xs font-semibold text-muted-foreground`
+
+### 5. Standardized Doctor Settings Navigation
+In `views/app/pages/Doctor/profile.vue`, adhere strictly to the following approved tab names and descriptions:
+1. **`Profile & Credentials`**: `desc: 'Personal details & PRC license'` (Note: Freeform "Affiliation" is removed; clinical affiliations are grounded strictly in clinic memberships).
+2. **`Clinics & Doctor Team`**: `desc: isOwner ? 'Clinic locations & associate doctor seats' : 'Clinic locations & affiliated doctors'`.
+3. **`Schedule & Availability`**: `desc: 'Duty hours, blocked dates & timetable'`.
+4. **`Subscription & Plan`**: `desc: isSubInherited ? 'Clinic tier & sponsored access' : 'Plan status, quotas & billing'`.
+5. **`Account & Security`**: `desc: 'Verification & session security'`.

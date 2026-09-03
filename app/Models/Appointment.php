@@ -27,6 +27,11 @@ class Appointment extends Model
         'scheduled_end_at' => 'datetime',
     ];
 
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d\TH:i:sP');
+    }
+
     protected static function boot()
     {
         parent::boot();
