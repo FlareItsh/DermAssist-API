@@ -121,4 +121,19 @@ class DoctorAvailabilityService
             'alternatives' => $alternatives,
         ];
     }
+
+    public function isDoctorOnDuty(int $doctorId, Carbon $date, string $startTime, string $endTime): bool
+    {
+        return $this->repository->isDoctorOnDuty($doctorId, $date, $startTime, $endTime);
+    }
+
+    public function hasBlockedOverlap(int $doctorId, Carbon $date, string $startTime, string $endTime): ?DoctorAvailability
+    {
+        return $this->repository->hasBlockedOverlap($doctorId, $date, $startTime, $endTime);
+    }
+
+    public function getDutySlotsForDate(int $doctorId, Carbon $date): Collection
+    {
+        return $this->repository->getDutySlotsForDate($doctorId, $date);
+    }
 }

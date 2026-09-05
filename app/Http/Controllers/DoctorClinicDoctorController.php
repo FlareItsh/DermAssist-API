@@ -54,4 +54,28 @@ class DoctorClinicDoctorController extends Controller
     {
         return $this->doctorClinicDoctorService->removeDoctor($request->user(), $id);
     }
+
+    /**
+     * Get pending invitations for the authenticated doctor.
+     */
+    public function invitations(Request $request): JsonResponse
+    {
+        return $this->doctorClinicDoctorService->getPendingInvitations($request->user());
+    }
+
+    /**
+     * Accept a pending clinic seat invitation.
+     */
+    public function acceptInvitation(Request $request, int $id): JsonResponse
+    {
+        return $this->doctorClinicDoctorService->acceptInvitation($request->user(), $id);
+    }
+
+    /**
+     * Decline a pending clinic seat invitation.
+     */
+    public function declineInvitation(Request $request, int $id): JsonResponse
+    {
+        return $this->doctorClinicDoctorService->declineInvitation($request->user(), $id);
+    }
 }

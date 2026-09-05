@@ -63,6 +63,36 @@ class DoctorAvailabilityRepository
         return ! $isBlocked;
     }
 
+    public function getDutySlotsForDate(int $doctorId, Carbon $date): Collection
+    {
+        return DoctorAvailability::with('clinic')
+            ->where('doctor_id', $doctorId)
+            ->whereDate('available_date', $date->toDateString())
+            ->where('is_available', true)
+            ->orderBy('start_time', 'asc')
+            ->get();
+    }
+
+    public function isDoctorOnDuty(int $doctorId, Carbon $date, string $startTime, string $endTime): bool
+    {
+        return DoctorAvailability::where('doctor_id', $doctorId)
+            ->whereDate('available_date', $date->toDateString())
+            ->where('is_available', true)
+            ->where('start_time', '<=', $startTime)
+            ->where('end_time', '>=', $endTime)
+            ->exists();
+    }
+
+    public function hasBlockedOverlap(int $doctorId, Carbon $date, string $startTime, string $endTime): ?DoctorAvailability
+    {
+        return DoctorAvailability::where('doctor_id', $doctorId)
+            ->whereDate('available_date', $date->toDateString())
+            ->where('is_available', false)
+            ->where('start_time', '<', $endTime)
+            ->where('end_time', '>', $startTime)
+            ->first();
+    }
+
     public function getNextAvailableDate(int $doctorId, Carbon $fromDate): ?DoctorAvailability
     {
         $dateStr = $fromDate->toDateString();

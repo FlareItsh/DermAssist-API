@@ -6,11 +6,21 @@ use App\Models\Appointment;
 
 class AppointmentRepository
 {
-    public function getAppointmentsForUser($user)
+    public function getAppointmentsForUser($user, $doctorId = null, $doctorUuid = null)
     {
         $query = Appointment::with(['doctor', 'patient', 'diagnosis', 'clinicalNote.diagnosis']);
 
-        if ($user->role->slug === 'doctor') {
+        if ($doctorId || $doctorUuid) {
+            $query->whereHas('doctor', function ($q) use ($doctorId, $doctorUuid) {
+                if ($doctorId) {
+                    $q->where('id', $doctorId);
+                }
+                if ($doctorUuid) {
+                    $q->where('uuid', $doctorUuid);
+                }
+            });
+            $query->whereIn('status', ['scheduled', 'reschedule_proposed', 'reschedule_requested']);
+        } elseif ($user->role->slug === 'doctor') {
             $query->where('doctor_id', $user->id);
         } elseif ($user->role->slug === 'secretary') {
             $query->where('doctor_id', $user->doctor_id);

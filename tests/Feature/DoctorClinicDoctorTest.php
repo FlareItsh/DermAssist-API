@@ -112,7 +112,7 @@ test('allows assigning an associate doctor to a clinic branch within quota', fun
         'clinic_id' => $clinic->id,
         'doctor_user_id' => $associate->id,
         'role' => 'associate',
-        'status' => 'active',
+        'status' => 'pending',
     ]);
 });
 
@@ -229,15 +229,67 @@ test('assigned associate doctor inherits active subscription capabilities', func
     // Before assignment: associate has no active subscription
     expect($associate->getActiveSubscription())->toBeNull();
 
-    // Assign to clinic
+    // Owner sends invitation
     Sanctum::actingAs($owner);
-    $this->postJson('/api/doctor/clinic-doctors', [
+    $assignRes = $this->postJson('/api/doctor/clinic-doctors', [
         'clinic_id' => $clinic->id,
         'doctor_id' => $associate->id,
     ])->assertStatus(201);
 
-    // After assignment: associate resolves owner's active subscription
+    $pivotId = $assignRes->json('data.pivot_id');
+
+    // While invitation is pending: associate does NOT inherit subscription yet
+    expect($associate->fresh()->getActiveSubscription())->toBeNull();
+
+    // Associate checks pending invitations
+    Sanctum::actingAs($associate);
+    $invitesRes = $this->getJson('/api/doctor/clinic-doctors/invitations')->assertStatus(200);
+    expect($invitesRes->json('data'))->toHaveCount(1);
+    expect($invitesRes->json('data.0.pivot_id'))->toBe($pivotId);
+
+    // Associate accepts invitation
+    $this->postJson("/api/doctor/clinic-doctors/invitations/{$pivotId}/accept")->assertStatus(200);
+
+    // After accepting: associate resolves owner's active subscription
     $associateFresh = $associate->fresh();
     expect($associateFresh->getActiveSubscription())->not->toBeNull();
     expect($associateFresh->getActiveSubscription()->id)->toBe($subscription->id);
+});
+
+test('doctor can decline a clinic seat invitation', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+
+    $owner = User::factory()->create(['role_id' => $doctorRole->id]);
+    $associate = User::factory()->create(['role_id' => $doctorRole->id]);
+    $clinic = Clinic::factory()->create(['owner_doctor_id' => $owner->id]);
+
+    $plan = Plan::factory()->create([
+        'max_doctors' => 5,
+    ]);
+
+    Subscription::factory()->create([
+        'user_id' => $owner->id,
+        'plan_id' => $plan->id,
+        'status' => 'active',
+    ]);
+
+    Sanctum::actingAs($owner);
+    $assignRes = $this->postJson('/api/doctor/clinic-doctors', [
+        'clinic_id' => $clinic->id,
+        'doctor_id' => $associate->id,
+    ])->assertStatus(201);
+
+    $pivotId = $assignRes->json('data.pivot_id');
+
+    // Associate declines invitation
+    Sanctum::actingAs($associate);
+    $this->postJson("/api/doctor/clinic-doctors/invitations/{$pivotId}/decline")->assertStatus(200);
+
+    // Record removed from database
+    $this->assertDatabaseMissing('clinic_doctors', [
+        'id' => $pivotId,
+    ]);
+
+    // Seat count frees up
+    expect($owner->fresh()->getDoctorSeatUsage()['used_seats'])->toBe(1);
 });

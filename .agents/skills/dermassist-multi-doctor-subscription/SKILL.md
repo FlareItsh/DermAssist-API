@@ -28,26 +28,35 @@ graph TD
 
 1. **Clinic Creation**:
    - When a head doctor subscribes, their clinic profile is created in the `clinics` table with `owner_doctor_id = owner.id`.
-2. **Assigning an Associate Doctor**:
-   - The owner opens their **Clinic Team** portal (`/doctor/clinic/doctors`).
+2. **Inviting an Associate Doctor (Invitation Lifecycle)**:
+   - The owner opens their **Clinics & Doctor Team** portal (`/doctor/profile?tab=clinics`).
    - The owner searches for a verified doctor by **Email, Name, or PRC Number** (or invites a new doctor via email).
-   - Clicking **"Add to Clinic Seat"** inserts a record into `clinic_doctors`:
+   - Clicking **"Send Invitation"** inserts a record into `clinic_doctors` with `status = 'pending'`:
      ```sql
      INSERT INTO clinic_doctors (clinic_id, doctor_user_id, role, status) 
-     VALUES (1, 42, 'associate', 'active');
+     VALUES (1, 42, 'associate', 'pending');
      ```
-3. **Data Privacy & Independent Doctor Identity**:
+   - **Seat Quota Reservation**: A `pending` invitation holds a seat allocation against `max_doctors` (`whereIn('status', ['active', 'pending'])`) to prevent over-inviting.
+   - **Owner Roster Badge**: Shows an amber **`Invitation Pending`** badge on the owner's roster until accepted.
+3. **Doctor Acceptance & Subscription Activation**:
+   - The invited doctor receives a **Clinic Seat Invitation** notification in their bell.
+   - Clicking the notification opens the **Notification Detail Modal** (`AppModalNotificationDetail`) showing the inviting doctor's credentials, clinic branch, and granted privileges.
+   - **Accept**: Status is updated to `'active'`, and the doctor immediately inherits the owner's active subscription features.
+   - **Decline**: The invitation row is deleted, immediately freeing up the seat quota back into the owner's available pool.
+   - **No Premature Feature Inheritance**: An associate doctor does **NOT** inherit the owner's subscription features while their status is `pending`.
+4. **Data Privacy & Independent Doctor Identity**:
    - **No Shared Passwords / No Merged Accounts**: Each associate doctor logs in with their own individual credentials.
    - **Individual Medical License**: Each doctor's PRC license number and credentials appear on their clinical reports.
    - **Individual Schedule & Patients**: Each doctor manages their own calendar availability, appointment slots, and private patient chat threads.
-4. **Subscription Inheritance**:
-   - Associate doctors do **NOT** enter credit card or GCash details.
-   - When an associate doctor uses DermAssist, the system detects their active membership in the clinic and grants them full subscription features paid for by the Clinic Owner.
-5. **Seat Revocation & Doctor Departure**:
-   - If a doctor leaves the clinic, the owner clicks **"Remove Seat"**.
-   - The `clinic_doctors` link is removed or marked `revoked`.
-   - The seat is immediately freed up for the owner to assign to another doctor.
-   - The departing doctor simply loses inherited access; **none of their past medical records or patient notes are deleted**.
+   - **Affiliation Grounding**: Doctor clinical affiliations are grounded strictly in their **Clinics & Doctor Team** memberships rather than arbitrary text fields in personal profile settings.
+5. **Subscription Inheritance**:
+   - Once the invitation is **Accepted** (`status = 'active'`), the doctor does **NOT** pay or enter billing details.
+   - The system detects their active clinic membership and grants them full subscription features paid for by the Clinic Owner.
+6. **Seat Revocation & Doctor Departure**:
+   - If a doctor leaves the clinic, the owner clicks **"Remove Doctor"** (using `<AppModalConfirmation>`).
+   - The `clinic_doctors` record is deleted or marked `revoked`.
+   - The seat is immediately freed up for the owner to invite another doctor.
+   - The departing doctor loses inherited access; **none of their past medical records or patient notes are deleted**.
 
 ---
 
@@ -114,25 +123,33 @@ public function canAccessFeature(string $featureKey): bool
 ## 4. Clinic Seat Management & Invitation Workflow
 
 ### A. Inviting an Associate Doctor:
-1. **Clinic Owner** visits `/doctor/clinic/doctors` (or Clinic Settings).
-2. Clicks **"Invite Associate Doctor"** and inputs the doctor's email or searches verified doctors.
-3. System checks:
+1. **Clinic Owner** visits `/doctor/profile?tab=clinics` (**Clinics & Doctor Team**).
+2. Clicks **"Invite Colleague Doctor"** and searches verified doctors via `GET /api/doctor/clinic-doctors/search?query=...`.
+3. Selects the doctor, assigns their clinic branch and role (`associate`, `resident`, `consultant`), and clicks **"Send Invitation"** (`POST /api/doctor/clinic-doctors`).
+4. System checks quota including pending invites:
    ```php
-   $activeSeatsCount = ClinicDoctor::where('clinic_id', $clinic->id)->where('status', 'active')->count();
+   $assignedSeats = ClinicDoctor::where('clinic_id', $clinic->id)
+       ->whereIn('status', ['active', 'pending'])
+       ->count();
    $maxSeats = $owner->subscription->plan->max_doctors;
-   if ($maxSeats !== null && $activeSeatsCount >= $maxSeats) {
-       abort(403, "You have reached your plan limit of {$maxSeats} doctor seats.");
+   if ($maxSeats !== null && $assignedSeats >= $maxSeats) {
+       return response()->json(['message' => "You have reached your limit of {$maxSeats} doctor seats."], 422);
    }
    ```
-4. Creates `clinic_doctors` record with `status: 'pending_invitation'` or directly `'active'`.
+5. Inserts `clinic_doctors` record with `status: 'pending'`. The owner's roster displays **`Invitation Pending`** (amber pill).
 
-### B. Associate Doctor Experience:
-1. When invited, the doctor receives an in-app notification: *"Dr. Santos invited you to join Makati Skin Clinic under their Clinic Group Plan."*
-2. Upon accepting, their status becomes `active`.
-3. In their `/doctor/subscription` view, they see:
-   - **Plan Type**: `Clinic Member (Covered by Makati Skin Clinic)`
-   - **Billing**: Handled by Clinic Owner.
-   - **Features**: Full scan access, recommendation listing, and reports.
+### B. Associate Doctor Experience & Resolution:
+1. **In-App Notification**: The invited doctor's bell displays: *"Clinic Seat Invitation: Dr. [Owner] invited you to join [Clinic] under their Clinic Group Plan."*
+2. **Notification Detail Modal**: Clicking the notification opens `<AppModalNotificationDetail>` with:
+   - Sponsoring Doctor details (avatar, name, email, PRC license).
+   - Clinic branch name & physical address.
+   - Clinical role and privileges list.
+   - Action buttons: **Accept Invitation** (solid primary), **Decline** (destructive outline), and **Decide Later** (ghost).
+3. **Acceptance** (`POST /api/doctor/clinic-doctors/invitations/{id}/accept`):
+   - Status updates from `'pending'` to `'active'`.
+   - Doctor immediately inherits the owner's active subscription features (AI scanner, teleconsultations, priority recommendations).
+4. **Decline** (`POST /api/doctor/clinic-doctors/invitations/{id}/decline`):
+   - The invitation row is deleted, releasing the reserved seat back to the owner's available pool.
 
 ---
 
@@ -179,16 +196,18 @@ public function canAccessFeature(string $featureKey): bool
 
 - **Page**: `views/app/pages/Doctor/profile.vue`
 - **Pattern**:
-  - **Left Inner Sidebar (`w-64`)**: Compact Doctor Identity Card + Tab navigation menu (`Profile & Bio`, `Clinic Branches`, `Duty & Away Presets`, `Subscription & Limits`, `Account & Security`).
-  - **Right Main Content (`flex-1 min-w-0`)**: Dedicated, focused workspaces for each tab with URL query deep-linking (`?tab=clinics`, `#blocked-dates`).
-  - **Subscription & Limits Tab**: Live status card with plan limits/quotas + High-contrast upgrade hero promoting Multi-Doctor Pooling, Secretary Delegation, and Multi-Branch Expansion.
+  - **Left Inner Sidebar (`w-64`)**: Compact Doctor Identity Card + Tab navigation menu (`Profile & Credentials`, `Clinics & Doctor Team`, `Schedule & Availability`, `Subscription & Plan`, `Account & Security`).
+  - **No Emoji Standard**: All sidebar links, buttons, and section titles must use clean text with `<Icon />` and no unicode emojis.
+  - **Right Main Content (`flex-1 min-w-0`)**: Dedicated, focused workspaces for each tab with URL query deep-linking (`?tab=clinics`, `#seats`).
+  - **Subscription & Plan Tab**: Live status card with plan limits/quotas + High-contrast upgrade hero promoting Multi-Doctor Pooling, Secretary Delegation, and Multi-Branch Expansion.
 
 ---
 
 ## 9. Summary Checklist for Adding Multi-Doctor Features
 
 1. **Plan Setup**: Set `tier_type: 'clinic_multi_doctor'`, `max_doctors: N` in `/admin/subscriptions/plans`.
-2. **User Capability Resolution**: Use `getEffectiveSubscription()` so all existing feature checks (`canExecuteScan`, `canBeRecommended`, etc.) automatically cover associate doctors.
-3. **Clinic Management UI**: Provide a seat-usage widget (`X / Y Doctor Seats Assigned`) with invite and revoke buttons in the Doctor Clinic Portal.
-4. **Duty & Schedule Sync**: Ensure new clinics integrate with `doctor_availabilities` and are reflected in `AppWeeklyTimetable`.
+2. **User Capability Resolution**: Use `getEffectiveSubscription()` so all existing feature checks (`canExecuteScan`, `canBeRecommended`, etc.) automatically cover associate doctors only when `status = 'active'`.
+3. **Invitation Flow**: Assigning creates `status = 'pending'`, holding quota. Associated doctor receives in-app notification and accepts via `AppModalNotificationDetail` before gaining subscription features.
+4. **Clinic Management UI**: Provide a seat-usage widget (`X / Y Doctor Seats Assigned`) with invite and revoke buttons in the Doctor Clinic Portal (`Clinics & Doctor Team`).
+5. **Duty & Schedule Sync**: Ensure new clinics integrate with `doctor_availabilities` and are reflected in `AppWeeklyTimetable`.
 

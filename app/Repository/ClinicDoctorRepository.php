@@ -148,4 +148,69 @@ class ClinicDoctorRepository
 
         return (bool) DB::table('clinic_doctors')->where('id', $pivotId)->delete();
     }
+
+    /**
+     * Get pending clinic seat invitations for a specific doctor.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getPendingInvitationsForDoctor(int $doctorId): array
+    {
+        $records = DB::table('clinic_doctors')
+            ->join('clinics', 'clinic_doctors.clinic_id', '=', 'clinics.id')
+            ->join('users as owners', 'clinics.owner_doctor_id', '=', 'owners.id')
+            ->where('clinic_doctors.doctor_user_id', $doctorId)
+            ->where('clinic_doctors.status', 'pending')
+            ->whereNull('owners.deleted_at')
+            ->select([
+                'clinic_doctors.id as pivot_id',
+                'clinic_doctors.role',
+                'clinic_doctors.status',
+                'clinic_doctors.created_at',
+                'clinics.id as clinic_id',
+                'clinics.uuid as clinic_uuid',
+                'clinics.name as clinic_name',
+                'clinics.address as clinic_address',
+                'owners.id as owner_id',
+                'owners.uuid as owner_uuid',
+                'owners.first_name as owner_first_name',
+                'owners.last_name as owner_last_name',
+                'owners.email as owner_email',
+                'owners.prc_number as owner_prc_number',
+                'owners.avatar_path as owner_avatar_path',
+            ])
+            ->orderBy('clinic_doctors.created_at', 'desc')
+            ->get();
+
+        return $records->toArray();
+    }
+
+    /**
+     * Accept a pending invitation by pivot ID for the invited doctor.
+     */
+    public function acceptInvitation(int $pivotId, int $doctorId): bool
+    {
+        $updated = DB::table('clinic_doctors')
+            ->where('id', $pivotId)
+            ->where('doctor_user_id', $doctorId)
+            ->where('status', 'pending')
+            ->update([
+                'status' => 'active',
+                'updated_at' => now(),
+            ]);
+
+        return $updated > 0;
+    }
+
+    /**
+     * Decline / delete a pending invitation by pivot ID for the invited doctor.
+     */
+    public function declineInvitation(int $pivotId, int $doctorId): bool
+    {
+        return (bool) DB::table('clinic_doctors')
+            ->where('id', $pivotId)
+            ->where('doctor_user_id', $doctorId)
+            ->where('status', 'pending')
+            ->delete();
+    }
 }
