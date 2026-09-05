@@ -186,17 +186,38 @@ class DoctorClinicDoctorService
     }
 
     /**
-     * Get pending clinic seat invitations for the authenticated doctor.
+     * Get pending clinic seat invitations and revocations for the authenticated doctor.
      */
     public function getPendingInvitations(User $user): JsonResponse
     {
         $this->ensureDoctorRole($user);
 
         $invitations = $this->clinicDoctorRepository->getPendingInvitationsForDoctor($user->id);
+        $revocations = $this->clinicDoctorRepository->getRevokedMembershipsForDoctor($user->id);
 
         return response()->json([
             'status' => 'success',
             'data' => $invitations,
+            'revocations' => $revocations,
+        ]);
+    }
+
+    /**
+     * Dismiss / acknowledge a revoked clinic doctor seat.
+     */
+    public function dismissRevocation(User $user, int $pivotId): JsonResponse
+    {
+        $this->ensureDoctorRole($user);
+
+        $dismissed = $this->clinicDoctorRepository->dismissRevocation($pivotId, $user->id);
+
+        if (! $dismissed) {
+            abort(404, 'Revocation notice not found or already dismissed.');
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Revocation notice acknowledged and dismissed.',
         ]);
     }
 

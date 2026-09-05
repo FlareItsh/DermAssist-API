@@ -177,7 +177,7 @@ test('prevents assigning associate doctor when max_doctors quota is full', funct
     $res2->assertStatus(422);
 });
 
-test('allows removing an associate doctor seat', function () {
+test('allows removing an associate doctor seat and notifies associate via revocation', function () {
     $doctorRole = Role::where('slug', 'doctor')->first();
 
     $owner = User::factory()->create(['role_id' => $doctorRole->id]);
@@ -202,6 +202,26 @@ test('allows removing an associate doctor seat', function () {
     $delRes = $this->deleteJson('/api/doctor/clinic-doctors/'.$pivotId);
     $delRes->assertStatus(200);
 
+    // Record has status revoked so associate can be notified
+    $this->assertDatabaseHas('clinic_doctors', [
+        'id' => $pivotId,
+        'status' => 'revoked',
+    ]);
+
+    // Seat is freed up for owner
+    expect($owner->fresh()->getDoctorSeatUsage()['used_seats'])->toBe(1);
+
+    // Associate checks pending invitations/revocations
+    Sanctum::actingAs($associate);
+    $invitesRes = $this->getJson('/api/doctor/clinic-doctors/invitations')->assertStatus(200);
+    expect($invitesRes->json('revocations'))->toHaveCount(1);
+    expect($invitesRes->json('revocations.0.pivot_id'))->toBe($pivotId);
+
+    // Associate dismisses the revocation notice
+    $dismissRes = $this->postJson('/api/doctor/clinic-doctors/revocations/'.$pivotId.'/dismiss');
+    $dismissRes->assertStatus(200);
+
+    // Now permanently removed
     $this->assertDatabaseMissing('clinic_doctors', [
         'id' => $pivotId,
     ]);

@@ -78,4 +78,12 @@ class DoctorClinicDoctorController extends Controller
     {
         return $this->doctorClinicDoctorService->declineInvitation($request->user(), $id);
     }
+
+    /**
+     * Dismiss / acknowledge a revoked clinic seat notice.
+     */
+    public function dismissRevocation(Request $request, int $id): JsonResponse
+    {
+        return $this->doctorClinicDoctorService->dismissRevocation($request->user(), $id);
+    }
 }

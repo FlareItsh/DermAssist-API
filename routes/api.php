@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::get('/doctor/clinic-doctors/invitations', [DoctorClinicDoctorController::class, 'invitations']);
     Route::post('/doctor/clinic-doctors/invitations/{id}/accept', [DoctorClinicDoctorController::class, 'acceptInvitation']);
     Route::post('/doctor/clinic-doctors/invitations/{id}/decline', [DoctorClinicDoctorController::class, 'declineInvitation']);
+    Route::post('/doctor/clinic-doctors/revocations/{id}/dismiss', [DoctorClinicDoctorController::class, 'dismissRevocation']);
 });
 
 // Unauthenticated Payment Webhooks
