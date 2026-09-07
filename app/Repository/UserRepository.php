@@ -24,15 +24,28 @@ class UserRepository
                 });
             })
             ->when($recommendedOnly, function ($query) {
-                $query->whereHas('subscription', function ($subQuery) {
-                    $subQuery->whereIn('status', ['active', 'trialing'])
-                        ->where(function ($q) {
-                            $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
-                        })
-                        ->whereHas('plan.planFeatures', function ($pfQuery) {
-                            $pfQuery->where('code', 'show_in_recommendation')
-                                ->where('is_active', true)
-                                ->where('plan_has_features.is_included', true);
+                $query->where(function ($q) {
+                    $q->whereHas('subscription', function ($subQuery) {
+                        $subQuery->whereIn('status', ['active', 'trialing'])
+                            ->where(function ($sq) {
+                                $sq->whereNull('ends_at')->orWhere('ends_at', '>', now());
+                            })
+                            ->whereHas('plan.planFeatures', function ($pfQuery) {
+                                $pfQuery->where('code', 'show_in_recommendation')
+                                    ->where('is_active', true)
+                                    ->where('plan_has_features.is_included', true);
+                            });
+                    })
+                        ->orWhereHas('clinicMemberships.owner.subscription', function ($ownerSubQuery) {
+                            $ownerSubQuery->whereIn('status', ['active', 'trialing'])
+                                ->where(function ($sq) {
+                                    $sq->whereNull('ends_at')->orWhere('ends_at', '>', now());
+                                })
+                                ->whereHas('plan.planFeatures', function ($pfQuery) {
+                                    $pfQuery->where('code', 'show_in_recommendation')
+                                        ->where('is_active', true)
+                                        ->where('plan_has_features.is_included', true);
+                                });
                         });
                 });
             })

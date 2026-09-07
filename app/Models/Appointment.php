@@ -17,6 +17,8 @@ class Appointment extends Model
         'diagnosis_id',
         'scheduled_at',
         'scheduled_end_at',
+        'requested_reschedule_date',
+        'requested_reschedule_time',
         'location',
         'purpose',
         'status',
@@ -25,6 +27,7 @@ class Appointment extends Model
     protected $casts = [
         'scheduled_at' => 'datetime',
         'scheduled_end_at' => 'datetime',
+        'requested_reschedule_date' => 'date:Y-m-d',
     ];
 
     protected function serializeDate(\DateTimeInterface $date): string

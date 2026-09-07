@@ -6,6 +6,7 @@ use App\Http\Resources\UserResource;
 use App\Models\Appointment;
 use App\Models\Conversation;
 use App\Models\Diagnosis;
+use App\Models\DoctorAvailability;
 use App\Models\Message;
 use App\Models\User;
 use App\Repository\AppointmentRepository;
@@ -234,6 +235,29 @@ class AppointmentService
             $this->checkAppointmentConflict($appointment->doctor_id, $newStart, $newEnd, $appointment->id);
         }
 
+        if ($newStatus === 'reschedule_requested' && ! empty($data['requested_reschedule_date'])) {
+            $reqDate = Carbon::parse($data['requested_reschedule_date'])->startOfDay();
+            if ($reqDate->lt(Carbon::today())) {
+                abort(422, 'Cannot request a reschedule to a past date.');
+            }
+
+            $currentApptDate = $appointment->scheduled_at ? Carbon::parse($appointment->scheduled_at)->toDateString() : null;
+            $hasAnyDuty = DoctorAvailability::where('doctor_id', $appointment->doctor_id)
+                ->where('is_available', 1)
+                ->exists();
+
+            if ($currentApptDate !== $reqDate->toDateString() && $hasAnyDuty) {
+                $hasDutyOnDate = DoctorAvailability::where('doctor_id', $appointment->doctor_id)
+                    ->where('is_available', 1)
+                    ->whereDate('available_date', $reqDate->toDateString())
+                    ->exists();
+
+                if (! $hasDutyOnDate) {
+                    abort(422, 'The doctor is not scheduled for clinic duty on the selected date.');
+                }
+            }
+        }
+
         $this->appointmentRepository->updateAppointment($appointment, $data);
 
         // Optional: send a system message in the chat
@@ -278,11 +302,21 @@ class AppointmentService
                     ]);
                 }
             } elseif ($data['status'] === 'reschedule_requested') {
+                $preferredDateStr = '';
+                if (! empty($data['requested_reschedule_date'])) {
+                    $formattedDate = Carbon::parse($data['requested_reschedule_date'])->format('M d, Y');
+                    if (! empty($data['requested_reschedule_time'])) {
+                        $timeStr = Carbon::parse($data['requested_reschedule_time'])->format('g:i A');
+                        $preferredDateStr = " on <b>{$formattedDate}</b> at <b>{$timeStr}</b>";
+                    } else {
+                        $preferredDateStr = " on <b>{$formattedDate}</b>";
+                    }
+                }
                 Message::create([
                     'uuid' => (string) Str::uuid(),
                     'conversation_id' => $conversation->id,
                     'sender_id' => $senderId,
-                    'message' => "A request has been made to choose another date for the appointment.\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$appointment->uuid}]",
+                    'message' => "A request has been made to reschedule the appointment{$preferredDateStr}.\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$appointment->uuid}]",
                 ]);
             }
         }
@@ -400,17 +434,37 @@ class AppointmentService
             abort(404, 'Conversation not found.');
         }
 
-        $this->checkAppointmentConflict(
-            $appointment->doctor_id,
-            $appointment->scheduled_at,
-            $appointment->scheduled_end_at,
-            $appointment->id
-        );
+        // If the patient requested a specific date/time, apply it to scheduled_at before confirming.
+        $updates = ['status' => 'scheduled'];
+        if ($appointment->status === 'reschedule_requested' && $appointment->requested_reschedule_date) {
+            $timeStr = $appointment->requested_reschedule_time ?? '09:00';
+            $dateOnly = Carbon::parse($appointment->requested_reschedule_date)->format('Y-m-d');
+            $newScheduledAt = Carbon::parse("{$dateOnly} {$timeStr}");
+            $newScheduledEndAt = $newScheduledAt->copy()->addHour();
 
-        $this->appointmentRepository->updateAppointment($appointment, [
-            'status' => 'scheduled',
-        ]);
+            $this->checkAppointmentConflict(
+                $appointment->doctor_id,
+                $newScheduledAt,
+                $newScheduledEndAt,
+                $appointment->id
+            );
 
+            $updates['scheduled_at'] = $newScheduledAt;
+            $updates['scheduled_end_at'] = $newScheduledEndAt;
+            $updates['requested_reschedule_date'] = null;
+            $updates['requested_reschedule_time'] = null;
+        } else {
+            $this->checkAppointmentConflict(
+                $appointment->doctor_id,
+                $appointment->scheduled_at,
+                $appointment->scheduled_end_at,
+                $appointment->id
+            );
+        }
+
+        $this->appointmentRepository->updateAppointment($appointment, $updates);
+
+        $appointment->refresh();
         $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
         if ($appointment->scheduled_end_at) {
             $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');

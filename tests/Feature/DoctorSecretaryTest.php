@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Plan;
 use App\Models\Role;
+use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -36,6 +38,18 @@ test('doctor can list their assigned secretaries', function () {
 test('doctor can create/register a secretary', function () {
     $doctor = User::factory()->create([
         'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $plan = Plan::factory()->create([
+        'name' => 'Clinic Pro',
+        'max_secretaries' => 5,
+    ]);
+
+    Subscription::factory()->create([
+        'user_id' => $doctor->id,
+        'plan_id' => $plan->id,
+        'status' => 'active',
+        'ends_at' => now()->addMonth(),
     ]);
 
     $payload = [
