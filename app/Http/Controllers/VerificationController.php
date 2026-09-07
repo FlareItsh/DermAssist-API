@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Service\VerificationService;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 
 class VerificationController extends Controller
 {
@@ -42,6 +41,7 @@ class VerificationController extends Controller
     public function destroy(string $uuid)
     {
         $this->verificationService->deleteVerification($uuid);
+
         return response()->json(['message' => 'Deleted successfully'], 200);
     }
 

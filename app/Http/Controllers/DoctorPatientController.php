@@ -2,10 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Conversation;
-use App\Models\Message;
-use App\Models\User;
 use App\Service\AppointmentService;
+use App\Service\ConversationService;
 use App\Service\UserService;
 use Illuminate\Http\Request;
 
@@ -14,6 +12,7 @@ class DoctorPatientController extends Controller
     public function __construct(
         private UserService $userService,
         private AppointmentService $appointmentService,
+        private ConversationService $conversationService,
     ) {}
 
     public function index(Request $request)
@@ -79,20 +78,11 @@ class DoctorPatientController extends Controller
             'diagnosis_uuid' => 'required|string',
         ]);
 
-        $patient = User::where('uuid', $uuid)->firstOrFail();
-
-        $conversation = Conversation::where('doctor_id', $request->user()->id)
-            ->where('patient_id', $patient->id)
-            ->firstOrFail();
-
-        Message::create([
-            'conversation_id' => $conversation->id,
-            'sender_id' => $request->user()->id,
-            'message' => '[SCAN_RESULT:'.$request->input('diagnosis_uuid').']',
-            'is_read' => false,
-        ]);
-
-        $conversation->touch();
+        $this->conversationService->sendScanResult(
+            $request->user(),
+            $uuid,
+            $request->input('diagnosis_uuid')
+        );
 
         return response()->json(['message' => 'Scan result sent.'], 201);
     }
@@ -106,7 +96,7 @@ class DoctorPatientController extends Controller
             'purpose' => 'required|string|max:500',
         ]);
 
-        $patient = User::where('uuid', $uuid)->firstOrFail();
+        $patient = $this->userService->getUser($uuid);
 
         $result = $this->appointmentService->scheduleAppointmentForPatient(
             $request->user(),

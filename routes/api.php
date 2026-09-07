@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminCouponController;
+use App\Http\Controllers\Admin\AdminFeatureController;
+use App\Http\Controllers\Admin\AdminPaymentController;
+use App\Http\Controllers\Admin\AdminPlanController;
+use App\Http\Controllers\Admin\AdminSubscriptionController;
 use App\Http\Controllers\AppealController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
@@ -8,13 +13,19 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\DoctorAvailabilityController;
+use App\Http\Controllers\DoctorClinicController;
+use App\Http\Controllers\DoctorClinicDoctorController;
 use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
+use App\Http\Controllers\DoctorSubscriptionController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
 use App\Http\Middleware\CheckAccountStatus;
+use App\Service\PaymentGatewayService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::controller(AuthController::class)->group(function () {
@@ -71,6 +82,39 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);
 
+    // Doctor Subscription Routes
+    Route::get('/subscription/plans', [DoctorSubscriptionController::class, 'plans']);
+    Route::get('/subscription/my-subscription', [DoctorSubscriptionController::class, 'mySubscription']);
+    Route::post('/subscription/validate-coupon', [DoctorSubscriptionController::class, 'validateCoupon']);
+    Route::post('/subscription/checkout', [DoctorSubscriptionController::class, 'checkout']);
+    Route::post('/subscription/confirm-return-payment', function (Request $request, PaymentGatewayService $gatewayService) {
+        $request->validate([
+            'invoice_uuid' => 'required|string',
+            'provider' => 'required|string',
+        ]);
+
+        return $gatewayService->confirmReturnPayment($request->input('invoice_uuid'), $request->input('provider'));
+    });
+
+    // Admin Subscription Management Routes
+    Route::prefix('admin')->group(function () {
+        Route::get('/subscriptions/dashboard', [AdminSubscriptionController::class, 'dashboard']);
+        Route::get('/subscriptions', [AdminSubscriptionController::class, 'index']);
+
+        Route::apiResource('plans', AdminPlanController::class);
+        Route::patch('plans/{plan}/toggle-active', [AdminPlanController::class, 'toggleActive']);
+
+        Route::apiResource('features', AdminFeatureController::class);
+        Route::patch('features/{feature}/toggle-active', [AdminFeatureController::class, 'toggleActive']);
+
+        Route::get('/payments', [AdminPaymentController::class, 'index']);
+        Route::post('/payments/{invoice}/approve', [AdminPaymentController::class, 'approve']);
+        Route::post('/payments/{invoice}/reject', [AdminPaymentController::class, 'reject']);
+
+        Route::apiResource('coupons', AdminCouponController::class)->except(['update', 'show']);
+        Route::patch('coupons/{coupon}/toggle-active', [AdminCouponController::class, 'toggleActive']);
+    });
+
     // Doctor-Created Patients
     Route::get('/doctor/patients', [DoctorPatientController::class, 'index']);
     Route::post('/doctor/patients', [DoctorPatientController::class, 'store']);
@@ -81,4 +125,23 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/doctor/patients/{uuid}/cancel-schedule', [DoctorPatientController::class, 'cancelSchedule']);
     Route::post('/doctor/patients/{uuid}/send-scan', [DoctorPatientController::class, 'sendScanResult']);
     Route::post('/doctor/patients/{uuid}/schedule-appointment', [DoctorPatientController::class, 'scheduleAppointment']);
+
+    // Doctor Clinics Routes
+    Route::get('/doctor/clinics', [DoctorClinicController::class, 'index']);
+    Route::post('/doctor/clinics', [DoctorClinicController::class, 'store']);
+    Route::put('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'update']);
+    Route::delete('/doctor/clinics/{uuid}', [DoctorClinicController::class, 'destroy']);
+
+    // Doctor Clinic Doctors (Multi-Doctor Seat Delegation)
+    Route::get('/doctor/clinic-doctors', [DoctorClinicDoctorController::class, 'index']);
+    Route::get('/doctor/clinic-doctors/search', [DoctorClinicDoctorController::class, 'search']);
+    Route::post('/doctor/clinic-doctors', [DoctorClinicDoctorController::class, 'store']);
+    Route::delete('/doctor/clinic-doctors/{id}', [DoctorClinicDoctorController::class, 'destroy']);
+    Route::get('/doctor/clinic-doctors/invitations', [DoctorClinicDoctorController::class, 'invitations']);
+    Route::post('/doctor/clinic-doctors/invitations/{id}/accept', [DoctorClinicDoctorController::class, 'acceptInvitation']);
+    Route::post('/doctor/clinic-doctors/invitations/{id}/decline', [DoctorClinicDoctorController::class, 'declineInvitation']);
 });
+
+// Unauthenticated Payment Webhooks
+Route::post('/webhooks/paymongo', [PaymentWebhookController::class, 'handlePayMongo']);
+Route::post('/webhooks/stripe', [PaymentWebhookController::class, 'handleStripe']);

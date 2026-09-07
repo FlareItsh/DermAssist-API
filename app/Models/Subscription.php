@@ -10,12 +10,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
+    'uuid',
     'user_id',
     'plan_id',
-    'stripe_id',
+    'billing_cycle',
+    'status',
+    'transaction_id',
     'starts_at',
     'ends_at',
+    'trial_ends_at',
     'cancelled_at',
+    'cancellation_reason',
 ])]
 class Subscription extends Model
 {
@@ -32,6 +37,7 @@ class Subscription extends Model
         return [
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'trial_ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
     }
@@ -39,6 +45,20 @@ class Subscription extends Model
     public function uniqueIds(): array
     {
         return ['uuid'];
+    }
+
+    /**
+     * Determine if subscription is currently active or within grace period.
+     */
+    public function isActive(): bool
+    {
+        if ($this->status !== 'active' && $this->status !== 'trialing') {
+            return false;
+        }
+
+        $graceDays = $this->plan?->grace_period_days ?? 3;
+
+        return $this->ends_at ? $this->ends_at->addDays($graceDays)->isFuture() : true;
     }
 
     /**

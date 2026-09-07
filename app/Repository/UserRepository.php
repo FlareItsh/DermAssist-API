@@ -2,11 +2,14 @@
 
 namespace App\Repository;
 
+use App\Models\Role;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserRepository
 {
-    public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null)
+    public function paginate(int $perPage = 15, ?string $role = null, ?string $status = null, bool $recommendedOnly = false)
     {
         return User::latest()
             ->withCount('diagnoses')
@@ -18,6 +21,19 @@ class UserRepository
             ->when($status, function ($query) use ($status) {
                 $query->whereHas('doctorVerifications', function ($q) use ($status) {
                     $q->where('status', $status);
+                });
+            })
+            ->when($recommendedOnly, function ($query) {
+                $query->whereHas('subscription', function ($subQuery) {
+                    $subQuery->whereIn('status', ['active', 'trialing'])
+                        ->where(function ($q) {
+                            $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
+                        })
+                        ->whereHas('plan.planFeatures', function ($pfQuery) {
+                            $pfQuery->where('code', 'show_in_recommendation')
+                                ->where('is_active', true)
+                                ->where('plan_has_features.is_included', true);
+                        });
                 });
             })
             ->paginate($perPage);
@@ -90,5 +106,42 @@ class UserRepository
             ->withCount('diagnoses')
             ->latest()
             ->paginate($perPage);
+    }
+
+    public function getDoctorSecretaries(int $doctorId)
+    {
+        return User::where('doctor_id', $doctorId)
+            ->whereHas('role', function ($q) {
+                $q->where('slug', 'secretary');
+            })
+            ->latest()
+            ->get();
+    }
+
+    public function createDoctorSecretary(array $payload, int $doctorId): User
+    {
+        $secretaryRole = Role::where('slug', 'secretary')->firstOrFail();
+
+        $secretary = User::create([
+            'first_name' => $payload['firstName'],
+            'middle_name' => $payload['middleName'] ?? null,
+            'last_name' => $payload['lastName'],
+            'email' => $payload['email'],
+            'password' => Hash::make($payload['password']),
+            'role_id' => $secretaryRole->id,
+            'doctor_id' => $doctorId,
+            'uuid' => (string) Str::uuid(),
+        ]);
+
+        return $secretary->load('role', 'doctor');
+    }
+
+    public function deleteDoctorSecretary(string $uuid, int $doctorId): bool
+    {
+        $secretary = User::where('uuid', $uuid)
+            ->where('doctor_id', $doctorId)
+            ->firstOrFail();
+
+        return (bool) $secretary->delete();
     }
 }

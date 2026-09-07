@@ -17,8 +17,14 @@ class DoctorAvailabilityService
         $this->repository = $repository;
     }
 
-    public function getAvailabilities(User $user): Collection
+    public function getAvailabilities(User $user, ?string $doctorUuid = null): Collection
     {
+        if ($doctorUuid) {
+            $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
+
+            return $this->repository->getAvailabilitiesForDoctor($doctor);
+        }
+
         if ($user->role->slug === 'doctor') {
             return $this->repository->getAvailabilitiesForDoctor($user);
         } elseif ($user->role->slug === 'secretary' && $user->doctor_id) {
@@ -28,6 +34,13 @@ class DoctorAvailabilityService
         }
 
         abort(403, 'Only doctors and secretaries can access availability records.');
+    }
+
+    public function checkDoctorAvailabilityByUuid(string $doctorUuid, Carbon $date, ?User $patient = null): array
+    {
+        $doctor = User::where('uuid', $doctorUuid)->firstOrFail();
+
+        return $this->checkDoctorAvailability($doctor->id, $date, $patient);
     }
 
     public function createAvailability(User $actor, array $data): DoctorAvailability
@@ -107,5 +120,20 @@ class DoctorAvailabilityService
             'next_available' => $nextAvailable,
             'alternatives' => $alternatives,
         ];
+    }
+
+    public function isDoctorOnDuty(int $doctorId, Carbon $date, string $startTime, string $endTime): bool
+    {
+        return $this->repository->isDoctorOnDuty($doctorId, $date, $startTime, $endTime);
+    }
+
+    public function hasBlockedOverlap(int $doctorId, Carbon $date, string $startTime, string $endTime): ?DoctorAvailability
+    {
+        return $this->repository->hasBlockedOverlap($doctorId, $date, $startTime, $endTime);
+    }
+
+    public function getDutySlotsForDate(int $doctorId, Carbon $date): Collection
+    {
+        return $this->repository->getDutySlotsForDate($doctorId, $date);
     }
 }

@@ -14,7 +14,11 @@ class AppointmentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $appointments = $this->appointmentService->getAppointmentsForUser($request->user());
+        $appointments = $this->appointmentService->getAppointmentsForUser(
+            $request->user(),
+            $request->query('doctor_id'),
+            $request->query('doctor_uuid')
+        );
 
         return response()->json($appointments);
     }

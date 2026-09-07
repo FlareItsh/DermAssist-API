@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-#[Fillable(['uuid', 'doctor_id', 'available_date', 'start_time', 'end_time', 'is_available'])]
+#[Fillable(['uuid', 'doctor_id', 'clinic_id', 'location_name', 'available_date', 'start_time', 'end_time', 'is_available'])]
 class DoctorAvailability extends Model
 {
     protected $keyType = 'int';
@@ -35,6 +35,11 @@ class DoctorAvailability extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    public function clinic(): BelongsTo
+    {
+        return $this->belongsTo(Clinic::class, 'clinic_id');
     }
 
     public function getRouteKeyName(): string

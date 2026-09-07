@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\DoctorAvailability;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,7 +28,16 @@ it('allows a secretary to schedule an appointment for a patient on behalf of the
     ]);
     $patient = User::factory()->create(['role_id' => $patientRole->id]);
 
-    $scheduledAt = now()->addDays(2)->format('Y-m-d H:i:s');
+    $targetDate = now()->addDays(2);
+    $scheduledAt = $targetDate->copy()->setTime(10, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDate->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
 
     Sanctum::actingAs($secretary);
     $response = $this->postJson('/api/appointments/schedule-for-patient', [

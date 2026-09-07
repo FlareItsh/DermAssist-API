@@ -38,7 +38,7 @@ return new class extends Migration
                 'province',
                 'country',
                 'latitude',
-                'longitude'
+                'longitude',
             ]);
         });
     }

@@ -2,6 +2,7 @@
 
 use App\Models\Appointment;
 use App\Models\Conversation;
+use App\Models\DoctorAvailability;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,7 +37,16 @@ it('allows proposing a reschedule for an appointment', function () {
         'status' => 'scheduled',
     ]);
 
-    $proposedDate = now()->addDays(5)->format('Y-m-d H:i:s');
+    $targetDay5 = now()->addDays(5);
+    $proposedDate = $targetDay5->copy()->setTime(10, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDay5->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
 
     $response = $this->actingAs($doctor)->postJson("/api/appointments/{$appointment->uuid}/propose-reschedule", [
         'scheduled_at' => $proposedDate,
@@ -66,10 +76,21 @@ it('allows accepting a proposed reschedule', function () {
         'patient_id' => $patient->id,
     ]);
 
+    $targetDay5 = now()->addDays(5);
+    $scheduledAt = $targetDay5->copy()->setTime(10, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDay5->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
     $appointment = Appointment::create([
         'doctor_id' => $doctor->id,
         'patient_id' => $patient->id,
-        'scheduled_at' => now()->addDays(5)->format('Y-m-d H:i:s'),
+        'scheduled_at' => $scheduledAt,
         'location' => 'New Clinic Room 101',
         'status' => 'reschedule_proposed',
     ]);

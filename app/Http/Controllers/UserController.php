@@ -19,7 +19,8 @@ class UserController extends Controller
         return $this->userService->listUser(
             $request->input('per_page', 15),
             $request->input('role'),
-            $request->input('status')
+            $request->input('status'),
+            $request->boolean('recommended_only', false) || $request->boolean('for_recommendation', false)
         );
     }
 
