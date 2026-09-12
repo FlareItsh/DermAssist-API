@@ -24,19 +24,7 @@ class PaymentGatewayService
         $cancelUrl = "{$frontendUrl}/doctor/subscription?status=cancelled";
 
         if (! $secretKey) {
-            // [DEVELOPMENT TEST BYPASS] Automatically approve subscription when PayMongo keys are not set
-            $mockReference = 'TEST-BYPASS-'.now()->timestamp;
-            $invoice->update([
-                'payment_method' => 'Test Mode (PayMongo Bypass)',
-                'transaction_reference' => $mockReference,
-            ]);
-
-            $this->paymentInvoiceService->approvePayment($invoice, null, $mockReference);
-
-            return [
-                'checkout_url' => $successUrl,
-                'reference' => $invoice->uuid,
-            ];
+            throw new \RuntimeException('PayMongo is not configured. Please set PAYMONGO_SECRET_KEY in your environment.');
         }
 
         $amountInCents = (int) round($invoice->final_amount * 100);
