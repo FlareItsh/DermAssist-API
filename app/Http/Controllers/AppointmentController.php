@@ -53,6 +53,8 @@ class AppointmentController extends Controller
             'scheduled_at' => 'nullable|date|after_or_equal:today',
             'scheduled_end_at' => 'nullable|date|after:scheduled_at',
             'location' => 'nullable|string',
+            'requested_reschedule_date' => 'nullable|date|after_or_equal:today',
+            'requested_reschedule_time' => 'nullable|string',
         ]);
 
         $updatedAppointment = $this->appointmentService->updateAppointmentStatus(

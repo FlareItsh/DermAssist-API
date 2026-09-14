@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminCouponController;
 use App\Http\Controllers\Admin\AdminFeatureController;
+use App\Http\Controllers\Admin\AdminPatchNoteController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminPlanController;
 use App\Http\Controllers\Admin\AdminSubscriptionController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\PatchNoteController;
 use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
 use App\Http\Controllers\UserController;
@@ -113,7 +115,15 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
         Route::apiResource('coupons', AdminCouponController::class)->except(['update', 'show']);
         Route::patch('coupons/{coupon}/toggle-active', [AdminCouponController::class, 'toggleActive']);
+
+        Route::apiResource('patch-notes', AdminPatchNoteController::class);
+        Route::patch('patch-notes/{patch_note}/toggle-publish', [AdminPatchNoteController::class, 'togglePublish']);
     });
+
+    // Patch Notes (User Notifications / Changelog)
+    Route::get('/patch-notes', [PatchNoteController::class, 'index']);
+    Route::get('/patch-notes/latest', [PatchNoteController::class, 'latest']);
+    Route::get('/patch-notes/{patch_note}', [PatchNoteController::class, 'show']);
 
     // Doctor-Created Patients
     Route::get('/doctor/patients', [DoctorPatientController::class, 'index']);
