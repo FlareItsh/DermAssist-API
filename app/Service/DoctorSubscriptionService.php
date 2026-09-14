@@ -194,9 +194,13 @@ class DoctorSubscriptionService
         $startsAt = now();
         $endsAt = $billingCycle === 'annual' ? now()->addYear() : now()->addMonth();
 
+        $planSnapshot = $plan->createSnapshot();
+
         $subscription = Subscription::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
+            'plan_version' => $plan->version ?? 1,
+            'plan_snapshot' => $planSnapshot,
             'billing_cycle' => $billingCycle,
             'status' => 'pending',
             'starts_at' => $startsAt,

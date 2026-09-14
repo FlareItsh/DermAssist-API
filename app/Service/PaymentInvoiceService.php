@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Http\Resources\PaymentInvoiceResource;
 use App\Models\PaymentInvoice;
+use App\Models\Subscription;
 use App\Repository\PaymentInvoiceRepository;
 use Illuminate\Http\JsonResponse;
 
@@ -39,11 +40,29 @@ class PaymentInvoiceService
             $startsAt = now();
             $endsAt = (clone $startsAt)->addMonths($durationMonths);
 
-            $subscription->update([
+            $plan = $subscription->plan;
+            $subscriptionData = [
                 'status' => 'active',
                 'starts_at' => $startsAt,
                 'ends_at' => $endsAt,
-            ]);
+            ];
+
+            if ($plan) {
+                $subscriptionData['plan_version'] = $plan->version ?? 1;
+                $subscriptionData['plan_snapshot'] = $plan->createSnapshot();
+            }
+
+            $subscription->update($subscriptionData);
+
+            // Deactivate any previous active subscriptions for this doctor
+            Subscription::where('user_id', $subscription->user_id)
+                ->where('id', '!=', $subscription->id)
+                ->whereIn('status', ['active', 'trialing'])
+                ->update([
+                    'status' => 'cancelled',
+                    'cancelled_at' => now(),
+                    'cancellation_reason' => 'Superseded by renewal/upgrade',
+                ]);
         }
 
         return response()->json([

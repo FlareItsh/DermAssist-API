@@ -290,9 +290,9 @@ class User extends Authenticatable
      */
     public function canAccessFeature(string $featureKey): bool
     {
-        // 1. Check primary active subscription
+        // 1. Check primary active subscription (frozen snapshot takes precedence)
         $subscription = $this->getActiveSubscription();
-        if ($subscription?->plan?->hasFeature($featureKey)) {
+        if ($subscription?->hasFeature($featureKey)) {
             return true;
         }
 
@@ -303,7 +303,7 @@ class User extends Authenticatable
 
         if ($clinicMembership && $clinicMembership->owner) {
             $inheritedSub = $clinicMembership->owner->getActiveSubscription();
-            if ($inheritedSub?->plan?->hasFeature($featureKey)) {
+            if ($inheritedSub?->hasFeature($featureKey)) {
                 return true;
             }
         }
@@ -357,8 +357,8 @@ class User extends Authenticatable
     public function getMaxClinics(): ?int
     {
         $directSub = $this->getDirectSubscription();
-        if ($directSub && $directSub->plan) {
-            return $directSub->plan->max_clinics ?? 1;
+        if ($directSub) {
+            return $directSub->getMaxClinics();
         }
 
         return 1;
@@ -370,14 +370,14 @@ class User extends Authenticatable
     public function canHaveSecretary(): bool
     {
         $subscription = $this->getActiveSubscription();
-        if (! $subscription || ! $subscription->plan) {
+        if (! $subscription) {
             return false;
         }
 
-        $plan = $subscription->plan;
+        $maxSecretaries = $subscription->getMaxSecretaries();
 
         // Must either have can_have_secretary feature or max_secretaries > 0 (or null for unlimited)
-        return $this->canAccessFeature('can_have_secretary') || ($plan->max_secretaries === null || $plan->max_secretaries > 0);
+        return $this->canAccessFeature('can_have_secretary') || ($maxSecretaries === null || $maxSecretaries > 0);
     }
 
     /**
@@ -387,11 +387,11 @@ class User extends Authenticatable
     public function getMaxSecretaries(): ?int
     {
         $subscription = $this->getActiveSubscription();
-        if (! $subscription || ! $subscription->plan) {
+        if (! $subscription) {
             return 0;
         }
 
-        return $subscription->plan->max_secretaries;
+        return $subscription->getMaxSecretaries();
     }
 
     /**
