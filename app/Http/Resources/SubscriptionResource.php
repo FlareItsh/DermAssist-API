@@ -30,6 +30,8 @@ class SubscriptionResource extends JsonResource
             'user' => new UserResource($this->whenLoaded('user')),
             'plan' => new PlanResource($this->whenLoaded('plan')),
             'billing_cycle' => $this->billing_cycle,
+            'auto_renew' => $this->isAutoRenew(),
+            'is_pending_cancellation' => $this->isPendingCancellation(),
             'status' => $this->status,
             'transaction_id' => $this->transaction_id,
             'starts_at' => $this->starts_at?->toIso8601String(),

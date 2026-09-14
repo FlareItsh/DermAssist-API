@@ -22,6 +22,9 @@ class SubscriptionFactory extends Factory
         return [
             'user_id' => User::factory(),
             'plan_id' => Plan::factory(),
+            'billing_cycle' => 'monthly',
+            'auto_renew' => true,
+            'status' => 'active',
             'transaction_id' => 'txn_'.str()->random(24),
             'starts_at' => now(),
             'ends_at' => now()->addMonth(),

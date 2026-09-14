@@ -87,6 +87,9 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::get('/subscription/my-subscription', [DoctorSubscriptionController::class, 'mySubscription']);
     Route::post('/subscription/validate-coupon', [DoctorSubscriptionController::class, 'validateCoupon']);
     Route::post('/subscription/checkout', [DoctorSubscriptionController::class, 'checkout']);
+    Route::post('/subscription/toggle-auto-renew', [DoctorSubscriptionController::class, 'toggleAutoRenew']);
+    Route::post('/subscription/cancel', [DoctorSubscriptionController::class, 'cancel']);
+    Route::post('/subscription/resume', [DoctorSubscriptionController::class, 'resume']);
     Route::post('/subscription/confirm-return-payment', function (Request $request, PaymentGatewayService $gatewayService) {
         $request->validate([
             'invoice_uuid' => 'required|string',

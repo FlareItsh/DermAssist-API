@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::call(function () {
     ProcessScheduledAccountActions::processDueActions();
 })->everyMinute();
+
+Schedule::command('subscriptions:process-renewals')->daily();

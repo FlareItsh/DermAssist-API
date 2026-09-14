@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'plan_version',
     'plan_snapshot',
     'billing_cycle',
+    'auto_renew',
     'status',
     'transaction_id',
     'starts_at',
@@ -39,6 +40,7 @@ class Subscription extends Model
         return [
             'plan_version' => 'integer',
             'plan_snapshot' => 'array',
+            'auto_renew' => 'boolean',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'trial_ends_at' => 'datetime',
@@ -63,6 +65,22 @@ class Subscription extends Model
         $graceDays = $this->plan?->grace_period_days ?? 3;
 
         return $this->ends_at ? $this->ends_at->addDays($graceDays)->isFuture() : true;
+    }
+
+    /**
+     * Determine if subscription has auto-renew enabled.
+     */
+    public function isAutoRenew(): bool
+    {
+        return (bool) $this->auto_renew;
+    }
+
+    /**
+     * Determine if subscription is marked for cancellation at the end of the current billing cycle.
+     */
+    public function isPendingCancellation(): bool
+    {
+        return ! $this->auto_renew && $this->cancelled_at !== null && $this->ends_at !== null && $this->ends_at->isFuture();
     }
 
     /**
