@@ -153,6 +153,18 @@ class DoctorSubscriptionService
     public function checkout(User $user, array $data): JsonResponse
     {
         $plan = Plan::where('uuid', $data['plan_uuid'])->firstOrFail();
+
+        // Guard: Prevent renewing the same plan if doctor already holds an active subscription to it
+        $activeSub = $user->getDirectSubscription();
+        if ($activeSub && $activeSub->isActive() && $activeSub->plan_id === $plan->id) {
+            $endsAtFormatted = $activeSub->ends_at ? $activeSub->ends_at->format('M d, Y') : 'the end of your current billing cycle';
+
+            return response()->json([
+                'status' => 'error',
+                'message' => "You already have an active subscription to {$plan->name} valid until {$endsAtFormatted}. Renewal of this plan is only available once your current subscription expires.",
+            ], 422);
+        }
+
         $billingCycle = $data['billing_cycle'] ?? 'monthly';
         $paymentMethod = $data['payment_method'] ?? 'paymongo';
         $originalAmount = $billingCycle === 'annual' ? (float) $plan->price_annual : (float) $plan->price_monthly;

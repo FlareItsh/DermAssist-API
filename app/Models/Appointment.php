@@ -22,6 +22,8 @@ class Appointment extends Model
         'location',
         'purpose',
         'status',
+        'requested_reschedule_date',
+        'requested_reschedule_time',
     ];
 
     protected $casts = [
