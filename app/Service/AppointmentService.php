@@ -234,6 +234,21 @@ class AppointmentService
             $this->checkAppointmentConflict($appointment->doctor_id, $newStart, $newEnd, $appointment->id);
         }
 
+        if ($newStatus === 'reschedule_requested' && ! empty($data['requested_reschedule_date'])) {
+            $reqTime = $data['requested_reschedule_time'] ?? '09:00:00';
+            $reqStart = Carbon::parse($data['requested_reschedule_date'].' '.$reqTime);
+            $duration = ($appointment->scheduled_at && $appointment->scheduled_end_at)
+                ? Carbon::parse($appointment->scheduled_at)->diffInMinutes(Carbon::parse($appointment->scheduled_end_at))
+                : 60;
+            $reqEnd = (clone $reqStart)->addMinutes($duration);
+            $this->checkAppointmentConflict($appointment->doctor_id, $reqStart, $reqEnd, $appointment->id);
+        }
+
+        if ($newStatus === 'declined') {
+            $data['requested_reschedule_date'] = null;
+            $data['requested_reschedule_time'] = null;
+        }
+
         $this->appointmentRepository->updateAppointment($appointment, $data);
 
         // Optional: send a system message in the chat
@@ -278,11 +293,27 @@ class AppointmentService
                     ]);
                 }
             } elseif ($data['status'] === 'reschedule_requested') {
+                $tagData = $appointment->uuid;
+                if (! empty($appointment->requested_reschedule_date)) {
+                    $reqDate = Carbon::parse($appointment->requested_reschedule_date)->toDateString();
+                    if (! empty($appointment->requested_reschedule_time)) {
+                        $timeObj = Carbon::parse($reqDate.' '.$appointment->requested_reschedule_time);
+                        $formattedDateTime = $timeObj->format('M d, Y h:i A');
+                        $tagData .= ":{$reqDate}:{$appointment->requested_reschedule_time}";
+                    } else {
+                        $formattedDateTime = Carbon::parse($reqDate)->format('M d, Y');
+                        $tagData .= ":{$reqDate}";
+                    }
+                    $messageText = "A request has been made to choose another date for the appointment (Preferred: <b>{$formattedDateTime}</b>).\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$tagData}]";
+                } else {
+                    $messageText = "A request has been made to choose another date for the appointment.\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$appointment->uuid}]";
+                }
+
                 Message::create([
                     'uuid' => (string) Str::uuid(),
                     'conversation_id' => $conversation->id,
                     'sender_id' => $senderId,
-                    'message' => "A request has been made to choose another date for the appointment.\n[APPOINTMENT_RESCHEDULE_REQUESTED:{$appointment->uuid}]",
+                    'message' => $messageText,
                 ]);
             }
         }
@@ -361,6 +392,8 @@ class AppointmentService
             'status' => 'reschedule_proposed',
             'scheduled_at' => $data['scheduled_at'],
             'location' => $data['location'],
+            'requested_reschedule_date' => null,
+            'requested_reschedule_time' => null,
         ];
 
         if (array_key_exists('scheduled_end_at', $data)) {
@@ -400,27 +433,51 @@ class AppointmentService
             abort(404, 'Conversation not found.');
         }
 
+        $newScheduledAt = $appointment->scheduled_at;
+        $newScheduledEndAt = $appointment->scheduled_end_at;
+        $wasRescheduleRequested = $appointment->status === 'reschedule_requested';
+
+        if ($wasRescheduleRequested && $appointment->requested_reschedule_date) {
+            $reqDate = Carbon::parse($appointment->requested_reschedule_date)->toDateString();
+            $reqTime = $appointment->requested_reschedule_time ?: '09:00:00';
+            $newScheduledAt = Carbon::parse("{$reqDate} {$reqTime}");
+
+            $durationMinutes = 60;
+            if ($appointment->scheduled_at && $appointment->scheduled_end_at) {
+                $durationMinutes = Carbon::parse($appointment->scheduled_at)->diffInMinutes(Carbon::parse($appointment->scheduled_end_at));
+            }
+            $newScheduledEndAt = (clone $newScheduledAt)->addMinutes($durationMinutes);
+        }
+
         $this->checkAppointmentConflict(
             $appointment->doctor_id,
-            $appointment->scheduled_at,
-            $appointment->scheduled_end_at,
+            $newScheduledAt,
+            $newScheduledEndAt,
             $appointment->id
         );
 
         $this->appointmentRepository->updateAppointment($appointment, [
             'status' => 'scheduled',
+            'scheduled_at' => $newScheduledAt,
+            'scheduled_end_at' => $newScheduledEndAt,
+            'requested_reschedule_date' => null,
+            'requested_reschedule_time' => null,
         ]);
 
-        $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
-        if ($appointment->scheduled_end_at) {
-            $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+        $dateStr = Carbon::parse($newScheduledAt)->format('M d, Y h:i A');
+        if ($newScheduledEndAt) {
+            $dateStr .= ' - '.Carbon::parse($newScheduledEndAt)->format('h:i A');
         }
+
+        $messageText = $wasRescheduleRequested
+            ? "The reschedule request has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]"
+            : "The proposed schedule has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]";
 
         Message::create([
             'uuid' => (string) Str::uuid(),
             'conversation_id' => $conversation->id,
             'sender_id' => $user->id,
-            'message' => "The proposed schedule has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]",
+            'message' => $messageText,
         ]);
 
         return [
