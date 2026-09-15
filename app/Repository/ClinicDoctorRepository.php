@@ -112,6 +112,7 @@ class ClinicDoctorRepository
         return DB::table('clinic_doctors')
             ->where('clinic_id', $clinicId)
             ->where('doctor_user_id', $doctorId)
+            ->whereIn('status', ['active', 'pending'])
             ->exists();
     }
 
@@ -120,6 +121,23 @@ class ClinicDoctorRepository
      */
     public function assignDoctorToClinic(int $clinicId, int $doctorId, string $role = 'associate', string $status = 'active'): int
     {
+        $existing = DB::table('clinic_doctors')
+            ->where('clinic_id', $clinicId)
+            ->where('doctor_user_id', $doctorId)
+            ->first();
+
+        if ($existing) {
+            DB::table('clinic_doctors')
+                ->where('id', $existing->id)
+                ->update([
+                    'role' => $role,
+                    'status' => $status,
+                    'updated_at' => now(),
+                ]);
+
+            return $existing->id;
+        }
+
         return DB::table('clinic_doctors')->insertGetId([
             'clinic_id' => $clinicId,
             'doctor_user_id' => $doctorId,
@@ -146,7 +164,24 @@ class ClinicDoctorRepository
             return false;
         }
 
-        return (bool) DB::table('clinic_doctors')->where('id', $pivotId)->delete();
+        return (bool) DB::table('clinic_doctors')
+            ->where('id', $pivotId)
+            ->update([
+                'status' => 'revoked',
+                'updated_at' => now(),
+            ]);
+    }
+
+    /**
+     * Dismiss / delete a revoked clinic doctor seat record once acknowledged by the doctor.
+     */
+    public function dismissRevocation(int $pivotId, int $doctorId): bool
+    {
+        return (bool) DB::table('clinic_doctors')
+            ->where('id', $pivotId)
+            ->where('doctor_user_id', $doctorId)
+            ->where('status', 'revoked')
+            ->delete();
     }
 
     /**
@@ -212,5 +247,41 @@ class ClinicDoctorRepository
             ->where('doctor_user_id', $doctorId)
             ->where('status', 'pending')
             ->delete();
+    }
+
+    /**
+     * Get revoked clinic memberships for a specific doctor.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getRevokedMembershipsForDoctor(int $doctorId): array
+    {
+        $records = DB::table('clinic_doctors')
+            ->join('clinics', 'clinic_doctors.clinic_id', '=', 'clinics.id')
+            ->join('users as owners', 'clinics.owner_doctor_id', '=', 'owners.id')
+            ->where('clinic_doctors.doctor_user_id', $doctorId)
+            ->where('clinic_doctors.status', 'revoked')
+            ->whereNull('owners.deleted_at')
+            ->select([
+                'clinic_doctors.id as pivot_id',
+                'clinic_doctors.role',
+                'clinic_doctors.status',
+                'clinic_doctors.updated_at as revoked_at',
+                'clinics.id as clinic_id',
+                'clinics.uuid as clinic_uuid',
+                'clinics.name as clinic_name',
+                'clinics.address as clinic_address',
+                'owners.id as owner_id',
+                'owners.uuid as owner_uuid',
+                'owners.first_name as owner_first_name',
+                'owners.last_name as owner_last_name',
+                'owners.email as owner_email',
+                'owners.prc_number as owner_prc_number',
+                'owners.avatar_path as owner_avatar_path',
+            ])
+            ->orderBy('clinic_doctors.updated_at', 'desc')
+            ->get();
+
+        return $records->toArray();
     }
 }

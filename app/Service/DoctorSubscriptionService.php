@@ -194,9 +194,13 @@ class DoctorSubscriptionService
         $startsAt = now();
         $endsAt = $billingCycle === 'annual' ? now()->addYear() : now()->addMonth();
 
+        $planSnapshot = $plan->createSnapshot();
+
         $subscription = Subscription::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
+            'plan_version' => $plan->version ?? 1,
+            'plan_snapshot' => $planSnapshot,
             'billing_cycle' => $billingCycle,
             'status' => 'pending',
             'starts_at' => $startsAt,
@@ -234,5 +238,114 @@ class DoctorSubscriptionService
                 'checkout_url' => $checkoutUrl,
             ],
         ], 201);
+    }
+
+    /**
+     * Toggle auto-renew on the doctor's direct subscription.
+     */
+    public function toggleAutoRenew(User $user, bool $autoRenew): JsonResponse
+    {
+        $subscription = $user->getDirectSubscription();
+
+        if (! $subscription) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No active direct subscription found to modify.',
+            ], 404);
+        }
+
+        $updateData = ['auto_renew' => $autoRenew];
+
+        // If re-enabling auto-renew on a subscription that was marked for cancellation, clear cancellation metadata
+        if ($autoRenew && $subscription->isPendingCancellation()) {
+            $updateData['cancelled_at'] = null;
+            $updateData['cancellation_reason'] = null;
+        }
+
+        $subscription->update($updateData);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $autoRenew
+                ? 'Auto-renewal has been enabled.'
+                : 'Auto-renewal has been disabled. Your plan will remain active until the end of the billing period.',
+            'data' => [
+                'subscription' => new SubscriptionResource($subscription->fresh(['plan.planFeatures'])),
+            ],
+        ]);
+    }
+
+    /**
+     * Cancel the doctor's direct subscription at the end of the billing cycle.
+     */
+    public function cancelSubscription(User $user, array $data): JsonResponse
+    {
+        $subscription = $user->getDirectSubscription();
+
+        if (! $subscription) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No active direct subscription found to cancel.',
+            ], 404);
+        }
+
+        $reason = $data['reason'] ?? 'User requested cancellation';
+        if (! empty($data['feedback'])) {
+            $reason .= ' - Feedback: '.$data['feedback'];
+        }
+
+        // Cancel at period end: keep status active until ends_at, disable auto-renew, record cancellation
+        $subscription->update([
+            'auto_renew' => false,
+            'cancelled_at' => now(),
+            'cancellation_reason' => $reason,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Subscription cancelled successfully. You will continue to have full access until '.($subscription->ends_at ? $subscription->ends_at->format('M d, Y') : 'the end of your billing cycle').'.',
+            'data' => [
+                'subscription' => new SubscriptionResource($subscription->fresh(['plan.planFeatures'])),
+            ],
+        ]);
+    }
+
+    /**
+     * Resume a subscription scheduled for cancellation / re-enable auto-renew.
+     */
+    public function resumeSubscription(User $user): JsonResponse
+    {
+        $subscription = $user->getDirectSubscription();
+
+        if (! $subscription) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No active direct subscription found to resume.',
+            ], 404);
+        }
+
+        if ($subscription->auto_renew && ! $subscription->cancelled_at) {
+            return response()->json([
+                'status' => 'info',
+                'message' => 'Subscription already has auto-renew enabled.',
+                'data' => [
+                    'subscription' => new SubscriptionResource($subscription->fresh(['plan.planFeatures'])),
+                ],
+            ]);
+        }
+
+        $subscription->update([
+            'auto_renew' => true,
+            'cancelled_at' => null,
+            'cancellation_reason' => null,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Subscription resumed successfully! Auto-renewal is now active.',
+            'data' => [
+                'subscription' => new SubscriptionResource($subscription->fresh(['plan.planFeatures'])),
+            ],
+        ]);
     }
 }

@@ -58,4 +58,40 @@ class DoctorSubscriptionController extends Controller
 
         return $this->doctorSubscriptionService->checkout($request->user(), $validated);
     }
+
+    /**
+     * Toggle subscription auto-renew setting.
+     */
+    public function toggleAutoRenew(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'auto_renew' => 'required|boolean',
+        ]);
+
+        return $this->doctorSubscriptionService->toggleAutoRenew(
+            $request->user(),
+            (bool) $validated['auto_renew']
+        );
+    }
+
+    /**
+     * Cancel subscription at the end of the billing period.
+     */
+    public function cancel(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:255',
+            'feedback' => 'nullable|string|max:1000',
+        ]);
+
+        return $this->doctorSubscriptionService->cancelSubscription($request->user(), $validated);
+    }
+
+    /**
+     * Resume a subscription scheduled for cancellation / re-enable auto-renew.
+     */
+    public function resume(Request $request): JsonResponse
+    {
+        return $this->doctorSubscriptionService->resumeSubscription($request->user());
+    }
 }
