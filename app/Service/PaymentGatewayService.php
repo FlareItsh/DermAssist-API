@@ -19,15 +19,15 @@ class PaymentGatewayService
     public function createPayMongoSession(User $user, Subscription $subscription, PaymentInvoice $invoice): array
     {
         $secretKey = config('services.paymongo.secret_key') ?: env('PAYMONGO_SECRET_KEY');
-
-        if (! $secretKey) {
-            throw new \Exception('PayMongo API Secret Key is missing. Please add PAYMONGO_SECRET_KEY to your api/.env file.');
-        }
-
-        $amountInCents = (int) round($invoice->final_amount * 100);
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
         $successUrl = "{$frontendUrl}/doctor/subscription?status=success&invoice={$invoice->uuid}";
         $cancelUrl = "{$frontendUrl}/doctor/subscription?status=cancelled";
+
+        if (! $secretKey) {
+            throw new \RuntimeException('PayMongo is not configured. Please set PAYMONGO_SECRET_KEY in your environment.');
+        }
+
+        $amountInCents = (int) round($invoice->final_amount * 100);
 
         $response = Http::withBasicAuth($secretKey, '')
             ->post('https://api.paymongo.com/v1/checkout_sessions', [

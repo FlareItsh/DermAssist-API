@@ -15,9 +15,65 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (! Schema::hasColumn('plans', 'max_secretaries')) {
-            Schema::table('plans', function (Blueprint $table) {
+        Schema::table('plans', function (Blueprint $table) {
+            if (Schema::hasColumn('plans', 'price')) {
+                $table->decimal('price', 10, 2)->nullable()->default(0.00)->change();
+            }
+            if (Schema::hasColumn('plans', 'interval')) {
+                $table->string('interval')->nullable()->change();
+            }
+            if (Schema::hasColumn('plans', 'interval_count')) {
+                $table->integer('interval_count')->nullable()->change();
+            }
+            if (Schema::hasColumn('plans', 'sort_order')) {
+                $table->integer('sort_order')->default(0)->change();
+            }
+            if (Schema::hasColumn('plans', 'trial_period_days')) {
+                $table->integer('trial_period_days')->default(0)->change();
+            }
+            if (Schema::hasColumn('plans', 'grace_period_days')) {
+                $table->integer('grace_period_days')->default(3)->change();
+            }
+            if (Schema::hasColumn('plans', 'is_active')) {
+                $table->boolean('is_active')->default(true)->change();
+            }
+            if (! Schema::hasColumn('plans', 'tier_type')) {
+                $table->string('tier_type')->default('individual')->after('slug');
+            }
+            if (! Schema::hasColumn('plans', 'price_monthly')) {
+                $table->decimal('price_monthly', 10, 2)->default(0.00)->after('tier_type');
+            }
+            if (! Schema::hasColumn('plans', 'price_annual')) {
+                $table->decimal('price_annual', 10, 2)->default(0.00)->after('price_monthly');
+            }
+            if (! Schema::hasColumn('plans', 'max_doctors')) {
+                $table->integer('max_doctors')->nullable()->after('price_annual');
+            }
+            if (! Schema::hasColumn('plans', 'max_clinics')) {
+                $table->integer('max_clinics')->nullable()->after('max_doctors');
+            }
+            if (! Schema::hasColumn('plans', 'max_secretaries')) {
                 $table->integer('max_secretaries')->nullable()->default(0)->after('max_clinics');
+            }
+        });
+
+        if (Schema::hasTable('subscriptions')) {
+            Schema::table('subscriptions', function (Blueprint $table) {
+                if (Schema::hasColumn('subscriptions', 'transaction_id')) {
+                    $table->string('transaction_id')->nullable()->change();
+                }
+                if (! Schema::hasColumn('subscriptions', 'billing_cycle')) {
+                    $table->string('billing_cycle')->default('monthly')->after('plan_id');
+                }
+                if (! Schema::hasColumn('subscriptions', 'status')) {
+                    $table->string('status')->default('active')->after('billing_cycle');
+                }
+                if (! Schema::hasColumn('subscriptions', 'trial_ends_at')) {
+                    $table->dateTime('trial_ends_at')->nullable()->after('ends_at');
+                }
+                if (! Schema::hasColumn('subscriptions', 'cancellation_reason')) {
+                    $table->string('cancellation_reason')->nullable()->after('cancelled_at');
+                }
             });
         }
 

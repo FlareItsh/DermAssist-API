@@ -17,6 +17,8 @@ class Appointment extends Model
         'diagnosis_id',
         'scheduled_at',
         'scheduled_end_at',
+        'requested_reschedule_date',
+        'requested_reschedule_time',
         'location',
         'purpose',
         'status',

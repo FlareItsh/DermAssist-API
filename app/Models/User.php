@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -214,20 +215,34 @@ class User extends Authenticatable
      */
     public function getDirectSubscription(): ?Subscription
     {
-        $directSub = $this->subscriptions()
-            ->with('plan.planFeatures')
-            ->whereIn('status', ['active', 'trialing'])
-            ->where(function ($q) {
-                $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
-            })
-            ->latest('id')
-            ->first();
+        try {
+            if (! Schema::hasTable('subscriptions')) {
+                return null;
+            }
 
-        if (! $directSub && $this->subscription && $this->subscription->isActive()) {
-            $directSub = $this->subscription;
+            $query = $this->subscriptions()
+                ->with('plan.planFeatures');
+
+            if (Schema::hasColumn('subscriptions', 'status')) {
+                $query->whereIn('status', ['active', 'trialing']);
+            }
+
+            if (Schema::hasColumn('subscriptions', 'ends_at')) {
+                $query->where(function ($q) {
+                    $q->whereNull('ends_at')->orWhere('ends_at', '>', now());
+                });
+            }
+
+            $directSub = $query->latest('id')->first();
+
+            if (! $directSub && $this->subscription && method_exists($this->subscription, 'isActive') && $this->subscription->isActive()) {
+                $directSub = $this->subscription;
+            }
+
+            return $directSub;
+        } catch (\Throwable $e) {
+            return null;
         }
-
-        return $directSub;
     }
 
     /**
@@ -237,44 +252,47 @@ class User extends Authenticatable
      */
     public function getActiveSubscription(): ?Subscription
     {
-        $directSub = $this->getDirectSubscription();
+        try {
+            $directSub = $this->getDirectSubscription();
 
-        // 2. Inherited Clinic Subscription (for Associate Doctors)
-        $inheritedSub = null;
-        $clinicMemberships = $this->clinicMemberships()
-            ->wherePivot('status', 'active')
-            ->with('owner')
-            ->get();
+            // 2. Inherited Clinic Subscription (for Associate Doctors)
+            $inheritedSub = null;
+            if (Schema::hasTable('clinic_doctors')) {
+                $clinicMemberships = $this->clinicMemberships()
+                    ->wherePivot('status', 'active')
+                    ->with('owner')
+                    ->get();
 
-        foreach ($clinicMemberships as $clinic) {
-            if ($clinic->owner && $clinic->owner->id !== $this->id) {
-                $ownerSub = $clinic->owner->getActiveSubscription();
-                if ($ownerSub && $ownerSub->isActive()) {
-                    // Choose the highest tier / highest value plan if associated with multiple clinics
-                    if (! $inheritedSub || ($ownerSub->plan?->price_monthly ?? 0) > ($inheritedSub->plan?->price_monthly ?? 0)) {
-                        $inheritedSub = $ownerSub;
+                foreach ($clinicMemberships as $clinic) {
+                    if ($clinic->owner && $clinic->owner->id !== $this->id) {
+                        $ownerSub = $clinic->owner->getActiveSubscription();
+                        if ($ownerSub && method_exists($ownerSub, 'isActive') && $ownerSub->isActive()) {
+                            // Choose the highest tier / highest value plan if associated with multiple clinics
+                            if (! $inheritedSub || ($ownerSub->plan?->price_monthly ?? 0) > ($inheritedSub->plan?->price_monthly ?? 0)) {
+                                $inheritedSub = $ownerSub;
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        // 3. Resolve precedence when doctor has both direct and inherited subscriptions
-        if ($directSub && $inheritedSub) {
-            // If the inherited subscription is a Clinic Group Plan (clinic_multi_doctor) or higher tier,
-            // the associate enjoys the superior Clinic Group Plan benefits.
-            if ($inheritedSub->plan?->tier_type === 'clinic_multi_doctor' && $directSub->plan?->tier_type !== 'clinic_multi_doctor') {
-                return $inheritedSub;
+            // 3. Resolve precedence when doctor has both direct and inherited subscriptions
+            if ($directSub && $inheritedSub) {
+                if ($inheritedSub->plan?->tier_type === 'clinic_multi_doctor' && $directSub->plan?->tier_type !== 'clinic_multi_doctor') {
+                    return $inheritedSub;
+                }
+
+                if (($inheritedSub->plan?->price_monthly ?? 0) > ($directSub->plan?->price_monthly ?? 0)) {
+                    return $inheritedSub;
+                }
+
+                return $directSub;
             }
 
-            // Or if inherited plan price is higher than direct plan
-            if (($inheritedSub->plan?->price_monthly ?? 0) > ($directSub->plan?->price_monthly ?? 0)) {
-                return $inheritedSub;
-            }
-
-            return $directSub;
+            return $directSub ?: $inheritedSub;
+        } catch (\Throwable $e) {
+            return null;
         }
-
-        return $directSub ?: $inheritedSub;
     }
 
     /**

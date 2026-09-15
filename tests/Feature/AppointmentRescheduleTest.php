@@ -153,7 +153,7 @@ it('allows patient to request a reschedule with preferred date and time', functi
         'id' => $appointment->id,
         'status' => 'reschedule_requested',
         'requested_reschedule_date' => $targetDate,
-        'requested_reschedule_time' => '14:00:00',
+        'requested_reschedule_time' => '14:00',
     ]);
 
     $this->assertDatabaseHas('messages', [

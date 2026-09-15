@@ -12,8 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('appointments', function (Blueprint $table) {
-            $table->date('requested_reschedule_date')->nullable()->after('status');
-            $table->time('requested_reschedule_time')->nullable()->after('requested_reschedule_date');
+            $table->date('requested_reschedule_date')->nullable()->after('scheduled_end_at');
         });
     }
 
@@ -23,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('appointments', function (Blueprint $table) {
-            $table->dropColumn(['requested_reschedule_date', 'requested_reschedule_time']);
+            $table->dropColumn('requested_reschedule_date');
         });
     }
 };

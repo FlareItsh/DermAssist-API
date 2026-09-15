@@ -28,6 +28,11 @@ class PlanService
             $payload['slug'] = Str::slug($payload['name']);
         }
 
+        $payload['sort_order'] = $payload['sort_order'] ?? 0;
+        $payload['trial_period_days'] = $payload['trial_period_days'] ?? 0;
+        $payload['grace_period_days'] = $payload['grace_period_days'] ?? 3;
+        $payload['is_active'] = $payload['is_active'] ?? true;
+
         $plan = $this->planRepository->create($payload);
 
         return response()->json([
