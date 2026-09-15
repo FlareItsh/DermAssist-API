@@ -189,3 +189,75 @@ test('scheduled renewal command rolls over subscriptions when auto_renew is true
     expect($freshSub->ends_at->isFuture())->toBeTrue();
     expect(PaymentInvoice::where('subscription_id', $sub->id)->where('payment_method', 'Auto-Renew')->exists())->toBeTrue();
 });
+
+test('doctor cannot renew or checkout the same plan while an active subscription exists', function () {
+    $role = Role::firstOrCreate(['slug' => 'doctor'], ['name' => 'Doctor']);
+    $doctor = User::factory()->create(['role_id' => $role->id]);
+    $plan = Plan::factory()->create(['price_monthly' => 1500]);
+
+    Subscription::factory()->create([
+        'user_id' => $doctor->id,
+        'plan_id' => $plan->id,
+        'status' => 'active',
+        'ends_at' => now()->addMonth(),
+    ]);
+
+    $response = $this->actingAs($doctor)
+        ->postJson('/api/subscription/checkout', [
+            'plan_uuid' => $plan->uuid,
+            'billing_cycle' => 'monthly',
+            'payment_method' => 'manual',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonPath('status', 'error');
+
+    expect($response->json('message'))->toContain('Renewal of this plan is only available once your current subscription expires');
+});
+
+test('doctor can switch or upgrade to a different tier while holding an active subscription', function () {
+    $role = Role::firstOrCreate(['slug' => 'doctor'], ['name' => 'Doctor']);
+    $doctor = User::factory()->create(['role_id' => $role->id]);
+    $currentPlan = Plan::factory()->create(['name' => 'Basic Plan', 'price_monthly' => 1000]);
+    $higherPlan = Plan::factory()->create(['name' => 'Pro Plan', 'price_monthly' => 3000]);
+
+    Subscription::factory()->create([
+        'user_id' => $doctor->id,
+        'plan_id' => $currentPlan->id,
+        'status' => 'active',
+        'ends_at' => now()->addMonth(),
+    ]);
+
+    $response = $this->actingAs($doctor)
+        ->postJson('/api/subscription/checkout', [
+            'plan_uuid' => $higherPlan->uuid,
+            'billing_cycle' => 'monthly',
+            'payment_method' => 'manual',
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('status', 'success');
+});
+
+test('doctor can renew the same plan once their subscription has expired', function () {
+    $role = Role::firstOrCreate(['slug' => 'doctor'], ['name' => 'Doctor']);
+    $doctor = User::factory()->create(['role_id' => $role->id]);
+    $plan = Plan::factory()->create(['price_monthly' => 1500]);
+
+    Subscription::factory()->create([
+        'user_id' => $doctor->id,
+        'plan_id' => $plan->id,
+        'status' => 'expired',
+        'ends_at' => now()->subDay(),
+    ]);
+
+    $response = $this->actingAs($doctor)
+        ->postJson('/api/subscription/checkout', [
+            'plan_uuid' => $plan->uuid,
+            'billing_cycle' => 'monthly',
+            'payment_method' => 'manual',
+        ]);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('status', 'success');
+});

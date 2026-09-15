@@ -133,3 +133,64 @@ Plan features are normalized into dedicated database tables to allow dynamic cre
 - **Theme & Colors**:
   - Always match existing sibling admin pages (`plans.vue`, `payments.vue`, `coupons.vue`) using clean borders `border-gray-200`, `bg-white`, and `bg-gray-50`.
 
+---
+
+## 5. Mid-Cycle Plan Updates, Grandfathering, & Plan Snapshots
+
+### The Core Architectural Rule
+When an administrator modifies a subscription plan (such as raising/lowering prices, increasing/reducing quota limits like `max_secretaries` or `max_clinics`, or toggling feature flags) in the middle of a billing period:
+> **MANDATORY RULE**: Currently active subscribers **MUST NOT** automatically receive unpurchased updates mid-cycle, nor have their active features and quotas abruptly reduced. Existing subscribers remain **grandfathered** on their contracted terms until their current cycle ends. To unlock newly added features or revised quotas immediately, they must explicitly upgrade or wait for their next monthly renewal.
+
+### Schema Foundations & Storage
+1. **`plans` table**:
+   - `version` (`integer`, default `1`): Automatically incremented whenever an admin modifies plan features, quotas, or pricing in `/admin/subscriptions/plans`.
+2. **`doctor_subscriptions` table**:
+   - `plan_snapshot` (`json`, nullable): A frozen JSON document captured at the instant of subscription creation or payment settlement.
+     ```json
+     {
+       "name": "Clinic Group Plan",
+       "price": 2500,
+       "billing_cycle": "monthly",
+       "max_clinics": 3,
+       "max_secretaries": 5,
+       "max_doctors": 5,
+       "features": {
+         "can_execute_scan": true,
+         "show_in_recommendation": true,
+         "export_pdf_reports": true,
+         "can_have_secretary": true
+       }
+     }
+     ```
+   - `plan_version` (`integer`, default `1`): The version number of the plan at the time the subscription was purchased or last renewed.
+
+### Effective Capability Resolution (Backend)
+When checking doctor permissions and limits, always resolve against the **effective snapshot** first, with fallback to the live plan for legacy rows without a snapshot:
+```php
+// In DoctorSubscriptionService or User Model:
+$snapshot = $subscription->plan_snapshot;
+
+$effectiveFeatures = $snapshot['features'] ?? $subscription->plan->features ?? [];
+$effectiveMaxClinics = $snapshot['max_clinics'] ?? $subscription->plan->max_clinics ?? 1;
+$effectiveMaxSecretaries = $snapshot['max_secretaries'] ?? $subscription->plan->max_secretaries ?? 0;
+
+// Expose whether an update is available:
+$latestPlanVersion = $subscription->plan->version ?? 1;
+$hasPlanUpdate = ($latestPlanVersion > ($subscription->plan_version ?? 1));
+```
+
+### Frontend Notification & Upgrade Flow (Nuxt)
+1. **Composable Integration (`useDoctorSubscription`)**:
+   - Computes `hasPlanUpdate`:
+     ```ts
+     const hasPlanUpdate = computed(() => Boolean(currentSubscription.value?.has_plan_update))
+     ```
+   - Resolves `maxSecretaries` and `maxClinics` via `currentSubscription.value.plan_snapshot` or `effective_max_*`.
+2. **Notification Bell Alert**:
+   - `useAppNotifications()` detects `hasPlanUpdate` and surfaces a high-priority alert:
+     - Title: **"New Plan Features Available"**
+     - Description: *"Your subscription plan has received new features and quota updates! Upgrade or renew now to unlock the latest benefits."*
+     - CTA Route: `/doctor/subscription`
+3. **Transition to New Version**:
+   - When the doctor renews on the next month or executes a plan upgrade via checkout, backend captures the latest `plans.version` into `subscription.plan_version` and freezes a fresh `plan_snapshot`.
+
