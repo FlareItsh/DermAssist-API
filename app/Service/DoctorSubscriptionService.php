@@ -154,18 +154,19 @@ class DoctorSubscriptionService
     {
         $plan = Plan::where('uuid', $data['plan_uuid'])->firstOrFail();
 
-        // Guard: Prevent renewing the same plan if doctor already holds an active subscription to it
+        $billingCycle = $data['billing_cycle'] ?? 'monthly';
+
+        // Guard: Prevent duplicate purchase if doctor already holds an active subscription to the same plan and cycle
         $activeSub = $user->getDirectSubscription();
-        if ($activeSub && $activeSub->isActive() && $activeSub->plan_id === $plan->id) {
+        if ($activeSub && $activeSub->isActive() && $activeSub->plan_id === $plan->id && $activeSub->billing_cycle === $billingCycle) {
             $endsAtFormatted = $activeSub->ends_at ? $activeSub->ends_at->format('M d, Y') : 'the end of your current billing cycle';
 
             return response()->json([
                 'status' => 'error',
-                'message' => "You already have an active subscription to {$plan->name} valid until {$endsAtFormatted}. Renewal of this plan is only available once your current subscription expires.",
+                'message' => "You already have an active {$billingCycle} subscription to {$plan->name} valid until {$endsAtFormatted}. Renewal of this plan is only available once your current subscription expires.",
             ], 422);
         }
 
-        $billingCycle = $data['billing_cycle'] ?? 'monthly';
         $paymentMethod = $data['payment_method'] ?? 'paymongo';
         $originalAmount = $billingCycle === 'annual' ? (float) $plan->price_annual : (float) $plan->price_monthly;
 

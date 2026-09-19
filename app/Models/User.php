@@ -249,15 +249,20 @@ class User extends Authenticatable
 
     /**
      * Get the resolved active subscription (direct or inherited via clinic).
-     * If a doctor has both a personal subscription and an associate clinic seat,
-     * the superior / higher tier plan (e.g. Clinic Group Plan) takes precedence.
+     * If a doctor has an active personal direct subscription, it takes precedence.
+     * If they do not hold an active direct subscription, they inherit their clinic owner's subscription.
      */
     public function getActiveSubscription(): ?Subscription
     {
         try {
             $directSub = $this->getDirectSubscription();
 
-            // 2. Inherited Clinic Subscription (for Associate Doctors)
+            // 1. Direct Personal Subscription takes precedence if active
+            if ($directSub && method_exists($directSub, 'isActive') && $directSub->isActive()) {
+                return $directSub;
+            }
+
+            // 2. Inherited Clinic Subscription (for Associate Doctors without an active personal subscription)
             $inheritedSub = null;
             if (Schema::hasTable('clinic_doctors')) {
                 $clinicMemberships = $this->clinicMemberships()
@@ -278,20 +283,7 @@ class User extends Authenticatable
                 }
             }
 
-            // 3. Resolve precedence when doctor has both direct and inherited subscriptions
-            if ($directSub && $inheritedSub) {
-                if ($inheritedSub->plan?->tier_type === 'clinic_multi_doctor' && $directSub->plan?->tier_type !== 'clinic_multi_doctor') {
-                    return $inheritedSub;
-                }
-
-                if (($inheritedSub->plan?->price_monthly ?? 0) > ($directSub->plan?->price_monthly ?? 0)) {
-                    return $inheritedSub;
-                }
-
-                return $directSub;
-            }
-
-            return $directSub ?: $inheritedSub;
+            return $inheritedSub;
         } catch (\Throwable $e) {
             return null;
         }
