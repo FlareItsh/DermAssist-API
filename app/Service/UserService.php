@@ -87,6 +87,8 @@ class UserService
                 'uuid' => (string) Str::uuid(),
                 'prc_number' => $payload['prcNumber'] ?? null,
                 'avatar_path' => null,
+                'consent_dataset' => ! empty($payload['consent_dataset']),
+                'terms_accepted_at' => ! empty($payload['agree_to_terms']) ? now() : null,
             ];
 
             if (! empty($payload['avatar'])) {
@@ -212,6 +214,13 @@ class UserService
             if (array_key_exists($field, $payload) && ($payload[$field] === null || $payload[$field] === '')) {
                 unset($payload[$field]);
             }
+        }
+
+        if (array_key_exists('consent_dataset', $payload)) {
+            $payload['consent_dataset'] = (bool) $payload['consent_dataset'];
+        }
+        if (! empty($payload['agree_to_terms']) && ! $user->terms_accepted_at) {
+            $payload['terms_accepted_at'] = now();
         }
 
         $model = $this->userRepository->update($uuid, $payload);

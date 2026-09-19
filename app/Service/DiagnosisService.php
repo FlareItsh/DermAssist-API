@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Http\Resources\DiagnosisResource;
 use App\Http\Resources\UserResource;
+use App\Models\User;
 use App\Repository\DiagnosisRepository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -51,6 +52,14 @@ class DiagnosisService
         // 2. Save image
         $path = $image->store('diagnoses', 'public');
 
+        $patientConsented = false;
+        if (! empty($data['patient_uuid'])) {
+            $patient = User::where('uuid', $data['patient_uuid'])->first();
+            if ($patient) {
+                $patientConsented = (bool) $patient->consent_dataset;
+            }
+        }
+
         // 3. Create record
         $diagnosis = $this->diagnosisRepository->create([
             'user_uuid' => $userUuid,
@@ -61,6 +70,7 @@ class DiagnosisService
             'confidence' => $aiResult['confidence'],
             'probabilities' => $aiResult['all_probabilities'],
             'status' => 'completed',
+            'patient_consented_dataset' => $patientConsented,
         ]);
 
         // Set transient properties directly on the model instance to keep response flat (no additional() wrapper)
@@ -113,6 +123,11 @@ class DiagnosisService
 
     public function updateDiagnosis(string $uuid, array $payload)
     {
+        if (array_key_exists('patient_uuid', $payload)) {
+            $patient = ! empty($payload['patient_uuid']) ? User::where('uuid', $payload['patient_uuid'])->first() : null;
+            $payload['patient_consented_dataset'] = $patient ? (bool) $patient->consent_dataset : false;
+        }
+
         $model = $this->diagnosisRepository->update($uuid, $payload);
 
         return new DiagnosisResource($model);
