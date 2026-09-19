@@ -208,4 +208,25 @@ All frontend routes located in `views/app/pages/` MUST strictly conform to the f
 - Nuxt file-based routing converts PascalCase directories to lowercase (e.g., `PatchNotes/index.vue` -> `/patchnotes`, `AccountDisabled/index.vue` -> `/accountdisabled`).
 - If kebab-case URLs or alternative routes are needed (such as `/admin/patch-notes` or `/auth/account-disabled`), **ALWAYS** use the page's `definePageMeta({ alias: ['/admin/patch-notes'] })` rather than duplicating files or creating lowercase wrapper folders.
 
+---
+
+## 7. AI Dataset Contribution & Dual-Consent Architecture
+
+When handling skin scan images and saving diagnostic cases to the Admin Retraining Dataset (`storage/app/public/dataset/{category}/`):
+
+### 1. The Dual-Consent Rule
+- **Mandatory Condition**: `Can Save = (Patient Consented == TRUE) AND (Doctor Approved == TRUE)`.
+- If the patient has not consented, saving is strictly forbidden and rejected by `DatasetService::saveFromDiagnosis` with **HTTP 403 Forbidden**.
+- If the patient has consented, the doctor still retains clinical discretion to uncheck the contribution toggle for that individual diagnosis.
+
+### 2. Clinic-Registered Patients
+- Patients created by a doctor in-clinic default strictly to `consent_dataset = false` and `terms_accepted_at = null`. Doctors are never permitted to consent on behalf of a patient.
+- The patient must log in to their account to review disclaimers and choose their research consent preference in Profile Settings.
+
+### 3. Non-Blocking Scanners
+- **Rule**: Never block live cameras, shutter buttons, or file uploads with forced consent checkboxes. Use non-intrusive informational disclaimer pills linking to the Medical Disclaimer and Privacy Policy modals.
+
+### 4. Doctor View Privacy Rule
+- If a patient has not consented, the dataset contribution checkbox in `DiagnosisFindingsDetailed.vue` is completely hidden. Never render an explicit "Patient declined" status badge.
+
 
