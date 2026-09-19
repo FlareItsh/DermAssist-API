@@ -178,3 +178,34 @@ In `views/app/pages/Doctor/profile.vue`, adhere strictly to the following approv
    - In Vue SFC `<template>` attributes, inline handlers containing multiple statements MUST be separated by explicit semicolons (`;`), e.g. `@click="viewMode = 'list'; activeTab = 'reschedule'"`, or extracted into a script setup helper method (`@click="switchToRescheduleTab"`).
    - **Reason**: Omitted semicolons in multi-statement inline handlers break `@vue/compiler-sfc` AST parsing during Nuxt SSR page meta compilation (`?macro=true`).
 
+---
+
+## 6. Client-Side Page Hierarchy & Routing Standards (Nuxt 4)
+
+All frontend routes located in `views/app/pages/` MUST strictly conform to the following directory hierarchy and naming rules:
+
+### 1. PascalCase Directory Naming Rule
+- **Mandatory Capitalization**: Every folder within `views/app/pages/` MUST start with a capital letter using **PascalCase** (e.g. `Doctor/`, `Secretaries/`, `Patients/`, `Appointments/`, `Messages/`, `Subscription/`, `Profile/`, `Records/`, `Notifications/`, `Updates/`, `Auth/`, `Login/`, `Register/`, `AccountDisabled/`, `Admin/`, `PatchNotes/`, `Subscriptions/Plans/`).
+- **Forbidden**: Never use lowercase or kebab-case directory names under `app/pages/` (e.g., `Doctor/secretaries/` or `Admin/patch-notes/` are strictly forbidden).
+
+### 2. Default `index.vue` Architecture
+- **Folder per Route Pattern**: By default, each route or section MUST be structured inside its own PascalCase directory containing an `index.vue` entry file.
+  - Examples:
+    - `Doctor/Patients/index.vue` -> resolves to `/doctor/patients`
+    - `Doctor/Secretaries/index.vue` -> resolves to `/doctor/secretaries`
+    - `Doctor/Subscription/index.vue` -> resolves to `/doctor/subscription`
+    - `Doctor/Appointments/index.vue` -> resolves to `/doctor/appointments`
+- **No Coexisting Flat / Directory Mix**: Never create flat `.vue` files alongside a directory of the same name (e.g., never create `Doctor/appointments.vue` next to `Doctor/Appointments/`).
+
+### 3. Dynamic Parameter Children
+- Dynamic route parameters within a feature directory MUST follow standard bracket notation (e.g. `Doctor/Appointments/[uuid].vue`, `Doctor/Messages/[uuid].vue`, `Admin/Moderation/Users/[uuid].vue`).
+
+### 4. Semantic Route Naming for Patients
+- The consultation patient directories for Doctors and Secretaries are named `Patients` (e.g. `Doctor/Patients/index.vue` and `Secretary/Patients/index.vue`), resolving to `/doctor/patients` and `/secretary/patients`.
+- **Legacy Route Redirection**: When renaming routes, always provide backward-compatible redirection pages (e.g., `Doctor/Users/index.vue` and `Secretary/Users/index.vue` with `definePageMeta({ middleware: () => navigateTo('/doctor/patients', { redirectCode: 301, replace: true }) })`) to prevent broken bookmarks or external links.
+
+### 5. Multi-Word Route Aliases via `definePageMeta`
+- Nuxt file-based routing converts PascalCase directories to lowercase (e.g., `PatchNotes/index.vue` -> `/patchnotes`, `AccountDisabled/index.vue` -> `/accountdisabled`).
+- If kebab-case URLs or alternative routes are needed (such as `/admin/patch-notes` or `/auth/account-disabled`), **ALWAYS** use the page's `definePageMeta({ alias: ['/admin/patch-notes'] })` rather than duplicating files or creating lowercase wrapper folders.
+
+
