@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Models\Appointment;
 use App\Models\DoctorAvailability;
 use App\Models\User;
 use Carbon\Carbon;
@@ -33,6 +34,50 @@ class DoctorAvailabilityRepository
     public function deleteAvailability(DoctorAvailability $availability): bool
     {
         return $availability->delete();
+    }
+
+    public function getSlotsForDoctorOnDate(int $doctorId, string $dateStr): Collection
+    {
+        return DoctorAvailability::with('clinic')
+            ->where('doctor_id', $doctorId)
+            ->whereDate('available_date', $dateStr)
+            ->orderBy('start_time', 'asc')
+            ->get();
+    }
+
+    public function getOverlappingSlots(int $doctorId, string $dateStr, string $startTime, string $endTime, ?int $excludeId = null): Collection
+    {
+        return DoctorAvailability::with('clinic')
+            ->where('doctor_id', $doctorId)
+            ->whereDate('available_date', $dateStr)
+            ->where('start_time', '<', $endTime)
+            ->where('end_time', '>', $startTime)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->orderBy('start_time', 'asc')
+            ->get();
+    }
+
+    public function deleteSlotsForDoctorOnDate(int $doctorId, string $dateStr): void
+    {
+        DoctorAvailability::where('doctor_id', $doctorId)
+            ->whereDate('available_date', $dateStr)
+            ->delete();
+    }
+
+    public function getBookedAppointmentsInWindow(int $doctorId, string $dateStr, string $startTime, string $endTime): Collection
+    {
+        $startDt = "{$dateStr} {$startTime}";
+        $endDt = "{$dateStr} {$endTime}";
+
+        return Appointment::with('patient')
+            ->where('doctor_id', $doctorId)
+            ->whereDate('scheduled_at', $dateStr)
+            ->whereIn('status', ['scheduled', 'reschedule_proposed'])
+            ->where(function ($q) use ($startDt, $endDt) {
+                $q->where('scheduled_at', '<', $endDt)
+                    ->whereRaw('COALESCE(scheduled_end_at, DATE_ADD(scheduled_at, INTERVAL 1 HOUR)) > ?', [$startDt]);
+            })
+            ->get();
     }
 
     public function isDoctorAvailableOn(int $doctorId, Carbon $date): bool

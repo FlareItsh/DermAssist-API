@@ -35,6 +35,7 @@ class DoctorAvailabilityController extends Controller
             'is_available' => 'sometimes|boolean',
             'clinic_id' => 'nullable|exists:clinics,id',
             'location_name' => 'nullable|string|max:255',
+            'overwrite' => 'sometimes|boolean',
         ]);
 
         $availability = $this->service->createAvailability($request->user(), $request->only([
@@ -44,6 +45,7 @@ class DoctorAvailabilityController extends Controller
             'is_available',
             'clinic_id',
             'location_name',
+            'overwrite',
         ]));
 
         return response()->json(new DoctorAvailabilityResource($availability->load('clinic')), 201);
@@ -58,11 +60,12 @@ class DoctorAvailabilityController extends Controller
             'is_available' => 'sometimes|boolean',
             'clinic_id' => 'nullable|exists:clinics,id',
             'location_name' => 'nullable|string|max:255',
+            'overwrite' => 'sometimes|boolean',
         ]);
 
         $updated = $this->service->updateAvailability(
             $availability,
-            $request->only(['available_date', 'start_time', 'end_time', 'is_available', 'clinic_id', 'location_name']),
+            $request->only(['available_date', 'start_time', 'end_time', 'is_available', 'clinic_id', 'location_name', 'overwrite']),
             $request->user()
         );
 

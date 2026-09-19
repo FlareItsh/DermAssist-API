@@ -150,178 +150,270 @@ class DoctorAvailabilitySeeder extends Seeder
             'updated_at' => now()->subDays(5),
         ]);
 
-        // 5. Seed 14-Day Duty Schedules
-        $now = Carbon::today();
+        // 5. Seed Regular Schedules from September 1, 2026 until December 31, 2026
+        $startDate = Carbon::parse('2026-09-01');
+        $endDate = Carbon::parse('2026-12-31');
+        $availabilities = [];
 
-        for ($dayOffset = 0; $dayOffset <= 14; $dayOffset++) {
-            $targetDate = $now->copy()->addDays($dayOffset);
-            $dayOfWeek = $targetDate->dayOfWeek; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-            $dateStr = $targetDate->toDateString();
+        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+            $dayOfWeek = $date->dayOfWeek; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+            $dateStr = $date->toDateString();
 
-            // Sunday is off-duty for all doctors
-            if ($dayOfWeek === Carbon::SUNDAY) {
+            // Rest days: Weekends (Saturday and Sunday) for all doctors
+            if ($dayOfWeek === Carbon::SUNDAY || $dayOfWeek === Carbon::SATURDAY) {
                 foreach ([$smith, $beatriz, $ricardo, $clara, $miguel] as $doc) {
-                    DoctorAvailability::create([
-                        'uuid' => (string) Str::uuid(),
-                        'doctor_id' => $doc->id,
-                        'clinic_id' => null,
-                        'location_name' => 'Rest Day / Off-Duty',
-                        'available_date' => $dateStr,
-                        'start_time' => '00:00',
-                        'end_time' => '23:59',
-                        'is_available' => false,
-                    ]);
+                    $this->addRestDay($availabilities, $doc->id, $dateStr);
                 }
 
                 continue;
             }
 
-            // --- Dr. Allan Smith (Practice across his 3 clinic branches) ---
+            // --- 1. Dr. Allan Smith (Rotates across his 3 clinic branches) ---
+            if (in_array($dayOfWeek, [Carbon::MONDAY, Carbon::WEDNESDAY])) {
+                // Makati Clinic on Mon / Wed
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $smith->id,
+                    $smithMakati,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '17:00:00'
+                );
+            } elseif (in_array($dayOfWeek, [Carbon::TUESDAY, Carbon::THURSDAY])) {
+                // BGC Clinic on Tue / Thu
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $smith->id,
+                    $smithBgc,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '17:00:00'
+                );
+            } else {
+                // Davao Suite on Friday
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $smith->id,
+                    $smithDavao,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '17:00:00'
+                );
+            }
+
+            // --- 2. Dr. Beatriz Cruz (Owned: Cruz Clinic, Associate at: Smith Makati) ---
             if (in_array($dayOfWeek, [Carbon::MONDAY, Carbon::WEDNESDAY, Carbon::FRIDAY])) {
-                // Morning at Makati, Afternoon at BGC
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $smith->id,
-                    'clinic_id' => $smithMakati->id,
-                    'location_name' => $smithMakati->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '09:00',
-                    'end_time' => '12:30',
-                    'is_available' => true,
-                ]);
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $smith->id,
-                    'clinic_id' => null,
-                    'location_name' => 'Transit & Lunch Break',
-                    'available_date' => $dateStr,
-                    'start_time' => '12:30',
-                    'end_time' => '14:00',
-                    'is_available' => false,
-                ]);
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $smith->id,
-                    'clinic_id' => $smithBgc->id,
-                    'location_name' => $smithBgc->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '14:00',
-                    'end_time' => '18:00',
-                    'is_available' => true,
-                ]);
+                // Own Clinic: Cruz Skin Clinic - SPMC Suite
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $beatriz->id,
+                    $cruzClinic,
+                    $dateStr,
+                    '08:30:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '16:30:00'
+                );
             } else {
-                // Tue / Thu / Sat at Davao Clinic
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $smith->id,
-                    'clinic_id' => $smithDavao->id,
-                    'location_name' => $smithDavao->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '09:00',
-                    'end_time' => '17:00',
-                    'is_available' => true,
-                ]);
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $smith->id,
-                    'clinic_id' => null,
-                    'location_name' => 'Lunch Break',
-                    'available_date' => $dateStr,
-                    'start_time' => '12:00',
-                    'end_time' => '13:00',
-                    'is_available' => false,
-                ]);
+                // Associate Duty at Smith Makati Center
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $beatriz->id,
+                    $smithMakati,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '16:00:00'
+                );
             }
 
-            // --- Dr. Beatriz Cruz (Owned: Cruz Clinic, Associate at: Smith Makati) ---
+            // --- 3. Dr. Ricardo Dizon (Owned: Dizon Clinic, Consultant at: Smith BGC) ---
             if (in_array($dayOfWeek, [Carbon::MONDAY, Carbon::WEDNESDAY, Carbon::FRIDAY])) {
-                // Full day at her own Cruz Skin Clinic
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $beatriz->id,
-                    'clinic_id' => $cruzClinic->id,
-                    'location_name' => $cruzClinic->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '08:30',
-                    'end_time' => '16:30',
-                    'is_available' => true,
-                ]);
+                // Own Clinic: Dizon Dermatology & Wound Care
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $ricardo->id,
+                    $dizonClinic,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '16:00:00'
+                );
             } else {
-                // Tue / Thu / Sat on duty as Associate at Smith Makati Center
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $beatriz->id,
-                    'clinic_id' => $smithMakati->id,
-                    'location_name' => $smithMakati->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '09:00',
-                    'end_time' => '16:00',
-                    'is_available' => true,
-                ]);
+                // Consultant Duty at Smith BGC
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $ricardo->id,
+                    $smithBgc,
+                    $dateStr,
+                    '09:00:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '17:00:00'
+                );
             }
 
-            // --- Dr. Ricardo Dizon (Owned: Dizon Clinic, Consultant at: Smith BGC) ---
-            if (in_array($dayOfWeek, [Carbon::TUESDAY, Carbon::THURSDAY])) {
-                // Consultant duty at Smith BGC
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $ricardo->id,
-                    'clinic_id' => $smithBgc->id,
-                    'location_name' => $smithBgc->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '13:00',
-                    'end_time' => '18:00',
-                    'is_available' => true,
-                ]);
+            // --- 4. Dr. Clara Mendoza (Owned: Mendoza Clinic, Resident at: Smith Davao) ---
+            if (in_array($dayOfWeek, [Carbon::MONDAY, Carbon::WEDNESDAY, Carbon::FRIDAY])) {
+                // Own Clinic: Mendoza Skin Health Clinic
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $clara->id,
+                    $mendozaClinic,
+                    $dateStr,
+                    '08:30:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '16:30:00'
+                );
             } else {
-                // Remaining weekdays at his own clinic
-                DoctorAvailability::create([
-                    'uuid' => (string) Str::uuid(),
-                    'doctor_id' => $ricardo->id,
-                    'clinic_id' => $dizonClinic->id,
-                    'location_name' => $dizonClinic->name,
-                    'available_date' => $dateStr,
-                    'start_time' => '09:00',
-                    'end_time' => '16:00',
-                    'is_available' => true,
-                ]);
+                // Resident Duty at Smith Davao
+                $this->addDutyDayWithLunch(
+                    $availabilities,
+                    $clara->id,
+                    $smithDavao,
+                    $dateStr,
+                    '08:30:00',
+                    '12:00:00',
+                    '12:00:00',
+                    '13:00:00',
+                    '13:00:00',
+                    '16:00:00'
+                );
             }
 
-            // --- Dr. Clara Mendoza (Resident at Smith Davao & Mendoza Clinic) ---
-            DoctorAvailability::create([
-                'uuid' => (string) Str::uuid(),
-                'doctor_id' => $clara->id,
-                'clinic_id' => $smithDavao->id,
-                'location_name' => $smithDavao->name,
-                'available_date' => $dateStr,
-                'start_time' => '08:00',
-                'end_time' => '16:00',
-                'is_available' => true,
-            ]);
-
-            // --- Dr. Miguel Tan (Strictly Solo: Only 1 clinic branch) ---
-            DoctorAvailability::create([
-                'uuid' => (string) Str::uuid(),
-                'doctor_id' => $miguel->id,
-                'clinic_id' => $tanClinic->id,
-                'location_name' => $tanClinic->name,
-                'available_date' => $dateStr,
-                'start_time' => '09:00',
-                'end_time' => '17:00',
-                'is_available' => true,
-            ]);
-            DoctorAvailability::create([
-                'uuid' => (string) Str::uuid(),
-                'doctor_id' => $miguel->id,
-                'clinic_id' => null,
-                'location_name' => 'Lunch Break',
-                'available_date' => $dateStr,
-                'start_time' => '12:00',
-                'end_time' => '13:00',
-                'is_available' => false,
-            ]);
+            // --- 5. Dr. Miguel Tan (Strictly Solo Practice: Tan Derma Clinic) ---
+            $this->addDutyDayWithLunch(
+                $availabilities,
+                $miguel->id,
+                $tanClinic,
+                $dateStr,
+                '09:00:00',
+                '12:00:00',
+                '12:00:00',
+                '13:00:00',
+                '13:00:00',
+                '17:00:00'
+            );
         }
 
-        $this->command->info('Successfully seeded doctor clinics and realistic 14-day multi-doctor availability presets.');
+        // Bulk insert in chunks of 500 records
+        foreach (array_chunk($availabilities, 500) as $chunk) {
+            DoctorAvailability::insert($chunk);
+        }
+
+        $this->command->info(sprintf(
+            'Successfully seeded doctor clinics and %d regular availability records through December 2026.',
+            count($availabilities)
+        ));
+    }
+
+    /**
+     * Add morning and afternoon duty hours with a dedicated lunch break in between.
+     */
+    private function addDutyDayWithLunch(
+        array &$records,
+        int $doctorId,
+        Clinic $clinic,
+        string $dateStr,
+        string $morningStart,
+        string $morningEnd,
+        string $lunchStart,
+        string $lunchEnd,
+        string $afternoonStart,
+        string $afternoonEnd
+    ): void {
+        $now = now();
+
+        // Morning Duty Shift (with clinic)
+        $records[] = [
+            'uuid' => (string) Str::uuid(),
+            'doctor_id' => $doctorId,
+            'clinic_id' => $clinic->id,
+            'location_name' => $clinic->name,
+            'available_date' => $dateStr,
+            'start_time' => $morningStart,
+            'end_time' => $morningEnd,
+            'is_available' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        // Lunch Break (blocked / unavailable)
+        $records[] = [
+            'uuid' => (string) Str::uuid(),
+            'doctor_id' => $doctorId,
+            'clinic_id' => null,
+            'location_name' => 'Lunch Break',
+            'available_date' => $dateStr,
+            'start_time' => $lunchStart,
+            'end_time' => $lunchEnd,
+            'is_available' => false,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        // Afternoon Duty Shift (with clinic)
+        $records[] = [
+            'uuid' => (string) Str::uuid(),
+            'doctor_id' => $doctorId,
+            'clinic_id' => $clinic->id,
+            'location_name' => $clinic->name,
+            'available_date' => $dateStr,
+            'start_time' => $afternoonStart,
+            'end_time' => $afternoonEnd,
+            'is_available' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+    }
+
+    /**
+     * Add a full-day rest day / off-duty record.
+     */
+    private function addRestDay(
+        array &$records,
+        int $doctorId,
+        string $dateStr,
+        string $label = 'Rest Day / Weekend'
+    ): void {
+        $now = now();
+
+        $records[] = [
+            'uuid' => (string) Str::uuid(),
+            'doctor_id' => $doctorId,
+            'clinic_id' => null,
+            'location_name' => $label,
+            'available_date' => $dateStr,
+            'start_time' => '00:00:00',
+            'end_time' => '23:59:00',
+            'is_available' => false,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
     }
 }
