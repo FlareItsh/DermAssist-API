@@ -165,3 +165,16 @@ In `views/app/pages/Doctor/profile.vue`, adhere strictly to the following approv
 3. **`Schedule & Availability`**: `desc: 'Duty hours, blocked dates & timetable'`.
 4. **`Subscription & Plan`**: `desc: isSubInherited ? 'Clinic tier & sponsored access' : 'Plan status, quotas & billing'`.
 5. **`Account & Security`**: `desc: 'Verification & session security'`.
+
+### 6. View-Aware Layouts & Vue Template Handler Conventions
+
+1. **View-Aware Layout Architecture (List View vs Full-Screen Timetable)**:
+   - When views support both list and full-height interactive view modes (such as `<AppWeeklyTimetable>`), non-essential top KPI cards and tab navigation bars MUST be view-aware (`v-if="viewMode === 'list'"`).
+   - In timetable/calendar modes, hiding summary cards frees up maximum vertical screen height and prevents page scrolling.
+   - Position view-mode switchers in the top header alongside primary page action buttons (e.g., `+ New Appointment`).
+   - Include contextual week summary count badges (e.g. `1 patient booked`) and action pill reminders in header toolbars.
+
+2. **Vue Template Multi-Statement Event Handlers**:
+   - In Vue SFC `<template>` attributes, inline handlers containing multiple statements MUST be separated by explicit semicolons (`;`), e.g. `@click="viewMode = 'list'; activeTab = 'reschedule'"`, or extracted into a script setup helper method (`@click="switchToRescheduleTab"`).
+   - **Reason**: Omitted semicolons in multi-statement inline handlers break `@vue/compiler-sfc` AST parsing during Nuxt SSR page meta compilation (`?macro=true`).
+
