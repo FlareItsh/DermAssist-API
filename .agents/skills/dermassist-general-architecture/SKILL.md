@@ -229,4 +229,91 @@ When handling skin scan images and saving diagnostic cases to the Admin Retraini
 ### 4. Doctor View Privacy Rule
 - If a patient has not consented, the dataset contribution checkbox in `DiagnosisFindingsDetailed.vue` is completely hidden. Never render an explicit "Patient declined" status badge.
 
+---
+
+## 8. Patient Account Creation & Password Generator Standard
+
+When doctors register patient accounts (in `Doctor/Patients/index.vue`, `DiagnosisFindingsSummary.vue`, or `Modal/DiagnosisFindingsDetailed.vue`):
+
+### 1. Unified Password Composable (`usePasswordGenerator.ts`)
+- **Location**: `views/app/composables/usePasswordGenerator.ts`
+- **Password Generation**: `generateTemporaryPassword(prefix = 'Patient')` returns easy, memorable temporary passwords (e.g. `Patient@4921`).
+- **One-Click Copy**: `copyToClipboard(text, label)` copies to clipboard with fallback for non-secure contexts and triggers a `vue-sonner` toast notification (`"Password copied to clipboard!"`).
+
+### 2. Universal Form Standards for Temporary Passwords
+Every patient account registration form MUST:
+- Pre-fill the temporary password field using `generateTemporaryPassword('Patient')` on open or reset.
+- Provide an inline **Copy** button.
+- Provide an inline **Regenerate** button.
+- Provide an eye icon toggle to show/hide the password.
+- Never require manual password typing by the doctor unless they choose to edit it.
+
+---
+
+## 9. Doctor-Registered Patient Scope & Restriction Rules
+
+When a patient account is created by a doctor (`is_doctor_registered = 1`, `registered_by_doctor_id = {doctor_id}`):
+
+### 1. Strict Backend Booking Guard (`AppointmentService.php`)
+- **Rule**: Doctor-registered patients can **only** book appointments with their registering doctor.
+- In `AppointmentService::createAppointment`, if `(int) $data['doctor_id'] !== (int) $user->registered_by_doctor_id`, the request MUST immediately abort with `403 Forbidden`:
+  > *"You are registered under an attending doctor and cannot book appointments with other doctors."*
+
+### 2. Availability Alternatives Guard (`DoctorAvailabilityService.php`)
+- When checking doctor availability (`DoctorAvailabilityService::checkDoctorAvailability`), alternative doctor suggestions are strictly omitted for doctor-registered patients (`if (! ($patient && $patient->is_doctor_registered))`).
+
+### 3. Patient UI Framing
+- In the patient scan flow and doctor selection (`SelectDoctor/index.vue`, `ScanResults.vue`, `DiagnosisFindingsDetailed.vue`), the doctor card MUST be labeled **"Your Attending Doctor"** (never "Nearest Specialist" or "Select Specialist").
+- An informational banner must clearly communicate that the patient's account is registered under their attending doctor.
+- When the doctor is away today, show a reassuring amber informational alert ("Doctor Away Today") indicating their next availability date rather than an alarming red error.
+
+---
+
+## 10. Clinical Scan Patient Assignment Standard
+
+In the Doctor Scanner (`views/app/components/App/DiagnosisFindingsSummary.vue`):
+
+### 1. Appointment-Centric Default
+- Assigning a patient to a scan session must be **Appointment-Centric** by default.
+- Do NOT flatten appointments into an ambiguous patient list. Doctors conduct scans during specific booked appointments.
+
+### 2. Date Filtering
+- Provide interactive date filtering:
+  - Quick pills: **Today**, **Tomorrow**, **All Dates**.
+  - Custom Date Picker (`<input type="date">`) to view appointments on any specific day.
+  - Defaults strictly to **Today**.
+- **No False Date Fallbacks**: NEVER fall back to `created_at` or `updated_at` as the appointment date. If an appointment is unscheduled or declined without a scheduled date, it must not appear as scheduled today.
+
+### 3. Dedicated Walk-In Tab
+- Provide a dedicated tab for **"Registered (Walk-In)"** patients so doctors can easily conduct scans for patients who visit without an appointment booked on the calendar.
+
+### 4. Contextual Empty States
+- When no appointments exist on the selected date, display a helpful empty state with one-click actions:
+  - `[View Tomorrow]` (if tomorrow has bookings)
+  - `[View All Dates]`
+  - `[Select Walk-In Patient]`
+
+---
+
+## 11. Clinical Chat & Message Contrast Standards
+
+In `views/app/components/App/ChatMessageWindow.vue`:
+- **Sender Message Bubbles**: On primary/colored sender bubbles (e.g. blue), text headers must use high-contrast white (`text-white font-bold`).
+- **Status Badges**: Appointment status pills on colored sender bubbles must use elevated white backgrounds (`bg-white shadow-sm`) with crisp status icons.
+- **Embedded Clinical Findings Preview**: Clinical findings cards inside sender bubbles must use solid white cards (`bg-white text-gray-900 border-white/20 shadow-md`) rather than translucent washes to maintain readability.
+- **Demographics Null-Safety**: Always verify patient age exists before displaying age text (never display `"years old • Sep 20, 2026"`).
+
+---
+
+## 12. AI Assistant Directives: Mandatory Artifact Usage
+
+All AI assistants (Antigravity, Gemini, Claude, Cursor) working on DermAssist MUST follow this mandatory behavioral rule:
+
+### 1. Always Use Artifacts
+- **CRITICAL**: The AI assistant must **ALWAYS** create or update markdown artifacts for:
+  - **Implementation Plans** (`implementation_plan.md`): Required before executing non-trivial code changes.
+  - **Technical Evaluations & Architectural Analyses** (e.g. `analysis_results.md`, `evaluation_notes.md`): Required when evaluating architectural questions, trade-offs, database relationships, or UI designs.
+  - **Walkthroughs & Verification Documents** (`walkthrough.md`): Required after completing code changes to document what was changed, how it was verified, and test outputs.
+- **Never Dump Complex Plans in Chat**: Never output lengthy multi-step implementation plans or complex technical evaluations solely as chat messages. Always persist them into well-structured markdown artifacts in the artifact directory, and point the user to the artifact with a concise summary.
+
 
