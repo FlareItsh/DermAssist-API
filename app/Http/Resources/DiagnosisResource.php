@@ -30,6 +30,8 @@ class DiagnosisResource extends JsonResource
             'all_probabilities' => $this->probabilities,
             'image_url' => Storage::url($this->image_path),
             'status' => $this->status,
+            'patient_consented_dataset' => (bool) $this->patient_consented_dataset,
+            'contributed_to_dataset' => (bool) $this->contributed_to_dataset,
             'created_at' => $this->created_at,
             'image_quality' => $this->resource->image_quality ?? null,
             'doctor_availability' => $this->resource->doctor_availability ?? null,

@@ -125,31 +125,74 @@ For detailed forms (adding clinics, assigning doctors, scheduling appointments),
 
 ---
 
-## 5. Notification Inspection & Detail Modal Standard (`AppModalNotificationDetail`)
+## 5. In-App Notification & Modal Inspection Standard (`useAppNotifications` & `AppModalNotificationDetail`)
 
-When users interact with in-app notifications (via the Utility Bar bell dropdown or the dedicated Notifications page):
+When users interact with in-app notifications (via the Utility Bar bell dropdown or dedicated Notifications page):
 
 1. **Modal Inspection Over Immediate Navigation**:
    - **Never** jump routes immediately or show an abrupt native dialog.
-   - **Always** open `<AppModalNotificationDetail>` (`views/app/components/App/Modal/NotificationDetail.vue`) to allow the user to review the full details and context.
+   - **Always** open `<AppModalNotificationDetail>` (`views/app/components/App/Modal/NotificationDetail.vue`) to allow the user to review the full details and context before acting.
 
-2. **Clinic Seat Invitations (`type === 'clinic_invitation'`)**:
-   - Must render the inviting head doctor's profile card (avatar, full name, email, PRC license number).
-   - Must show the clinic branch name, physical address, and assigned role badge.
-   - Must list the granted clinical subscription privileges.
-   - Must offer explicit action buttons:
-     - **Accept Invitation**: Calls `acceptInvitation(id)` with loading state -> grants active subscription privileges upon success.
-     - **Decline**: Calls `declineInvitation(id)` with loading state -> frees seat quota.
-     - **Decide Later**: Closes modal without altering invitation status.
+2. **Specialized Notification Types & Modal Handling**:
+   - **Clinic Seat Invitations (`type === 'clinic_invitation'`)**:
+     - Renders inviting doctor's profile card (avatar, full name, email, PRC license number).
+     - Renders clinic branch name, physical address, and assigned role badge.
+     - Lists granted clinical subscription privileges.
+     - Actions: **Accept Invitation** (`acceptInvitation(id)`), **Decline** (`declineInvitation(id)`), **Decide Later**.
+   - **Clinic Seat Revocations (`type === 'clinic_revocation'`)**:
+     - Renders revoked practice head credentials and clinic location.
+     - Explanatory notice reassuring doctor that their personal medical records, consultations, and patient history remain intact.
+     - Action: **Acknowledge & Dismiss** (`acknowledgeRevocation(id)`).
+   - **Patch Notes & System Updates (`type === 'patch_note'`)**:
+     - Renders version badge, release title, description, and "What's New & Improvements" bullet list.
+     - Actions: **View All Updates** (navigates to `/updates`, `/doctor/updates`, or `/patient/updates`), **Close**.
+   - **General System, Appointment, Record & Subscription Notifications**:
+     - Displays formatted category badge, relative timestamp, and descriptive context.
+     - Provides a direct primary CTA button to navigate to the referenced record, conversation, or billing page via `notification.to`.
 
-3. **General System & Appointment Notifications**:
-   - Displays full descriptive text, category badge, and formatted timestamp.
-   - Provides a direct primary CTA button to navigate to the referenced record or conversation if `to` is present.
+3. **Multi-Role Notification Coverage (Composables Standard)**:
+   The central reactive composable `useAppNotifications()` (`views/app/composables/useAppNotifications.ts`) dynamically generates alerts for all roles:
+   - **Doctor**:
+     - Plan updates & quota upgrade alerts (`hasPlanUpdate`).
+     - Subscription expiration warnings (5-day countdown, today, expired notice).
+     - Secretary quota warnings (when `doctorSecretaries >= maxSecretaries`).
+     - Clinic doctor seat quota warnings (when `used_seats >= max_seats`).
+     - PRC verification approval & decline notices.
+     - Overdue appointments requiring resolution, new appointment requests, upcoming appointments (24h).
+     - Unread chat messages with snippet preview.
+   - **Secretary**:
+     - Incomplete profile warnings (`missingSecretaryFields`).
+     - Overdue appointments, new appointment requests, reschedule proposals.
+     - Unread chat messages from doctors/patients.
+   - **Patient**:
+     - New clinical consultation notes & AI skin scan results saved to health history (`/patient/records`).
+     - Appointment confirmations, 24-hour upcoming reminders, reschedule proposals, cancellations/declines, and completion summaries.
+     - Incomplete profile warnings (`missingPatientFields`).
+     - Unread chat messages.
+   - **Admin**:
+     - Pending doctor PRC verification requests count (`/admin/moderation/verification`).
+     - Pending subscription payments awaiting settlement count (`/admin/subscriptions/payments`).
+     - Medical diagnosis scan appeals.
+     - Published patch notes.
 
-4. **Read State Persistence**:
-   - Opening a notification in `<AppModalNotificationDetail>` must automatically mark that notification as read via `markAsRead(notification.id)`.
+4. **Lifecycle & Polling Architecture**:
+   - Uses a **module-level singleton polling timer** (8-second interval) active only when `document.visibilityState === 'visible'`.
+   - Listens to the `visibilitychange` event to immediately trigger `pollAllNotifications()` when the user switches back to the tab.
+   - Persists read and dismissed IDs per user via cookies: `read_notifs_${userUuid}` and `dismissed_notifs_${userUuid}`.
 
 5. **"Show All Notifications" & Dedicated Pages**:
    - The notification bell dropdown footer must provide a **"Show All Notifications"** link.
-   - Routes: `/doctor/notifications`, `/patient/notifications`, `/secretary/notifications`, `/notifications`.
-   - Features filter tabs (**All**, **Unread**, **Invitations**), bulk "Mark all as read", and triggers the same `<AppModalNotificationDetail>` on item click.
+   - Dedicated routes: `/doctor/notifications`, `/patient/notifications`, `/secretary/notifications`, `/notifications`.
+   - Features filter tabs (**All**, **Unread**, **Invitations**), bulk "Mark all as read", and triggers `<AppModalNotificationDetail>` on item click.
+
+---
+
+## 6. Interactive Component & Timetable Modal Guidelines
+
+1. **Pure Event Emission on Item Click**:
+   - Component selection handlers (e.g. `handleApptClick` in `<AppWeeklyTimetable>`) must ONLY emit the selection event (`emit('select-appointment', item)`).
+   - **NEVER** pair item click handlers with automatic route navigation (e.g. `navigateTo('/Doctor/Messages/...')`). Clicking an item on a timetable or list grid should open the quick detail modal cleanly without redirecting the user away.
+
+2. **Explicit Modal Action Buttons**:
+   - All secondary workflow actions (e.g., *Clinical Consultation*, *Message Patient*) must be presented as explicit, labeled buttons inside the opened detail modal so healthcare providers retain full control over their navigation.
+

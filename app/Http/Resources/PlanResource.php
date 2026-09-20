@@ -31,6 +31,7 @@ class PlanResource extends JsonResource
             'grace_period_days' => $this->grace_period_days,
             'sort_order' => $this->sort_order,
             'is_active' => $this->is_active,
+            'version' => (int) ($this->version ?? 1),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

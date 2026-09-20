@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Models\Diagnosis;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -145,6 +146,24 @@ class DatasetService
     {
         $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
 
+        // Verify Patient Consent
+        $isPatientConsented = false;
+        if ($diagnosis->patient_consented_dataset) {
+            $isPatientConsented = true;
+        } elseif (! empty($diagnosis->patient_uuid)) {
+            $patient = User::where('uuid', $diagnosis->patient_uuid)->first();
+            if ($patient && $patient->consent_dataset) {
+                $isPatientConsented = true;
+            }
+        }
+
+        if (! $isPatientConsented) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot save to dataset: Patient has not consented to AI retraining dataset contribution.',
+            ], 403);
+        }
+
         $category = Str::slug($diagnosis->label);
         $path = $diagnosis->image_path;
 
@@ -157,6 +176,11 @@ class DatasetService
         if (! Storage::disk($this->disk)->exists($datasetPath)) {
             Storage::disk($this->disk)->copy($path, $datasetPath);
         }
+
+        $diagnosis->update([
+            'contributed_to_dataset' => true,
+            'contributed_at' => now(),
+        ]);
 
         return response()->json(['message' => 'Saved to dataset']);
     }

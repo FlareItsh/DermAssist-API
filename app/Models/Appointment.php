@@ -17,6 +17,8 @@ class Appointment extends Model
         'diagnosis_id',
         'scheduled_at',
         'scheduled_end_at',
+        'previous_scheduled_at',
+        'previous_scheduled_end_at',
         'requested_reschedule_date',
         'requested_reschedule_time',
         'location',
@@ -27,6 +29,8 @@ class Appointment extends Model
     protected $casts = [
         'scheduled_at' => 'datetime',
         'scheduled_end_at' => 'datetime',
+        'previous_scheduled_at' => 'datetime',
+        'previous_scheduled_end_at' => 'datetime',
         'requested_reschedule_date' => 'date:Y-m-d',
     ];
 

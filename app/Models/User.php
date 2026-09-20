@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -40,6 +40,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'consent_dataset' => 'boolean',
+            'terms_accepted_at' => 'datetime',
         ];
     }
 
@@ -247,15 +249,20 @@ class User extends Authenticatable
 
     /**
      * Get the resolved active subscription (direct or inherited via clinic).
-     * If a doctor has both a personal subscription and an associate clinic seat,
-     * the superior / higher tier plan (e.g. Clinic Group Plan) takes precedence.
+     * If a doctor has an active personal direct subscription, it takes precedence.
+     * If they do not hold an active direct subscription, they inherit their clinic owner's subscription.
      */
     public function getActiveSubscription(): ?Subscription
     {
         try {
             $directSub = $this->getDirectSubscription();
 
-            // 2. Inherited Clinic Subscription (for Associate Doctors)
+            // 1. Direct Personal Subscription takes precedence if active
+            if ($directSub && method_exists($directSub, 'isActive') && $directSub->isActive()) {
+                return $directSub;
+            }
+
+            // 2. Inherited Clinic Subscription (for Associate Doctors without an active personal subscription)
             $inheritedSub = null;
             if (Schema::hasTable('clinic_doctors')) {
                 $clinicMemberships = $this->clinicMemberships()
@@ -276,20 +283,7 @@ class User extends Authenticatable
                 }
             }
 
-            // 3. Resolve precedence when doctor has both direct and inherited subscriptions
-            if ($directSub && $inheritedSub) {
-                if ($inheritedSub->plan?->tier_type === 'clinic_multi_doctor' && $directSub->plan?->tier_type !== 'clinic_multi_doctor') {
-                    return $inheritedSub;
-                }
-
-                if (($inheritedSub->plan?->price_monthly ?? 0) > ($directSub->plan?->price_monthly ?? 0)) {
-                    return $inheritedSub;
-                }
-
-                return $directSub;
-            }
-
-            return $directSub ?: $inheritedSub;
+            return $inheritedSub;
         } catch (\Throwable $e) {
             return null;
         }
@@ -308,9 +302,9 @@ class User extends Authenticatable
      */
     public function canAccessFeature(string $featureKey): bool
     {
-        // 1. Check primary active subscription
+        // 1. Check primary active subscription (frozen snapshot takes precedence)
         $subscription = $this->getActiveSubscription();
-        if ($subscription?->plan?->hasFeature($featureKey)) {
+        if ($subscription?->hasFeature($featureKey)) {
             return true;
         }
 
@@ -321,7 +315,7 @@ class User extends Authenticatable
 
         if ($clinicMembership && $clinicMembership->owner) {
             $inheritedSub = $clinicMembership->owner->getActiveSubscription();
-            if ($inheritedSub?->plan?->hasFeature($featureKey)) {
+            if ($inheritedSub?->hasFeature($featureKey)) {
                 return true;
             }
         }
@@ -375,8 +369,8 @@ class User extends Authenticatable
     public function getMaxClinics(): ?int
     {
         $directSub = $this->getDirectSubscription();
-        if ($directSub && $directSub->plan) {
-            return $directSub->plan->max_clinics ?? 1;
+        if ($directSub) {
+            return $directSub->getMaxClinics();
         }
 
         return 1;
@@ -388,14 +382,14 @@ class User extends Authenticatable
     public function canHaveSecretary(): bool
     {
         $subscription = $this->getActiveSubscription();
-        if (! $subscription || ! $subscription->plan) {
+        if (! $subscription) {
             return false;
         }
 
-        $plan = $subscription->plan;
+        $maxSecretaries = $subscription->getMaxSecretaries();
 
         // Must either have can_have_secretary feature or max_secretaries > 0 (or null for unlimited)
-        return $this->canAccessFeature('can_have_secretary') || ($plan->max_secretaries === null || $plan->max_secretaries > 0);
+        return $this->canAccessFeature('can_have_secretary') || ($maxSecretaries === null || $maxSecretaries > 0);
     }
 
     /**
@@ -405,11 +399,11 @@ class User extends Authenticatable
     public function getMaxSecretaries(): ?int
     {
         $subscription = $this->getActiveSubscription();
-        if (! $subscription || ! $subscription->plan) {
+        if (! $subscription) {
             return 0;
         }
 
-        return $subscription->plan->max_secretaries;
+        return $subscription->getMaxSecretaries();
     }
 
     /**
@@ -465,5 +459,10 @@ class User extends Authenticatable
             'available_seats' => $availableSeats,
             'can_add' => $canAdd,
         ];
+    }
+
+    public function hasConsentedToDataset(): bool
+    {
+        return (bool) $this->consent_dataset;
     }
 }

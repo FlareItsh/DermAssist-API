@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'grace_period_days',
     'sort_order',
     'is_active',
+    'version',
 ])]
 class Plan extends Model
 {
@@ -48,6 +49,7 @@ class Plan extends Model
             'trial_period_days' => 'integer',
             'grace_period_days' => 'integer',
             'sort_order' => 'integer',
+            'version' => 'integer',
         ];
     }
 
@@ -83,6 +85,10 @@ class Plan extends Model
      */
     public function hasFeature(string $code): bool
     {
+        if (! $this->relationLoaded('planFeatures')) {
+            $this->load('planFeatures');
+        }
+
         $feature = $this->planFeatures->firstWhere('code', $code);
         if ($feature) {
             return (bool) ($feature->pivot->is_included && $feature->is_active);
@@ -92,5 +98,46 @@ class Plan extends Model
         $legacy = $this->features ?? [];
 
         return ! empty($legacy[$code]);
+    }
+
+    /**
+     * Create an immutable entitlements snapshot of this plan for subscription lock-in.
+     *
+     * @return array<string, mixed>
+     */
+    public function createSnapshot(): array
+    {
+        if (! $this->relationLoaded('planFeatures')) {
+            $this->load('planFeatures');
+        }
+
+        $allFeatures = Feature::where('is_active', true)->get();
+        $featuresMap = [];
+
+        foreach ($allFeatures as $feature) {
+            $featuresMap[$feature->code] = $this->hasFeature($feature->code);
+        }
+
+        // Include any legacy or custom items
+        $legacy = $this->features ?? [];
+        if (isset($legacy['custom_list']) && is_array($legacy['custom_list'])) {
+            $featuresMap['custom_list'] = $legacy['custom_list'];
+        }
+
+        return [
+            'plan_id' => $this->id,
+            'uuid' => $this->uuid,
+            'name' => $this->name,
+            'slug' => $this->slug,
+            'tier_type' => $this->tier_type,
+            'price_monthly' => (float) $this->price_monthly,
+            'price_annual' => (float) $this->price_annual,
+            'max_doctors' => $this->max_doctors,
+            'max_clinics' => $this->max_clinics,
+            'max_secretaries' => $this->max_secretaries,
+            'features' => $featuresMap,
+            'plan_version' => (int) ($this->version ?? 1),
+            'snapshotted_at' => now()->toIso8601String(),
+        ];
     }
 }

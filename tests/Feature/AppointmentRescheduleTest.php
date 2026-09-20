@@ -3,6 +3,7 @@
 use App\Models\Appointment;
 use App\Models\Conversation;
 use App\Models\DoctorAvailability;
+use App\Models\Message;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,4 +105,238 @@ it('allows accepting a proposed reschedule', function () {
         'id' => $appointment->id,
         'status' => 'scheduled',
     ]);
+});
+
+it('allows patient to request a reschedule with preferred date and time', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $patientRole = Role::where('slug', 'patient')->first();
+
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+    $patient = User::factory()->create(['role_id' => $patientRole->id]);
+
+    Conversation::create([
+        'uuid' => (string) Str::uuid(),
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+    ]);
+
+    $appointment = Appointment::create([
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+        'scheduled_at' => now()->addDays(1)->setTime(10, 0, 0)->format('Y-m-d H:i:s'),
+        'location' => 'Main Clinic',
+        'status' => 'scheduled',
+    ]);
+
+    $targetDay3 = now()->addDays(3);
+    $targetDate = $targetDay3->toDateString();
+    $targetTime = '14:00:00';
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDate,
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    $response = $this->actingAs($patient)->putJson("/api/appointments/{$appointment->uuid}", [
+        'status' => 'reschedule_requested',
+        'requested_reschedule_date' => $targetDate,
+        'requested_reschedule_time' => '14:00',
+    ]);
+
+    $response->assertOk();
+    $response->assertJsonPath('status', 'reschedule_requested');
+
+    $this->assertDatabaseHas('appointments', [
+        'id' => $appointment->id,
+        'status' => 'reschedule_requested',
+        'requested_reschedule_date' => $targetDate,
+        'requested_reschedule_time' => '14:00',
+    ]);
+
+    $this->assertDatabaseHas('messages', [
+        'sender_id' => $patient->id,
+    ]);
+
+    $message = Message::latest()->first();
+    expect($message->message)->toContain('[APPOINTMENT_RESCHEDULE_REQUESTED:')
+        ->and($message->message)->toContain('Preferred:');
+});
+
+it('allows doctor to accept a reschedule request and updates scheduled_at to requested date and time', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $patientRole = Role::where('slug', 'patient')->first();
+
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+    $patient = User::factory()->create(['role_id' => $patientRole->id]);
+
+    Conversation::create([
+        'uuid' => (string) Str::uuid(),
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+    ]);
+
+    $targetDay3 = now()->addDays(3);
+    $targetDate = $targetDay3->toDateString();
+    $targetTime = '14:00:00';
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDate,
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    $appointment = Appointment::create([
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+        'scheduled_at' => now()->addDays(1)->setTime(10, 0, 0)->format('Y-m-d H:i:s'),
+        'location' => 'Main Clinic',
+        'status' => 'reschedule_requested',
+        'requested_reschedule_date' => $targetDate,
+        'requested_reschedule_time' => $targetTime,
+    ]);
+
+    $response = $this->actingAs($doctor)->postJson("/api/appointments/{$appointment->uuid}/accept-reschedule", []);
+
+    $response->assertOk();
+    $response->assertJsonPath('appointment.status', 'scheduled');
+
+    $expectedDateTime = "{$targetDate} {$targetTime}";
+    $fresh = $appointment->fresh();
+    expect($fresh->status)->toBe('scheduled')
+        ->and($fresh->scheduled_at->format('Y-m-d H:i:s'))->toBe($expectedDateTime)
+        ->and($fresh->requested_reschedule_date)->toBeNull()
+        ->and($fresh->requested_reschedule_time)->toBeNull();
+
+    $message = Message::latest()->first();
+    expect($message->message)->toContain('[APPOINTMENT_RESCHEDULE_ACCEPTED:')
+        ->and($message->message)->toContain('The reschedule request has been accepted');
+});
+
+it('clears requested reschedule date and time when doctor proposes an alternative schedule', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $patientRole = Role::where('slug', 'patient')->first();
+
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+    $patient = User::factory()->create(['role_id' => $patientRole->id]);
+
+    Conversation::create([
+        'uuid' => (string) Str::uuid(),
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+    ]);
+
+    $targetDay4 = now()->addDays(4);
+    $proposedDate = $targetDay4->copy()->setTime(11, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDay4->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    $appointment = Appointment::create([
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+        'scheduled_at' => now()->addDays(1)->setTime(10, 0, 0)->format('Y-m-d H:i:s'),
+        'location' => 'Main Clinic',
+        'status' => 'reschedule_requested',
+        'requested_reschedule_date' => now()->addDays(2)->toDateString(),
+        'requested_reschedule_time' => '15:00:00',
+    ]);
+
+    $response = $this->actingAs($doctor)->postJson("/api/appointments/{$appointment->uuid}/propose-reschedule", [
+        'scheduled_at' => $proposedDate,
+        'location' => 'Alternative Clinic',
+    ]);
+
+    $response->assertOk();
+
+    $fresh = $appointment->fresh();
+    expect($fresh->status)->toBe('reschedule_proposed')
+        ->and($fresh->requested_reschedule_date)->toBeNull()
+        ->and($fresh->requested_reschedule_time)->toBeNull();
+});
+
+it('clears scheduled_at when patient requests reschedule and allows another patient to book that slot', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $patientRole = Role::where('slug', 'patient')->first();
+
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+    $patient1 = User::factory()->create(['role_id' => $patientRole->id]);
+    $patient2 = User::factory()->create(['role_id' => $patientRole->id]);
+
+    Conversation::create([
+        'uuid' => (string) Str::uuid(),
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient1->id,
+    ]);
+    Conversation::create([
+        'uuid' => (string) Str::uuid(),
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient2->id,
+    ]);
+
+    $day2 = now()->addDays(2);
+    $originalSlotTime = $day2->copy()->setTime(10, 0, 0)->format('Y-m-d H:i:s');
+    $originalSlotEnd = $day2->copy()->setTime(11, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $day2->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    $day5 = now()->addDays(5);
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $day5->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    $appointment1 = Appointment::create([
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient1->id,
+        'scheduled_at' => $originalSlotTime,
+        'scheduled_end_at' => $originalSlotEnd,
+        'location' => 'Main Clinic',
+        'status' => 'scheduled',
+    ]);
+
+    // Patient 1 requests reschedule to Day 5
+    $response = $this->actingAs($patient1)->putJson("/api/appointments/{$appointment1->uuid}", [
+        'status' => 'reschedule_requested',
+        'requested_reschedule_date' => $day5->toDateString(),
+        'requested_reschedule_time' => '14:00',
+    ]);
+
+    $response->assertOk();
+
+    $fresh1 = $appointment1->fresh();
+    expect($fresh1->status)->toBe('reschedule_requested')
+        ->and($fresh1->scheduled_at)->toBeNull()
+        ->and($fresh1->scheduled_end_at)->toBeNull()
+        ->and($fresh1->previous_scheduled_at)->not->toBeNull()
+        ->and($fresh1->previous_scheduled_at->format('Y-m-d H:i:s'))->toBe($originalSlotTime);
+
+    // Patient 2 can now book the original 10:00 - 11:00 slot on Day 2 without conflict!
+    $bookResponse = $this->actingAs($doctor)->postJson('/api/appointments/schedule-for-patient', [
+        'patient_id' => $patient2->id,
+        'scheduled_at' => $originalSlotTime,
+        'scheduled_end_at' => $originalSlotEnd,
+        'location' => 'Main Clinic',
+        'purpose' => 'Consultation for Patient 2',
+    ]);
+
+    $bookResponse->assertOk();
 });

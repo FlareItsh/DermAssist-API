@@ -6,6 +6,7 @@ use App\Models\DoctorAvailability;
 use App\Models\User;
 use App\Repository\DoctorAvailabilityRepository;
 use Carbon\Carbon;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Collection;
 
 class DoctorAvailabilityService
@@ -43,6 +44,146 @@ class DoctorAvailabilityService
         return $this->checkDoctorAvailability($doctor->id, $date, $patient);
     }
 
+    public function detectAvailabilityConflicts(int $doctorId, array $data, ?int $excludeId = null): ?array
+    {
+        $dateStr = Carbon::parse($data['available_date'])->toDateString();
+        $startTime = strlen($data['start_time']) === 5 ? $data['start_time'].':00' : $data['start_time'];
+        $endTime = strlen($data['end_time']) === 5 ? $data['end_time'].':00' : $data['end_time'];
+
+        $overlapping = $this->repository->getOverlappingSlots($doctorId, $dateStr, $startTime, $endTime, $excludeId);
+
+        if ($overlapping->isEmpty()) {
+            return null;
+        }
+
+        $bookedAppts = $this->repository->getBookedAppointmentsInWindow($doctorId, $dateStr, $startTime, $endTime);
+
+        return [
+            'conflict' => true,
+            'message' => 'Schedule conflict detected with existing duty hours or blocked slots on this date.',
+            'overlapping_slots' => $overlapping->map(function ($slot) {
+                return [
+                    'id' => $slot->id,
+                    'uuid' => $slot->uuid,
+                    'is_available' => (bool) $slot->is_available,
+                    'start_time' => $slot->start_time,
+                    'end_time' => $slot->end_time,
+                    'clinic_name' => $slot->clinic?->name ?? $slot->location_name ?? ($slot->is_available ? 'Clinic Duty' : 'Blocked / Away'),
+                ];
+            })->values()->toArray(),
+            'affected_appointments' => $bookedAppts->map(function ($appt) {
+                return [
+                    'uuid' => $appt->uuid,
+                    'patient_name' => $appt->patient ? $appt->patient->first_name.' '.$appt->patient->last_name : 'Booked Patient',
+                    'scheduled_at' => $appt->scheduled_at?->format('g:i A'),
+                ];
+            })->values()->toArray(),
+        ];
+    }
+
+    public function resolveScheduleOverwrites(int $doctorId, array $data, ?int $excludeId = null): DoctorAvailability
+    {
+        $dateStr = Carbon::parse($data['available_date'])->toDateString();
+        $startTime = strlen($data['start_time']) === 5 ? $data['start_time'].':00' : $data['start_time'];
+        $endTime = strlen($data['end_time']) === 5 ? $data['end_time'].':00' : $data['end_time'];
+        $isAvailable = (bool) ($data['is_available'] ?? true);
+        $clinicId = $data['clinic_id'] ?? null;
+        $locationName = $data['location_name'] ?? null;
+
+        // Special Case 1: Whole-day block (00:00 to 23:59 and !is_available)
+        $isWholeDay = ($startTime <= '00:01:00' && $endTime >= '23:58:00');
+        if ($isWholeDay && ! $isAvailable) {
+            $this->repository->deleteSlotsForDoctorOnDate($doctorId, $dateStr);
+
+            return $this->repository->createAvailability([
+                'doctor_id' => $doctorId,
+                'available_date' => $dateStr,
+                'start_time' => '00:00:00',
+                'end_time' => '23:59:00',
+                'is_available' => false,
+                'location_name' => 'Blocked / Away Period',
+            ]);
+        }
+
+        // Special Case 2: Adding a duty schedule on a day that previously had a whole-day block
+        $existingAll = $this->repository->getSlotsForDoctorOnDate($doctorId, $dateStr);
+        $wholeDayBlock = $existingAll->first(function ($s) {
+            return ! $s->is_available && $s->start_time <= '00:01:00' && $s->end_time >= '23:58:00';
+        });
+        if ($wholeDayBlock && $isAvailable) {
+            $this->repository->deleteAvailability($wholeDayBlock);
+        }
+
+        // General Case: Resolve overlaps with existing slots
+        $overlapping = $this->repository->getOverlappingSlots($doctorId, $dateStr, $startTime, $endTime, $excludeId);
+
+        foreach ($overlapping as $exist) {
+            $existStart = strlen($exist->start_time) === 5 ? $exist->start_time.':00' : $exist->start_time;
+            $existEnd = strlen($exist->end_time) === 5 ? $exist->end_time.':00' : $exist->end_time;
+
+            // 1. Eclipsed: new slot completely covers existing slot
+            if ($startTime <= $existStart && $endTime >= $existEnd) {
+                $this->repository->deleteAvailability($exist);
+
+                continue;
+            }
+
+            // 2. Enclosed: new slot is strictly inside existing slot -> Split existing into Left and Right
+            if ($existStart < $startTime && $existEnd > $endTime) {
+                $existClinicId = $exist->clinic_id;
+                $existLocName = $exist->location_name;
+                $existIsAvail = $exist->is_available;
+
+                $this->repository->updateAvailability($exist, ['end_time' => $startTime]);
+
+                $this->repository->createAvailability([
+                    'doctor_id' => $doctorId,
+                    'clinic_id' => $existClinicId,
+                    'location_name' => $existLocName,
+                    'available_date' => $dateStr,
+                    'start_time' => $endTime,
+                    'end_time' => $existEnd,
+                    'is_available' => $existIsAvail,
+                ]);
+
+                continue;
+            }
+
+            // 3. Left overlap: new slot starts before/at existStart, and ends inside existing slot -> Trim start of existing
+            if ($startTime <= $existStart && $endTime < $existEnd) {
+                $this->repository->updateAvailability($exist, ['start_time' => $endTime]);
+
+                continue;
+            }
+
+            // 4. Right overlap: new slot starts inside existing slot, and ends after/at existEnd -> Trim end of existing
+            if ($existStart < $startTime && $existEnd <= $endTime) {
+                $this->repository->updateAvailability($exist, ['end_time' => $startTime]);
+
+                continue;
+            }
+        }
+
+        $payload = [
+            'doctor_id' => $doctorId,
+            'clinic_id' => $clinicId,
+            'location_name' => $locationName,
+            'available_date' => $dateStr,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'is_available' => $isAvailable,
+        ];
+
+        if ($excludeId) {
+            $existingToUpdate = DoctorAvailability::find($excludeId);
+            if ($existingToUpdate) {
+                return $this->repository->updateAvailability($existingToUpdate, $payload);
+            }
+        }
+
+        return $this->repository->createAvailability($payload);
+    }
+
     public function createAvailability(User $actor, array $data): DoctorAvailability
     {
         $doctorId = null;
@@ -54,9 +195,16 @@ class DoctorAvailabilityService
             abort(403, 'Only doctors or secretaries can set availability.');
         }
 
-        $data['doctor_id'] = $doctorId;
+        $overwrite = filter_var($data['overwrite'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-        return $this->repository->createAvailability($data);
+        if (! $overwrite) {
+            $conflict = $this->detectAvailabilityConflicts($doctorId, $data);
+            if ($conflict) {
+                throw new HttpResponseException(response()->json($conflict, 409));
+            }
+        }
+
+        return $this->resolveScheduleOverwrites($doctorId, $data);
     }
 
     public function updateAvailability(DoctorAvailability $availability, array $data, User $user): DoctorAvailability
@@ -68,7 +216,25 @@ class DoctorAvailabilityService
             abort(403, 'Unauthorized action.');
         }
 
-        return $this->repository->updateAvailability($availability, $data);
+        $overwrite = filter_var($data['overwrite'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $mergedData = array_merge([
+            'available_date' => $availability->available_date->toDateString(),
+            'start_time' => $availability->start_time,
+            'end_time' => $availability->end_time,
+            'is_available' => $availability->is_available,
+            'clinic_id' => $availability->clinic_id,
+            'location_name' => $availability->location_name,
+        ], $data);
+
+        if (! $overwrite) {
+            $conflict = $this->detectAvailabilityConflicts($availability->doctor_id, $mergedData, $availability->id);
+            if ($conflict) {
+                throw new HttpResponseException(response()->json($conflict, 409));
+            }
+        }
+
+        return $this->resolveScheduleOverwrites($availability->doctor_id, $mergedData, $availability->id);
     }
 
     public function deleteAvailability(DoctorAvailability $availability, User $user): bool

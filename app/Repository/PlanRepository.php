@@ -21,6 +21,7 @@ class PlanRepository
     public function create(array $payload): Plan
     {
         $features = $payload['features'] ?? null;
+        $payload['version'] = $payload['version'] ?? 1;
         $plan = Plan::create($payload);
 
         $this->syncFeatures($plan, $features);
@@ -31,6 +32,7 @@ class PlanRepository
     public function update(Plan $plan, array $payload): Plan
     {
         $features = $payload['features'] ?? null;
+        $payload['version'] = ($plan->version ?? 1) + 1;
         $plan->update($payload);
 
         if ($features !== null) {

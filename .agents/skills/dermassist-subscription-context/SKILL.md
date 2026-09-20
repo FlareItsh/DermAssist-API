@@ -42,7 +42,8 @@ If `PAYMONGO_SECRET_KEY` is missing when checkout is called, the backend will re
   - Fields: `uuid`, `name`, `code` (slug / identifier), `description`, `is_active`, `sort_order`.
   - Pivot table `plan_has_features`: `plan_id`, `feature_id`, `is_included` (boolean).
 - **`Subscription`** (`subscriptions` table):
-  - Fields: `uuid`, `user_id`, `plan_id`, `billing_cycle` (`monthly`, `annual`), `status` (`pending`, `trialing`, `active`, `past_due`, `canceled`), `starts_at`, `ends_at`.
+  - Fields: `uuid`, `user_id`, `plan_id`, `plan_version`, `plan_snapshot` (json), `billing_cycle` (`monthly`, `annual`), `auto_renew` (boolean, default `true`), `status` (`pending`, `trialing`, `active`, `past_due`, `cancelled`, `expired`), `starts_at`, `ends_at`, `cancelled_at`, `cancellation_reason`.
+  - Helpers: `isActive(): bool`, `isAutoRenew(): bool`, `isPendingCancellation(): bool`, `hasPlanUpdate(): bool`.
 - **`PaymentInvoice`** (`payment_invoices` table):
   - Fields: `uuid`, `subscription_id`, `user_id`, `amount`, `discount_amount`, `final_amount`, `payment_method` (`GCash`, `Maya`, `Credit / Debit Card`, `Online Bank Transfer`, `QR Ph`), `payment_status` (`pending`, `paid`, `approved`, `rejected`), `transaction_reference` (PayMongo `pay_...` ID), `approved_by_user_id`.
 - **`Coupon`** (`coupons` table):
@@ -132,4 +133,111 @@ Plan features are normalized into dedicated database tables to allow dynamic cre
   - `AppAlert` (`type="warning"|"error"|"info"|"success"`, `title`, `description`)
 - **Theme & Colors**:
   - Always match existing sibling admin pages (`plans.vue`, `payments.vue`, `coupons.vue`) using clean borders `border-gray-200`, `bg-white`, and `bg-gray-50`.
+
+---
+
+## 5. Mid-Cycle Plan Updates, Grandfathering, & Plan Snapshots
+
+### The Core Architectural Rule
+When an administrator modifies a subscription plan (such as raising/lowering prices, increasing/reducing quota limits like `max_secretaries` or `max_clinics`, or toggling feature flags) in the middle of a billing period:
+> **MANDATORY RULE**: Currently active subscribers **MUST NOT** automatically receive unpurchased updates mid-cycle, nor have their active features and quotas abruptly reduced. Existing subscribers remain **grandfathered** on their contracted terms until their current cycle ends. To unlock newly added features or revised quotas immediately, they must explicitly upgrade or wait for their next monthly renewal.
+
+### Schema Foundations & Storage
+1. **`plans` table**:
+   - `version` (`integer`, default `1`): Automatically incremented whenever an admin modifies plan features, quotas, or pricing in `/admin/subscriptions/plans`.
+2. **`doctor_subscriptions` table**:
+   - `plan_snapshot` (`json`, nullable): A frozen JSON document captured at the instant of subscription creation or payment settlement.
+     ```json
+     {
+       "name": "Clinic Group Plan",
+       "price": 2500,
+       "billing_cycle": "monthly",
+       "max_clinics": 3,
+       "max_secretaries": 5,
+       "max_doctors": 5,
+       "features": {
+         "can_execute_scan": true,
+         "show_in_recommendation": true,
+         "export_pdf_reports": true,
+         "can_have_secretary": true
+       }
+     }
+     ```
+   - `plan_version` (`integer`, default `1`): The version number of the plan at the time the subscription was purchased or last renewed.
+
+### Effective Capability Resolution (Backend)
+When checking doctor permissions and limits, always resolve against the **effective snapshot** first, with fallback to the live plan for legacy rows without a snapshot:
+```php
+// In DoctorSubscriptionService or User Model:
+$snapshot = $subscription->plan_snapshot;
+
+$effectiveFeatures = $snapshot['features'] ?? $subscription->plan->features ?? [];
+$effectiveMaxClinics = $snapshot['max_clinics'] ?? $subscription->plan->max_clinics ?? 1;
+$effectiveMaxSecretaries = $snapshot['max_secretaries'] ?? $subscription->plan->max_secretaries ?? 0;
+
+// Expose whether an update is available:
+$latestPlanVersion = $subscription->plan->version ?? 1;
+$hasPlanUpdate = ($latestPlanVersion > ($subscription->plan_version ?? 1));
+```
+
+### Frontend Notification & Upgrade Flow (Nuxt)
+1. **Composable Integration (`useDoctorSubscription`)**:
+   - Computes `hasPlanUpdate`:
+     ```ts
+     const hasPlanUpdate = computed(() => Boolean(currentSubscription.value?.has_plan_update))
+     ```
+   - Resolves `maxSecretaries` and `maxClinics` via `currentSubscription.value.plan_snapshot` or `effective_max_*`.
+2. **Notification Bell Alert**:
+   - `useAppNotifications()` detects `hasPlanUpdate` and surfaces a high-priority alert:
+     - Title: **"New Plan Features Available"**
+     - Description: *"Your subscription plan has received new features and quota updates! Upgrade or renew now to unlock the latest benefits."*
+     - CTA Route: `/doctor/subscription`
+3. **Transition to New Version**:
+   - When the doctor renews on the next month or executes a plan upgrade via checkout, backend captures the latest `plans.version` into `subscription.plan_version` and freezes a fresh `plan_snapshot`.
+
+---
+
+## 6. Auto-Renewal, Cancellation, & Renewal Guard Rules
+
+### 1. Auto-Renewal Lifecycle & Background Processing
+- **Default State**: All paid subscriptions default to `auto_renew = true`.
+- **Toggle Endpoint**: `POST /api/subscription/toggle-auto-renew` (`auto_renew: boolean`).
+  - If re-enabling auto-renew on a subscription marked for cancellation, `cancelled_at` and `cancellation_reason` are automatically cleared.
+- **Daily Scheduler Command (`php artisan subscriptions:process-renewals`)**:
+  - Scheduled daily via `routes/console.php`.
+  - **Auto-Renew ON (`auto_renew === true` & `ends_at <= now()`)**:
+    - Rolls over subscription by 1 billing cycle (`starts_at` advances to previous end, `ends_at` adds 1 month or 1 year).
+    - Refreshes `plan_version` and captures updated `plan_snapshot`.
+    - Automatically records an approved `PaymentInvoice` (`payment_method: 'Auto-Renew'`).
+  - **Auto-Renew OFF (`auto_renew === false` & `ends_at <= now()`)**:
+    - Marks subscription as `status = 'expired'`.
+
+### 2. Subscription Cancellation Rules
+- **Cancellation Strategy**: Strictly **at period end** (doctor paid for the period, so benefits are retained until `ends_at`).
+  - Immediate termination is disabled so doctors never lose pre-paid access abruptly.
+- **Cancel Endpoint**: `POST /api/subscription/cancel` (`reason: string`, `feedback?: string`).
+  - Sets `auto_renew = false`, records `cancelled_at = now()`, and stores `cancellation_reason`.
+  - Subscription preserves `status = 'active'` and full clinical scanning/quota privileges until `ends_at`.
+- **Resume Endpoint**: `POST /api/subscription/resume`.
+  - Restores `auto_renew = true`, clears `cancelled_at` and `cancellation_reason`.
+
+### 3. Strict Renewal Guard & Tier Switching Rules
+> **MANDATORY LIFECYCLE RULE**: A doctor who already holds an active, valid subscription **MUST NOT** be able to prematurely renew or re-purchase the exact same plan before it expires.
+
+1. **Same Plan Renewal (Blocked while Active)**:
+   - **Backend Guard**: `DoctorSubscriptionService::checkout()` rejects checkout of the same plan with HTTP `422 Unprocessable Entity`:
+     `"You already have an active subscription to {plan_name} valid until {ends_at}. Renewal of this plan is only available once your current subscription expires."`
+   - **Frontend UI Guard**:
+     - The "Renew Plan" button on the Active Subscription card is **strictly hidden** while `status === 'active' && is_active`.
+     - In the pricing grid, the doctor's active plan button is disabled with label `"Current Active Plan"`.
+2. **Tier Switching / Upgrading (Permitted while Active)**:
+   - If a doctor holds an active subscription and chooses a **different tier** (e.g., upgrading from Individual Tier to Multi-Clinic or Clinic Group Plan):
+     - Checkout is **permitted**.
+     - Upon payment settlement (`PaymentInvoiceService::approvePayment`), the new plan activates immediately and supersedes/cancels the previous lower-tier subscription.
+3. **When Renewal of the Same Plan is Permitted**:
+   - Renewal becomes available **only when the subscription has actually expired** (`status === 'expired'` or past valid end date without auto-renewal).
+   - Once expired:
+     - The subscription card displays the **"Renew Plan"** action.
+     - The plan's button in the pricing table unlocks with the label `"Renew Plan"`.
+
 
