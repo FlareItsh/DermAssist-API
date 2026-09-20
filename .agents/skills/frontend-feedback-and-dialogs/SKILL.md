@@ -184,3 +184,15 @@ When users interact with in-app notifications (via the Utility Bar bell dropdown
    - The notification bell dropdown footer must provide a **"Show All Notifications"** link.
    - Dedicated routes: `/doctor/notifications`, `/patient/notifications`, `/secretary/notifications`, `/notifications`.
    - Features filter tabs (**All**, **Unread**, **Invitations**), bulk "Mark all as read", and triggers `<AppModalNotificationDetail>` on item click.
+
+---
+
+## 6. Interactive Component & Timetable Modal Guidelines
+
+1. **Pure Event Emission on Item Click**:
+   - Component selection handlers (e.g. `handleApptClick` in `<AppWeeklyTimetable>`) must ONLY emit the selection event (`emit('select-appointment', item)`).
+   - **NEVER** pair item click handlers with automatic route navigation (e.g. `navigateTo('/Doctor/Messages/...')`). Clicking an item on a timetable or list grid should open the quick detail modal cleanly without redirecting the user away.
+
+2. **Explicit Modal Action Buttons**:
+   - All secondary workflow actions (e.g., *Clinical Consultation*, *Message Patient*) must be presented as explicit, labeled buttons inside the opened detail modal so healthcare providers retain full control over their navigation.
+

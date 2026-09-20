@@ -32,6 +32,8 @@ class RegisterRequest extends FormRequest
             'role' => ['required', 'string', 'in:patient,doctor'],
             'prcNumber' => ['nullable', 'string', 'max:255'],
             'idPhoto' => ['nullable', 'string'],
+            'consent_dataset' => ['nullable', 'boolean'],
+            'agree_to_terms' => ['nullable', 'boolean'],
         ];
     }
 }
