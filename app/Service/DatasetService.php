@@ -28,7 +28,7 @@ class DatasetService
             $categoryName = basename($categoryPath);
             $files = Storage::disk($this->disk)->files($categoryPath);
             $imageUrls = array_map(function ($file) {
-                return url(Storage::disk($this->disk)->url($file));
+                return Storage::disk($this->disk)->url($file);
             }, $files);
 
             if (count($imageUrls) > 0) {
@@ -49,26 +49,96 @@ class DatasetService
 
         return response()->json([
             'message' => 'Image added to dataset',
-            'url' => url(Storage::disk($this->disk)->url($path)),
+            'url' => Storage::disk($this->disk)->url($path),
         ], 201);
+    }
+
+    /**
+     * Store multiple uploaded images into a dataset category.
+     *
+     * @param  array<UploadedFile>  $files
+     */
+    public function addImages(array $files, string $category): JsonResponse
+    {
+        $categorySlug = Str::slug($category);
+        $urls = [];
+
+        foreach ($files as $file) {
+            $path = $file->store($this->datasetDir.'/'.$categorySlug, $this->disk);
+            $urls[] = Storage::disk($this->disk)->url($path);
+        }
+
+        return response()->json([
+            'message' => count($urls).' images added to dataset',
+            'urls' => $urls,
+        ], 201);
+    }
+
+    /**
+     * Resolve a dataset image URL or path into a relative storage path.
+     */
+    private function resolveRelativeDatasetPath(string $url): ?string
+    {
+        $relativePath = $url;
+        $storagePos = strpos($relativePath, '/storage/');
+        if ($storagePos !== false) {
+            $relativePath = substr($relativePath, $storagePos + 9);
+        } elseif (str_starts_with($relativePath, 'storage/')) {
+            $relativePath = substr($relativePath, 8);
+        } else {
+            $parsed = parse_url($relativePath, PHP_URL_PATH);
+            if ($parsed) {
+                $storagePos = strpos($parsed, '/storage/');
+                $relativePath = $storagePos !== false ? substr($parsed, $storagePos + 9) : ltrim($parsed, '/');
+            }
+        }
+
+        $relativePath = ltrim($relativePath, '/');
+
+        if (! str_starts_with($relativePath, $this->datasetDir.'/') || str_contains($relativePath, '..')) {
+            return null;
+        }
+
+        return $relativePath;
     }
 
     public function removeImage(string $url): JsonResponse
     {
-        $baseUrl = url(Storage::disk($this->disk)->url(''));
+        $relativePath = $this->resolveRelativeDatasetPath($url);
 
-        if (str_starts_with($url, $baseUrl)) {
-            $relativePath = substr($url, strlen($baseUrl));
-            $relativePath = ltrim($relativePath, '/');
+        if (! $relativePath) {
+            return response()->json(['error' => 'Invalid dataset image path'], 403);
+        }
 
-            if (Storage::disk($this->disk)->exists($relativePath)) {
-                Storage::disk($this->disk)->delete($relativePath);
+        if (Storage::disk($this->disk)->exists($relativePath)) {
+            Storage::disk($this->disk)->delete($relativePath);
 
-                return response()->json(['message' => 'Image deleted successfully']);
-            }
+            return response()->json(['message' => 'Image deleted successfully']);
         }
 
         return response()->json(['error' => 'File not found or invalid URL'], 404);
+    }
+
+    /**
+     * Remove multiple images from the dataset in a single operation.
+     *
+     * @param  array<string>  $urls
+     */
+    public function removeImages(array $urls): JsonResponse
+    {
+        $deletedCount = 0;
+        foreach ($urls as $url) {
+            $relativePath = $this->resolveRelativeDatasetPath($url);
+            if ($relativePath && Storage::disk($this->disk)->exists($relativePath)) {
+                Storage::disk($this->disk)->delete($relativePath);
+                $deletedCount++;
+            }
+        }
+
+        return response()->json([
+            'message' => "{$deletedCount} images deleted successfully",
+            'deleted_count' => $deletedCount,
+        ]);
     }
 
     public function saveFromDiagnosis(string $diagnosisUuid): JsonResponse

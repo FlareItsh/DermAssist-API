@@ -65,6 +65,8 @@ class DiagnosisService
 
         // Set transient properties directly on the model instance to keep response flat (no additional() wrapper)
         $diagnosis->image_quality = $aiResult['image_quality'] ?? null;
+        $diagnosis->is_inconclusive = $aiResult['is_inconclusive'] ?? ($aiResult['label'] === 'Inconclusive');
+        $diagnosis->clinical_feedback = $aiResult['clinical_feedback'] ?? null;
 
         if (! empty($data['doctor_id'])) {
             $availabilityCheck = $this->doctorAvailabilityService->checkDoctorAvailability(

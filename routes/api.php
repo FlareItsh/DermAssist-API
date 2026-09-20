@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminCouponController;
 use App\Http\Controllers\Admin\AdminFeatureController;
+use App\Http\Controllers\Admin\AdminModelTrainingController;
 use App\Http\Controllers\Admin\AdminPatchNoteController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminPlanController;
@@ -65,6 +66,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::get('/dataset', [DatasetController::class, 'index']);
     Route::post('/dataset', [DatasetController::class, 'store']);
     Route::delete('/dataset', [DatasetController::class, 'destroy']);
+    Route::delete('/dataset/bulk', [DatasetController::class, 'destroyBulk']);
     Route::get('/dataset/download', [DatasetController::class, 'download']);
     Route::post('/dataset/save-diagnosis', [DatasetController::class, 'saveFromDiagnosis']);
 
@@ -118,6 +120,14 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
         Route::apiResource('patch-notes', AdminPatchNoteController::class);
         Route::patch('patch-notes/{patch_note}/toggle-publish', [AdminPatchNoteController::class, 'togglePublish']);
+
+        // AI Model Retraining & Performance Monitoring
+        Route::get('/model/stats', [AdminModelTrainingController::class, 'stats']);
+        Route::post('/model/retrain', [AdminModelTrainingController::class, 'retrain']);
+        Route::get('/model/retrain/status', [AdminModelTrainingController::class, 'status']);
+        Route::post('/model/retrain/cancel', [AdminModelTrainingController::class, 'cancel']);
+        Route::post('/model/retrain/complete', [AdminModelTrainingController::class, 'markCompleted']);
+        Route::post('/model/dataset/sync', [AdminModelTrainingController::class, 'sync']);
     });
 
     // Patch Notes (User Notifications / Changelog)
