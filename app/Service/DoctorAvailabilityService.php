@@ -269,15 +269,17 @@ class DoctorAvailabilityService
                 ];
             }
 
-            // Find alternative doctors available at the specified date/time
-            $city = $patient ? $patient->city : null;
-            $province = $patient ? $patient->province : null;
+            // Find alternative doctors available at the specified date/time (only for standard self-registered patients)
+            if (! ($patient && $patient->is_doctor_registered)) {
+                $city = $patient ? $patient->city : null;
+                $province = $patient ? $patient->province : null;
 
-            $alternatives = $this->repository->getAvailableDoctorsOn($date, $city, $province);
+                $alternatives = $this->repository->getAvailableDoctorsOn($date, $city, $province);
 
-            // If no alternatives in same city/province, search nationwide (without location filters)
-            if ($alternatives->isEmpty()) {
-                $alternatives = $this->repository->getAvailableDoctorsOn($date);
+                // If no alternatives in same city/province, search nationwide (without location filters)
+                if ($alternatives->isEmpty()) {
+                    $alternatives = $this->repository->getAvailableDoctorsOn($date);
+                }
             }
         }
 

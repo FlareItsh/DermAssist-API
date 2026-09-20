@@ -69,6 +69,11 @@ class AppointmentService
             $this->checkAppointmentConflict($data['doctor_id'], $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
         }
 
+        // Strict guard: Doctor-registered patients can only book appointments with their registering doctor
+        if ($user->is_doctor_registered && $user->registered_by_doctor_id && (int) $data['doctor_id'] !== (int) $user->registered_by_doctor_id) {
+            abort(403, 'You are registered under an attending doctor and cannot book appointments with other doctors.');
+        }
+
         // Verify if doctor can receive new appointments from this patient
         $isExistingPatient = ($user->is_doctor_registered && $user->registered_by_doctor_id == $doctor->id)
             || Appointment::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists()
