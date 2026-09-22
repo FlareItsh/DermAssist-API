@@ -30,7 +30,11 @@ class UserService
     {
         ProcessScheduledAccountActions::processDueActions();
 
-        $user = $this->userRepository->findFirstByField('email', $payload['email']);
+        $email = trim($payload['email'] ?? '');
+        $user = $this->userRepository->findFirstByField('email', $email);
+        if (! $user) {
+            $user = User::whereRaw('LOWER(email) = ?', [strtolower($email)])->first();
+        }
 
         if (! $user) {
             return response()->json(['message' => 'Invalid Credentials'], 401);
