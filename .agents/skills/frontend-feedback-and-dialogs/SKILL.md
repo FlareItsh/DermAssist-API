@@ -196,3 +196,21 @@ When users interact with in-app notifications (via the Utility Bar bell dropdown
 2. **Explicit Modal Action Buttons**:
    - All secondary workflow actions (e.g., *Clinical Consultation*, *Message Patient*) must be presented as explicit, labeled buttons inside the opened detail modal so healthcare providers retain full control over their navigation.
 
+---
+
+## 7. Cookie Notice, Terms & Template Conditional Standards
+
+1. **Cookie Notice Minimal Floating Pill (`AppCookieBanner.vue`)**:
+   - Must never display intimidating technical jargon (e.g. avoid terms like "bot farms" or "device tracking tokens").
+   - Display a compact, floating glassmorphism pill with a single clean sentence: *"We use essential cookies to keep your account secure."* and an interactive "Terms & Cookies" hyperlink opening `<AppModalTermsModal initial-tab="cookies" />`.
+
+2. **TermsModal 3-Tab Architecture (`AppModalTermsModal.vue`)**:
+   - Must support 3 distinct tabs:
+     - `terms`: Terms & Conditions and Medical Disclaimer.
+     - `privacy`: Privacy Policy and Data Privacy Act compliance.
+     - `cookies`: Essential Cookies & Device Security Policy (`initial-tab="cookies"`).
+
+3. **Vue Sequential Conditional Rule (CRITICAL)**:
+   - In Vue multi-branch template conditionals (`<template v-if>`, `<template v-else-if>`, `<template v-else>`), `v-else` must **always** be the final terminal branch.
+   - **NEVER** place a `<template v-else-if>` after a `<template v-else>`, as this triggers a fatal Vue compiler error: `v-else/v-else-if has no adjacent v-if or v-else-if` and crashes Vite HMR server sockets.
+

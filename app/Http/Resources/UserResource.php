@@ -58,6 +58,7 @@ class UserResource extends JsonResource
             'account_status' => $this->account_status ?? 'active',
             'account_action' => $this->account_action,
             'account_action_scheduled_at' => $this->account_action_scheduled_at,
+            'verification_deadline' => $this->verification_deadline?->toIso8601String(),
             'consent_dataset' => (bool) $this->consent_dataset,
             'terms_accepted_at' => $this->terms_accepted_at?->toIso8601String(),
             'created_at' => $this->created_at,

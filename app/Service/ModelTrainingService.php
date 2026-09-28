@@ -183,7 +183,7 @@ class ModelTrainingService
     public function cancelTraining(): JsonResponse
     {
         try {
-            $response = Http::timeout(5)->post($this->aiUrl.'/train/cancel');
+            $response = Http::timeout(10)->post($this->aiUrl.'/train/cancel');
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {

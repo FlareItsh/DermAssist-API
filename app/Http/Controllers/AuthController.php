@@ -26,4 +26,69 @@ class AuthController extends Controller
     {
         return $this->userService->createUser($request->all());
     }
+
+    public function verifyAccount(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $result = $this->userService->verifyAccount($validated['token']);
+
+        if (! $result['status']) {
+            return response()->json(['message' => $result['message']], 422);
+        }
+
+        return response()->json($result, 200);
+    }
+
+    public function resendVerification(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $result = $this->userService->resendVerification($user);
+
+        if (! $result['status']) {
+            return response()->json(['message' => $result['message']], 422);
+        }
+
+        return response()->json($result, 200);
+    }
+
+    public function blockDevice(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'device_id' => 'required|string',
+            'user_id' => 'nullable|integer|exists:users,id',
+            'reason' => 'nullable|string',
+        ]);
+
+        $block = $this->userService->blockDevice(
+            $validated['device_id'],
+            $validated['user_id'] ?? null,
+            $validated['reason'] ?? null,
+            $request->user()?->id
+        );
+
+        return response()->json([
+            'message' => 'Device successfully restricted.',
+            'data' => $block,
+        ], 200);
+    }
+
+    public function unblockDevice(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'device_id' => 'required|string',
+        ]);
+
+        $success = $this->userService->unblockDevice($validated['device_id']);
+
+        return response()->json([
+            'message' => $success ? 'Device restriction lifted.' : 'Device was not blocked.',
+        ], 200);
+    }
 }

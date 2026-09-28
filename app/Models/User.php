@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -42,6 +42,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'consent_dataset' => 'boolean',
             'terms_accepted_at' => 'datetime',
+            'cookies_accepted_at' => 'datetime',
+            'verification_deadline' => 'datetime',
         ];
     }
 
@@ -207,6 +209,24 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->account_status === 'active';
+    }
+
+    /**
+     * Check whether this user account is pending verification.
+     */
+    public function isPendingVerification(): bool
+    {
+        return $this->account_status === 'pending_verification';
+    }
+
+    /**
+     * Get the blocked devices associated with this user.
+     *
+     * @return HasMany<BlockedDevice, $this>
+     */
+    public function blockedDevices(): HasMany
+    {
+        return $this->hasMany(BlockedDevice::class);
     }
 
     /**
