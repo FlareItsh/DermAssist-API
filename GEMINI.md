@@ -179,5 +179,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - **Temporary Password Generator**: All patient registration forms (scanner modal, patients page, scan findings) must use `usePasswordGenerator` (`generateTemporaryPassword('Patient')`), provide inline Copy and Regenerate buttons, and toggle password visibility.
 - **Clinical Scan Patient Assignment**: Must default to an appointment-centric schedule (listing chronological appointments with Today, Tomorrow, Date Picker, and All Dates filters). Never fall back to `created_at` as the appointment date. Provide a separate "Registered (Walk-In)" tab for unscheduled patients.
 - **Chat Contrast Standards**: Primary colored sender bubbles must use pure white headers, elevated white status pill badges (`bg-white shadow-sm`), and solid white preview cards for clinical findings.
+- **Anti-Spam & Device Blocking**: Uses persistent `da_device_id` cookie and `X-Device-Id` headers. Rejects blocked devices/IPs with 403. Public registrations start in `pending_verification` with 48h deadline. Overdue accounts are soft-deleted, and trashed accounts (>14 days) are permanently force-deleted.
+- **Cookie & Terms Integration**: Cookie banner must be a minimal, friendly floating pill with a "Terms & Cookies" link to `AppModalTermsModal` (`initial-tab="cookies"`). Internal security tokens (`device_token`, `cookies_accepted_at`) must never be exposed in `UserResource`.
 
 </laravel-boost-guidelines>
