@@ -23,7 +23,7 @@ class ProcessScheduledAccountActions extends Command
      *
      * @var string
      */
-    protected $description = 'Process pending doctor-scheduled patient account actions (disable or delete)';
+    protected $description = 'Process pending doctor-scheduled patient account actions and unverified dummy accounts';
 
     /**
      * Execute the console command.
@@ -31,7 +31,8 @@ class ProcessScheduledAccountActions extends Command
     public function handle()
     {
         $count = self::processDueActions();
-        $this->info("Processed {$count} pending scheduled account actions.");
+        $prunedCount = self::pruneExpiredTrash();
+        $this->info("Processed {$count} pending scheduled account actions. Permanently pruned {$prunedCount} dummy accounts.");
     }
 
     /**
@@ -39,13 +40,15 @@ class ProcessScheduledAccountActions extends Command
      */
     public static function processDueActions(): int
     {
-        $users = User::whereNotNull('account_action')
+        $count = 0;
+
+        // 1. Process Doctor-scheduled actions (disable / delete)
+        $scheduledUsers = User::whereNotNull('account_action')
             ->whereNotNull('account_action_scheduled_at')
             ->where('account_action_scheduled_at', '<=', now())
             ->get();
 
-        $count = 0;
-        foreach ($users as $user) {
+        foreach ($scheduledUsers as $user) {
             try {
                 if ($user->account_action === 'disable') {
                     $user->update([
@@ -68,6 +71,48 @@ class ProcessScheduledAccountActions extends Command
             }
         }
 
+        // 2. Process Overdue Unverified Accounts (Soft-Delete)
+        $unverifiedOverdueUsers = User::where('account_status', 'pending_verification')
+            ->whereNotNull('verification_deadline')
+            ->where('verification_deadline', '<=', now())
+            ->get();
+
+        foreach ($unverifiedOverdueUsers as $user) {
+            try {
+                $user->tokens()->delete();
+                $user->delete(); // Eloquent Soft Delete (sets deleted_at)
+                $count++;
+            } catch (\Throwable $e) {
+                Log::error("Failed to soft delete overdue unverified user {$user->id}: ".$e->getMessage());
+            }
+        }
+
         return $count;
+    }
+
+    /**
+     * Permanently delete (forceDelete) soft-deleted unverified/dummy accounts older than the retention period.
+     */
+    public static function pruneExpiredTrash(int $retentionDays = 14): int
+    {
+        $prunedCount = 0;
+        $trashedUsers = User::onlyTrashed()
+            ->where('account_status', 'pending_verification')
+            ->where('deleted_at', '<=', now()->subDays($retentionDays))
+            ->get();
+
+        foreach ($trashedUsers as $user) {
+            try {
+                Conversation::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+                Appointment::where('patient_id', $user->id)->orWhere('doctor_id', $user->id)->delete();
+                Diagnosis::where('user_uuid', $user->uuid)->delete();
+                $user->forceDelete();
+                $prunedCount++;
+            } catch (\Throwable $e) {
+                Log::error("Failed to permanently delete trashed user {$user->id}: ".$e->getMessage());
+            }
+        }
+
+        return $prunedCount;
     }
 }

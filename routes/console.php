@@ -12,4 +12,8 @@ Schedule::call(function () {
     ProcessScheduledAccountActions::processDueActions();
 })->everyMinute();
 
+Schedule::call(function () {
+    ProcessScheduledAccountActions::pruneExpiredTrash();
+})->daily();
+
 Schedule::command('subscriptions:process-renewals')->daily();

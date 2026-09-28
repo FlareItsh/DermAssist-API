@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Http\Resources\UserResource;
 use App\Models\Appointment;
+use App\Models\BlockedDevice;
 use App\Models\Conversation;
 use App\Models\Diagnosis;
 use App\Models\DoctorVerification;
@@ -48,6 +49,21 @@ class UserService
             return response()->json(['message' => 'Account has been disabled by your doctor.'], 403);
         }
 
+        $deviceId = $payload['device_token'] ?? $payload['deviceId'] ?? request()?->header('X-Device-Id') ?? request()?->cookie('da_device_id');
+        if ($deviceId) {
+            $isDeviceBlocked = BlockedDevice::where('device_id', $deviceId)->exists();
+            if ($isDeviceBlocked) {
+                return response()->json(['message' => 'Access denied: This device has been restricted.'], 403);
+            }
+            if (! $user->device_token) {
+                $user->update(['device_token' => $deviceId]);
+            }
+        }
+
+        if (! empty($payload['cookies_accepted']) && ! $user->cookies_accepted_at) {
+            $user->update(['cookies_accepted_at' => now()]);
+        }
+
         $token = $user->createToken($user->email)->plainTextToken;
 
         return response()->json([
@@ -78,6 +94,20 @@ class UserService
             $roleSlug = $payload['role'] ?? 'patient';
             $role = Role::where('slug', $roleSlug)->firstOrFail();
 
+            $deviceToken = $payload['device_token'] ?? $payload['deviceId'] ?? request()?->header('X-Device-Id') ?? request()?->cookie('da_device_id');
+            $cookiesAccepted = ! empty($payload['cookies_accepted']) || ! empty($payload['cookiesAccepted']);
+            $isDoctorRegistered = ! empty($payload['is_doctor_registered']) || ! empty($payload['registered_by_doctor_id']);
+
+            $accountStatus = 'active';
+            $verificationToken = null;
+            $verificationDeadline = null;
+
+            if (! $isDoctorRegistered && $roleSlug === 'patient') {
+                $accountStatus = 'pending_verification';
+                $verificationToken = Str::random(40);
+                $verificationDeadline = now()->addHours(48);
+            }
+
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
             $userData = [
@@ -93,6 +123,11 @@ class UserService
                 'avatar_path' => null,
                 'consent_dataset' => ! empty($payload['consent_dataset']),
                 'terms_accepted_at' => ! empty($payload['agree_to_terms']) ? now() : null,
+                'account_status' => $accountStatus,
+                'device_token' => $deviceToken,
+                'cookies_accepted_at' => $cookiesAccepted ? now() : null,
+                'verification_token' => $verificationToken,
+                'verification_deadline' => $verificationDeadline,
             ];
 
             if (! empty($payload['avatar'])) {
@@ -428,5 +463,77 @@ class UserService
         return response()->json([
             'message' => 'Secretary removed successfully.',
         ], 200);
+    }
+
+    public function verifyAccount(string $token): array
+    {
+        $user = User::where('verification_token', $token)->first();
+
+        if (! $user) {
+            return [
+                'status' => false,
+                'message' => 'Invalid or expired verification token.',
+            ];
+        }
+
+        if ($user->verification_deadline && $user->verification_deadline->isPast()) {
+            return [
+                'status' => false,
+                'message' => 'Verification deadline has passed. Please contact support.',
+            ];
+        }
+
+        $user->update([
+            'account_status' => 'active',
+            'email_verified_at' => now(),
+            'verification_token' => null,
+            'verification_deadline' => null,
+        ]);
+
+        return [
+            'status' => true,
+            'message' => 'Account successfully verified!',
+            'user' => new UserResource($user),
+        ];
+    }
+
+    public function resendVerification(User $user): array
+    {
+        if ($user->account_status !== 'pending_verification') {
+            return [
+                'status' => false,
+                'message' => 'Account is already verified or active.',
+            ];
+        }
+
+        $token = Str::random(40);
+        $user->update([
+            'verification_token' => $token,
+            'verification_deadline' => now()->addHours(48),
+        ]);
+
+        return [
+            'status' => true,
+            'message' => 'A new verification link has been generated.',
+            'verification_token' => $token,
+            'verification_deadline' => $user->verification_deadline?->toIso8601String(),
+        ];
+    }
+
+    public function blockDevice(string $deviceId, ?int $userId = null, ?string $reason = null, ?int $blockedBy = null): BlockedDevice
+    {
+        return BlockedDevice::firstOrCreate(
+            ['device_id' => $deviceId],
+            [
+                'user_id' => $userId,
+                'reason' => $reason ?? 'Administrative security restriction',
+                'blocked_by' => $blockedBy,
+            ]
+        );
+    }
+
+    public function unblockDevice(string $deviceId): bool
+    {
+        return (bool) BlockedDevice::where('device_id', $deviceId)->delete();
     }
 }
