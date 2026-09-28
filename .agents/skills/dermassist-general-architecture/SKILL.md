@@ -9,6 +9,19 @@ All AI assistants working on DermAssist MUST follow these strict architectural s
 
 ---
 
+## 0. Zero-Mistake & Mandatory Verification Standard (CRITICAL)
+
+All AI assistants must adhere to the **"Make No Mistakes"** operational mandate:
+1. **Never Hallucinate or Assume**: Always read active file content and inspect sibling implementations before proposing edits.
+2. **Mandatory Post-Execution Testing**:
+   - Backend PHP changes must be validated by running `php artisan test --compact {path}`.
+   - All modified PHP files must be formatted with `vendor/bin/pint --dirty --format agent`.
+   - Frontend changes must be formatted with `npx prettier --write {path}` and verified against Vite/Nuxt compilation.
+3. **Template Sequential Safety**: In Vue multi-branch conditionals (`v-if`, `v-else-if`, `v-else`), `v-else` must always be the final terminal branch. Placing `v-else-if` after `v-else` is strictly forbidden.
+4. **Mandatory Artifact Usage**: Always create markdown artifacts for Implementation Plans (`implementation_plan.md`), Evaluations & Analyses (`*_analysis.md`), and Walkthroughs (`walkthrough.md`). Never dump raw large plans or technical audits solely into chat.
+
+---
+
 ## 1. Backend API Scaffolding & Architecture (Laravel)
 
 ### Repository-Service Pattern Requirement
@@ -69,6 +82,9 @@ _Executed via `views/scripts/make-service.js`. Generates TypeScript service clas
     - `AppPagination` (`v-model:currentPage`, `:total-items`, `:per-page`, `item-label`)
     - `AppTimeRangePicker` (`v-model:startTime`, `v-model:endTime`, `:blocked-slots`, `:existing-appointments`, `label`)
     - `AppWeeklyTimetable` (`:doctor-uuid`, `:initial-view-date`, `:clinic-filter`, `@select-appointment`, `@select-slot`)
+    - `AppCookieBanner` (Minimal floating pill for essential security cookies & terms modal integration)
+    - `AppVerificationBanner` (`:user="currentUser"`, `@verified="handleUserVerified"`, countdown and verification modal)
+    - `AppModalTermsModal` (`v-model`, `initial-tab="terms"|"privacy"|"cookies"`, user agreements, data privacy, and cookie security)
 - If a new UI pattern is required, create a reusable component in `views/app/components/App/` first.
 
 ### Strictly No Hardcoded Colors
@@ -86,6 +102,11 @@ _Executed via `views/scripts/make-service.js`. Generates TypeScript service clas
 - **NEVER** use browser popups: `alert()`, `confirm()`, `prompt()`, `window.alert()`, `window.confirm()`.
 - **Destructive / Confirmation Dialogs**: **ALWAYS** use `<AppModalConfirmation>` (`views/app/components/App/Modal/Confirmation.vue`).
 - **User Feedback & Status Updates**: **ALWAYS** use `toast` from `'vue-sonner'` (`toast.success()`, `toast.error()`, `toast.warning()`).
+
+### Vue Sequential Conditional Rule (CRITICAL)
+
+- In multi-branch template conditionals (`<template v-if>`, `<template v-else-if>`, `<template v-else>`), `v-else` must **always** be the final terminal branch.
+- **NEVER** place a `<template v-else-if>` after a `<template v-else>`, as this triggers a fatal Vue compiler error: `v-else/v-else-if has no adjacent v-if or v-else-if` and crashes Vite HMR development servers.
 
 ---
 

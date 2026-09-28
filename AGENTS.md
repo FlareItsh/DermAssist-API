@@ -171,6 +171,15 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
   - **Walkthroughs** (`walkthrough.md`): Always document completed changes, how they were verified, and test outputs in a walkthrough artifact.
 - **Never Dump Large Plans in Chat**: Never output long plans or deep technical analyses solely as chat messages. Always persist them into well-structured markdown artifacts and provide a concise summary in chat pointing to the artifact.
 
+=== zero-mistake rules ===
+
+# Zero-Mistake & Rigorous Verification Protocol (CRITICAL)
+
+- **Make No Mistakes**: The AI assistant must operate with extreme precision, diligence, and zero tolerance for syntax, runtime, or architectural errors.
+- **Contextual Awareness**: Always read and verify surrounding lines, imports, and component hierarchies before proposing code modifications. Never guess or hallucinate parameters or schema columns.
+- **Vue Sequential Conditional Rule**: In multi-branch template conditionals (`v-if`, `v-else-if`, `v-else`), `v-else` must **always** be the final terminal branch. Never put `v-else-if` after `v-else`.
+- **Mandatory Automated Verification**: Immediately run the relevant Pest tests (`php artisan test --compact`) and code formatters (`vendor/bin/pint --dirty --format agent` / `npx prettier --write`) after making changes. Never claim a task is complete without programmatic verification.
+
 === dermassist conventions ===
 
 # Core DermAssist Feature Patterns
