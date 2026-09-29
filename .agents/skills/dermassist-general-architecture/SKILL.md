@@ -326,16 +326,16 @@ In `views/app/components/App/ChatMessageWindow.vue`:
 
 ---
 
-## 12. AI Assistant Directives: Mandatory Artifact Usage
+## 12. AI Assistant Directives: Mandatory Artifact Usage (Zero Exceptions)
 
 All AI assistants (Antigravity, Gemini, Claude, Cursor) working on DermAssist MUST follow this mandatory behavioral rule:
 
-### 1. Always Use Artifacts
+### 1. Always Use Artifacts (Zero Exceptions)
 - **CRITICAL**: The AI assistant must **ALWAYS** create or update markdown artifacts for:
-  - **Implementation Plans** (`implementation_plan.md`): Required before executing non-trivial code changes.
-  - **Technical Evaluations & Architectural Analyses** (e.g. `analysis_results.md`, `evaluation_notes.md`): Required when evaluating architectural questions, trade-offs, database relationships, or UI designs.
+  - **Implementation Plans** (`implementation_plan.md`): Required before executing any code changes, refactorings, feature additions, or bug fixes (regardless of whether single-file or multi-file), and wait for user approval.
+  - **Technical Evaluations & Architectural Analyses** (e.g. `analysis_results.md`, `evaluation_notes.md`): Required when evaluating architectural questions, trade-offs, database relationships, or UI designs/suggestions.
   - **Walkthroughs & Verification Documents** (`walkthrough.md`): Required after completing code changes to document what was changed, how it was verified, and test outputs.
-- **Never Dump Complex Plans in Chat**: Never output lengthy multi-step implementation plans or complex technical evaluations solely as chat messages. Always persist them into well-structured markdown artifacts in the artifact directory, and point the user to the artifact with a concise summary.
+- **Strict Prohibition on Dumping Complex Plans or Suggestions in Chat**: Never output lengthy multi-step implementation plans, detailed design suggestions, or complex technical evaluations solely as chat messages. Always persist them into well-structured markdown artifacts in the artifact directory, and point the user to the artifact with a concise summary.
 
 ---
 
