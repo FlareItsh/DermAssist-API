@@ -337,4 +337,16 @@ All AI assistants (Antigravity, Gemini, Claude, Cursor) working on DermAssist MU
   - **Walkthroughs & Verification Documents** (`walkthrough.md`): Required after completing code changes to document what was changed, how it was verified, and test outputs.
 - **Never Dump Complex Plans in Chat**: Never output lengthy multi-step implementation plans or complex technical evaluations solely as chat messages. Always persist them into well-structured markdown artifacts in the artifact directory, and point the user to the artifact with a concise summary.
 
+---
+
+## 13. AI Retraining Activity Terminal Pattern
+
+In `algorithms/src/training_manager.py` and `views/app/pages/Admin/AI/index.vue`:
+- **Live Terminal Logging**: Must emit realistic tqdm-style ASCII step progress bars (`[STEP] Epoch ... [=====>...] % | Loss | Acc | Speed | ETA`).
+- **In-Place Update (`replace_last`)**: Training loop must replace the previous active batch progress line in-place thread-safely rather than appending 100+ duplicate lines to the buffer.
+- **Terminal UI Standards**:
+  - Unix window controls (traffic lights) with shell session identifier (`dermassist-ai-worker (pty/0)`).
+  - Power toolbar actions: Auto-scroll pause/resume toggle, Copy output, Clear buffer, Fullscreen expand, and Cancel pipeline.
+  - Interactive CLI input prompt (`dermassist@ai-worker:~/algorithms$`) supporting Up/Down arrow command history and built-in CLI commands (`help`, `train`, `stop`, `status`, `models`, `sync`, `stats`, `history`, `device`, `clear`).
+
 

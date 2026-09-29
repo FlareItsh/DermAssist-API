@@ -190,5 +190,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - **Chat Contrast Standards**: Primary colored sender bubbles must use pure white headers, elevated white status pill badges (`bg-white shadow-sm`), and solid white preview cards for clinical findings.
 - **Anti-Spam & Device Blocking**: Uses persistent `da_device_id` cookie and `X-Device-Id` headers. Rejects blocked devices/IPs with 403. Public registrations start in `pending_verification` with 48h deadline. Overdue accounts are soft-deleted, and trashed accounts (>14 days) are permanently force-deleted.
 - **Cookie & Terms Integration**: Cookie banner must be a minimal, friendly floating pill with a "Terms & Cookies" link to `AppModalTermsModal` (`initial-tab="cookies"`). Internal security tokens (`device_token`, `cookies_accepted_at`) must never be exposed in `UserResource`.
+- **AI Retraining Terminal Console**: Live training output must render realistic tqdm-style step progress bars (`[STEP] Epoch ... [=====>...]`) updated in-place (`replace_last`). The UI terminal must feature Unix window controls, auto-scroll toggle, clipboard copy, buffer clear, fullscreen expand, and an interactive prompt (`dermassist@ai-worker:~/algorithms$`) with command history.
 
 </laravel-boost-guidelines>
