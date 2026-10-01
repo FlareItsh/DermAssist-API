@@ -71,6 +71,8 @@ class DiagnosisService
             'probabilities' => $aiResult['all_probabilities'],
             'status' => 'completed',
             'patient_consented_dataset' => $patientConsented,
+            'out_of_scope_category' => $aiResult['out_of_scope_category'] ?? null,
+            'is_out_of_scope' => ! empty($aiResult['out_of_scope_category']),
         ]);
 
         // Set transient properties directly on the model instance to keep response flat (no additional() wrapper)
