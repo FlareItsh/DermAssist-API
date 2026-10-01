@@ -161,6 +161,26 @@ class ModelTrainingService
      */
     public function startTraining(array $options): JsonResponse
     {
+        if (! empty($options['expansion_disease'])) {
+            $diseaseSlug = strtolower(trim($options['expansion_disease']));
+            $diseaseDir = 'out_of_scope_dataset/'.$diseaseSlug;
+            $count = 0;
+            if (Storage::disk($this->disk)->exists($diseaseDir)) {
+                $count = count(Storage::disk($this->disk)->files($diseaseDir));
+            }
+
+            if ($count < 10) {
+                $diseaseTitle = ucwords(str_replace('_', ' ', $diseaseSlug));
+
+                return response()->json([
+                    'message' => "Insufficient dataset for model expansion: At least 10 verified research images are required for {$diseaseTitle}. Currently {$count} available.",
+                    'required' => 10,
+                    'current' => $count,
+                    'disease' => $diseaseTitle,
+                ], 422);
+            }
+        }
+
         try {
             $response = Http::timeout(10)->post($this->aiUrl.'/train/start', [
                 'architecture' => $options['architecture'] ?? 'ensemble',
