@@ -129,3 +129,24 @@ In `api/app/Service/DatasetService.php`:
 ### 4. Patient Profile Settings (`Patient/Profile/index.vue`)
 - Dedicated **"Data Privacy & Research"** settings card.
 - Contains a clean switch toggle allowing patients to view and update their `consent_dataset` preference at any time. Updates are saved via `userService.update(uuid, form)`.
+
+---
+
+## 5. Admin AI Model Training & Interactive Terminal Standards
+
+In the Admin AI Intelligence dashboard (`views/app/pages/Admin/AI/index.vue`) and the Python Algorithms backend (`algorithms/src/training_manager.py`):
+
+### 1. Authentic Terminal Stream & Progress Bars
+- **Real CLI Streaming**: The training worker streams real-time ASCII tqdm-style batch progress bars (`[STEP] Epoch 1/3 [===========>.....] 68% (27/40) | Loss: 0.3842 | Acc: 91.20% | Speed: 0.42s/step | ETA: 18s`).
+- **In-Place Update (`replace_last`)**: Dynamic step progress bars replace the latest line in-place thread-safely (mimicking Unix terminal carriage returns `\r`) rather than flooding the log buffer with dozens of duplicate lines.
+- **Buffer Retention**: Maintains a 500-line thread-safe log window to retain historical epoch diagnostics.
+
+### 2. Interactive Terminal Environment & UI Controls
+- **Unix/macOS Window Chrome**: Window header with traffic light dots (close/clear buffer, toggle auto-scroll, fullscreen expand) and active shell tab (`dermassist-ai-worker (pty/0)`).
+- **Interactive CLI Input**: Monospace prompt (`dermassist@ai-worker:~/algorithms$`) with keyboard command history navigation (`↑` / `↓` arrows).
+  - Built-in commands: `help`, `train [epochs]`, `stop`, `cancel`, `status`, `models`, `sync`, `device`, `stats`, `history`, `clear`.
+- **Power Toolbar**:
+  - **Auto-Scroll Toggle**: Allows pausing auto-scroll to review previous epoch logs without snapping to the bottom.
+  - **Copy Terminal Output**: Copies full raw terminal log transcript to clipboard.
+  - **Clear Screen**: Wipes the console buffer.
+  - **Fullscreen Modal**: Expands terminal window to full viewport for deep telemetry inspection.
