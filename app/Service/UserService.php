@@ -102,12 +102,6 @@ class UserService
             $verificationToken = null;
             $verificationDeadline = null;
 
-            if (! $isDoctorRegistered && $roleSlug === 'patient') {
-                $accountStatus = 'pending_verification';
-                $verificationToken = Str::random(40);
-                $verificationDeadline = now()->addHours(48);
-            }
-
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
             $userData = [
