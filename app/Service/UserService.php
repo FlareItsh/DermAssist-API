@@ -244,6 +244,21 @@ class UserService
         // Remove Base64 string from payload before update
         unset($payload['avatar']);
 
+        // Handle secure password update if requested
+        if (! empty($payload['new_password'])) {
+            if (empty($payload['current_password']) || ! Hash::check($payload['current_password'], $user->password)) {
+                abort(response()->json(['message' => 'The current password provided is incorrect.'], 422));
+            }
+            if (strlen($payload['new_password']) < 8) {
+                abort(response()->json(['message' => 'The new password must be at least 8 characters long.'], 422));
+            }
+            if (isset($payload['new_password_confirmation']) && $payload['new_password'] !== $payload['new_password_confirmation']) {
+                abort(response()->json(['message' => 'The new password confirmation does not match.'], 422));
+            }
+            $payload['password'] = $payload['new_password'];
+            unset($payload['current_password'], $payload['new_password'], $payload['new_password_confirmation']);
+        }
+
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
         // integrity constraint violations when a field wasn't submitted.
