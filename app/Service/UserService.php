@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class UserService
 {
@@ -247,16 +248,30 @@ class UserService
         // Handle secure password update if requested
         if (! empty($payload['new_password'])) {
             if (empty($payload['current_password']) || ! Hash::check($payload['current_password'], $user->password)) {
-                abort(response()->json(['message' => 'The current password provided is incorrect.'], 422));
+                throw ValidationException::withMessages([
+                    'current_password' => ['The current password provided is incorrect.'],
+                ]);
             }
             if (strlen($payload['new_password']) < 8) {
-                abort(response()->json(['message' => 'The new password must be at least 8 characters long.'], 422));
+                throw ValidationException::withMessages([
+                    'new_password' => ['The new password must be at least 8 characters long.'],
+                ]);
             }
             if (isset($payload['new_password_confirmation']) && $payload['new_password'] !== $payload['new_password_confirmation']) {
-                abort(response()->json(['message' => 'The new password confirmation does not match.'], 422));
+                throw ValidationException::withMessages([
+                    'new_password_confirmation' => ['The new password confirmation does not match.'],
+                ]);
             }
             $payload['password'] = $payload['new_password'];
             unset($payload['current_password'], $payload['new_password'], $payload['new_password_confirmation']);
+
+            // Security Hardening: Revoke other tokens on password change
+            if ($user->tokens()->exists()) {
+                $currentTokenId = auth()->user()?->currentAccessToken()?->id ?? request()->user()?->currentAccessToken()?->id;
+                if ($currentTokenId) {
+                    $user->tokens()->where('id', '!=', $currentTokenId)->delete();
+                }
+            }
         }
 
         // Strip null/empty values for non-nullable columns so that
