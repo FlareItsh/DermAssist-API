@@ -30,10 +30,35 @@ class RegisterRequest extends FormRequest
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'affiliation' => ['nullable', 'string', 'max:255'],
             'role' => ['required', 'string', 'in:patient,doctor'],
-            'prcNumber' => ['nullable', 'string', 'max:255'],
+            'prcNumber' => ['required_if:role,doctor', 'nullable', 'string', 'digits:7'],
             'idPhoto' => ['nullable', 'string'],
             'consent_dataset' => ['nullable', 'boolean'],
             'agree_to_terms' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('prcNumber') && is_string($this->prcNumber)) {
+            $this->merge([
+                'prcNumber' => preg_replace('/\D/', '', $this->prcNumber),
+            ]);
+        }
+    }
+
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'prcNumber.digits' => 'The PRC license number must be exactly 7 digits.',
+            'prcNumber.required_if' => 'The PRC license number is required for doctor registration.',
         ];
     }
 }

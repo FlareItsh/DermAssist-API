@@ -105,6 +105,8 @@ class UserService
 
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
+            $prcSanitized = ! empty($payload['prcNumber']) ? preg_replace('/\D/', '', (string) $payload['prcNumber']) : null;
+
             $userData = [
                 'first_name' => $payload['firstName'],
                 'middle_name' => $payload['middleName'] ?? null,
@@ -114,7 +116,7 @@ class UserService
                 'affiliation' => $payload['affiliation'] ?? null,
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
-                'prc_number' => $payload['prcNumber'] ?? null,
+                'prc_number' => $prcSanitized,
                 'avatar_path' => null,
                 'consent_dataset' => ! empty($payload['consent_dataset']),
                 'terms_accepted_at' => ! empty($payload['agree_to_terms']) ? now() : null,
@@ -137,10 +139,10 @@ class UserService
             $user = $this->userRepository->create($userData);
 
             // Handle Doctor Verification
-            if ($roleSlug === 'doctor' && ! empty($payload['prcNumber'])) {
+            if ($roleSlug === 'doctor' && ! empty($prcSanitized)) {
                 $verificationData = [
                     'user_id' => $user->id,
-                    'prc_number' => $payload['prcNumber'],
+                    'prc_number' => $prcSanitized,
                     'id_photo_path' => null,
                     'status' => DoctorVerification::STATUS_PENDING,
                 ];
@@ -236,9 +238,11 @@ class UserService
             }
         }
 
-        // Map prcNumber to prc_number
-        if (isset($payload['prcNumber'])) {
-            $payload['prc_number'] = $payload['prcNumber'];
+        // Do not allow overwriting an existing PRC number from regular profile updates
+        if ($user->role?->slug === 'doctor' && ! empty($user->prc_number)) {
+            unset($payload['prcNumber'], $payload['prc_number']);
+        } elseif (isset($payload['prcNumber'])) {
+            $payload['prc_number'] = preg_replace('/\D/', '', (string) $payload['prcNumber']);
             unset($payload['prcNumber']);
         }
 
