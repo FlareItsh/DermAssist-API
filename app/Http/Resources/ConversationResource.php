@@ -17,11 +17,13 @@ class ConversationResource extends JsonResource
                 'id' => $this->doctor->uuid,
                 'name' => trim($this->doctor->first_name.' '.$this->doctor->last_name),
                 'avatar' => $this->doctor->avatar_url,
+                'avatar_path' => $this->doctor->avatar_path,
             ] : null,
             'patient' => $this->relationLoaded('patient') && $this->patient ? [
                 'id' => $this->patient->uuid,
                 'name' => trim($this->patient->first_name.' '.$this->patient->last_name),
                 'avatar' => $this->patient->avatar_url,
+                'avatar_path' => $this->patient->avatar_path,
             ] : null,
             'latest_message' => $latestMessage ? [
                 'message' => $latestMessage->message,

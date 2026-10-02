@@ -18,6 +18,7 @@ class MessageResource extends JsonResource
                 'id' => $this->sender->uuid,
                 'name' => trim($this->sender->first_name.' '.$this->sender->last_name),
                 'avatar' => $this->sender->avatar_url,
+                'avatar_path' => $this->sender->avatar_path,
             ] : null,
             'message' => $this->message,
             'is_read' => $this->is_read,
