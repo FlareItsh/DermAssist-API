@@ -15,14 +15,15 @@ beforeEach(function () {
     $this->adminRole = Role::firstOrCreate(['slug' => 'admin', 'name' => 'Admin']);
 });
 
-test('public patient registration sets pending_verification status and deadline', function () {
+test('public patient registration sets active status with device and cookie tracking', function () {
     $response = $this->postJson('/api/register', [
         'firstName' => 'Spam',
         'lastName' => 'Tester',
         'email' => 'spamtester@example.com',
-        'password' => 'password123',
-        'password_confirmation' => 'password123',
+        'password' => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
         'role' => 'patient',
+        'agree_to_terms' => true,
         'device_token' => 'device-uuid-12345',
         'cookies_accepted' => true,
     ]);
@@ -31,13 +32,12 @@ test('public patient registration sets pending_verification status and deadline'
 
     $this->assertDatabaseHas('users', [
         'email' => 'spamtester@example.com',
-        'account_status' => 'pending_verification',
+        'account_status' => 'active',
         'device_token' => 'device-uuid-12345',
     ]);
 
     $user = User::where('email', 'spamtester@example.com')->first();
-    expect($user->verification_token)->not->toBeNull()
-        ->and($user->verification_deadline)->not->toBeNull()
+    expect($user->account_status)->toBe('active')
         ->and($user->cookies_accepted_at)->not->toBeNull();
 });
 

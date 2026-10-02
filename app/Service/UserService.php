@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class UserService
 {
@@ -102,14 +103,10 @@ class UserService
             $verificationToken = null;
             $verificationDeadline = null;
 
-            if (! $isDoctorRegistered && $roleSlug === 'patient') {
-                $accountStatus = 'pending_verification';
-                $verificationToken = Str::random(40);
-                $verificationDeadline = now()->addHours(48);
-            }
-
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
+            $prcSanitized = ! empty($payload['prcNumber']) ? preg_replace('/\D/', '', (string) $payload['prcNumber']) : null;
+
             $userData = [
                 'first_name' => $payload['firstName'],
                 'middle_name' => $payload['middleName'] ?? null,
@@ -119,7 +116,7 @@ class UserService
                 'affiliation' => $payload['affiliation'] ?? null,
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
-                'prc_number' => $payload['prcNumber'] ?? null,
+                'prc_number' => $prcSanitized,
                 'avatar_path' => null,
                 'consent_dataset' => ! empty($payload['consent_dataset']),
                 'terms_accepted_at' => ! empty($payload['agree_to_terms']) ? now() : null,
@@ -142,10 +139,10 @@ class UserService
             $user = $this->userRepository->create($userData);
 
             // Handle Doctor Verification
-            if ($roleSlug === 'doctor' && ! empty($payload['prcNumber'])) {
+            if ($roleSlug === 'doctor' && ! empty($prcSanitized)) {
                 $verificationData = [
                     'user_id' => $user->id,
-                    'prc_number' => $payload['prcNumber'],
+                    'prc_number' => $prcSanitized,
                     'id_photo_path' => null,
                     'status' => DoctorVerification::STATUS_PENDING,
                 ];
@@ -182,7 +179,7 @@ class UserService
             $base64String = substr($base64String, strpos($base64String, ',') + 1);
             $type = strtolower($type[1]);
 
-            if (! in_array($type, ['jpg', 'jpeg', 'gif', 'png'])) {
+            if (! in_array($type, ['jpg', 'jpeg', 'gif', 'png', 'webp'])) {
                 throw new \Exception('invalid image type');
             }
 
@@ -220,7 +217,12 @@ class UserService
         $user->load(['role', 'latestDoctorVerification']);
 
         if (! empty($payload['avatar'])) {
-            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
+            $ext = 'png';
+            if (preg_match('/^data:image\/(\w+);base64,/', $payload['avatar'], $match)) {
+                $matchedType = strtolower($match[1]);
+                $ext = $matchedType === 'jpeg' ? 'jpg' : $matchedType;
+            }
+            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'_'.Str::random(6).'.'.$ext;
 
             try {
                 $avatarPath = $this->saveBase64Image($payload['avatar'], $path);
@@ -236,14 +238,45 @@ class UserService
             }
         }
 
-        // Map prcNumber to prc_number
-        if (isset($payload['prcNumber'])) {
-            $payload['prc_number'] = $payload['prcNumber'];
+        // Do not allow overwriting an existing PRC number from regular profile updates
+        if ($user->role?->slug === 'doctor' && ! empty($user->prc_number)) {
+            unset($payload['prcNumber'], $payload['prc_number']);
+        } elseif (isset($payload['prcNumber'])) {
+            $payload['prc_number'] = preg_replace('/\D/', '', (string) $payload['prcNumber']);
             unset($payload['prcNumber']);
         }
 
         // Remove Base64 string from payload before update
         unset($payload['avatar']);
+
+        // Handle secure password update if requested
+        if (! empty($payload['new_password'])) {
+            if (empty($payload['current_password']) || ! Hash::check($payload['current_password'], $user->password)) {
+                throw ValidationException::withMessages([
+                    'current_password' => ['The current password provided is incorrect.'],
+                ]);
+            }
+            if (strlen($payload['new_password']) < 8) {
+                throw ValidationException::withMessages([
+                    'new_password' => ['The new password must be at least 8 characters long.'],
+                ]);
+            }
+            if (isset($payload['new_password_confirmation']) && $payload['new_password'] !== $payload['new_password_confirmation']) {
+                throw ValidationException::withMessages([
+                    'new_password_confirmation' => ['The new password confirmation does not match.'],
+                ]);
+            }
+            $payload['password'] = $payload['new_password'];
+            unset($payload['current_password'], $payload['new_password'], $payload['new_password_confirmation']);
+
+            // Security Hardening: Revoke other tokens on password change
+            if ($user->tokens()->exists()) {
+                $currentTokenId = auth()->user()?->currentAccessToken()?->id ?? request()->user()?->currentAccessToken()?->id;
+                if ($currentTokenId) {
+                    $user->tokens()->where('id', '!=', $currentTokenId)->delete();
+                }
+            }
+        }
 
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
@@ -310,6 +343,10 @@ class UserService
         return DB::transaction(function () use ($payload, $doctor) {
             $role = Role::where('slug', 'patient')->firstOrFail();
 
+            $actualDoctorId = ($doctor->role?->slug === 'secretary' && $doctor->doctor_id)
+                ? $doctor->doctor_id
+                : $doctor->id;
+
             $userData = [
                 'first_name' => $payload['firstName'],
                 'middle_name' => $payload['middleName'] ?? null,
@@ -325,7 +362,7 @@ class UserService
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
                 'is_doctor_registered' => true,
-                'registered_by_doctor_id' => $doctor->id,
+                'registered_by_doctor_id' => $actualDoctorId,
                 'account_status' => 'active',
                 'avatar_path' => null,
             ];
@@ -344,14 +381,14 @@ class UserService
             $user->load('role');
 
             $conversation = Conversation::firstOrCreate([
-                'doctor_id' => $doctor->id,
+                'doctor_id' => $actualDoctorId,
                 'patient_id' => $user->id,
             ]);
 
             if ($conversation->messages()->count() === 0) {
                 Message::create([
                     'conversation_id' => $conversation->id,
-                    'sender_id' => $doctor->id,
+                    'sender_id' => $actualDoctorId,
                     'message' => 'Welcome! Your account has been registered. You can send messages and scan findings directly here.',
                     'is_read' => false,
                 ]);
