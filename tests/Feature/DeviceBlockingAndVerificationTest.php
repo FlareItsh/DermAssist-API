@@ -20,9 +20,10 @@ test('public patient registration sets active status with device and cookie trac
         'firstName' => 'Spam',
         'lastName' => 'Tester',
         'email' => 'spamtester@example.com',
-        'password' => 'password123',
-        'password_confirmation' => 'password123',
+        'password' => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
         'role' => 'patient',
+        'agree_to_terms' => true,
         'device_token' => 'device-uuid-12345',
         'cookies_accepted' => true,
     ]);
