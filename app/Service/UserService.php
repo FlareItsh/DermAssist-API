@@ -339,6 +339,10 @@ class UserService
         return DB::transaction(function () use ($payload, $doctor) {
             $role = Role::where('slug', 'patient')->firstOrFail();
 
+            $actualDoctorId = ($doctor->role?->slug === 'secretary' && $doctor->doctor_id)
+                ? $doctor->doctor_id
+                : $doctor->id;
+
             $userData = [
                 'first_name' => $payload['firstName'],
                 'middle_name' => $payload['middleName'] ?? null,
@@ -354,7 +358,7 @@ class UserService
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
                 'is_doctor_registered' => true,
-                'registered_by_doctor_id' => $doctor->id,
+                'registered_by_doctor_id' => $actualDoctorId,
                 'account_status' => 'active',
                 'avatar_path' => null,
             ];
@@ -373,14 +377,14 @@ class UserService
             $user->load('role');
 
             $conversation = Conversation::firstOrCreate([
-                'doctor_id' => $doctor->id,
+                'doctor_id' => $actualDoctorId,
                 'patient_id' => $user->id,
             ]);
 
             if ($conversation->messages()->count() === 0) {
                 Message::create([
                     'conversation_id' => $conversation->id,
-                    'sender_id' => $doctor->id,
+                    'sender_id' => $actualDoctorId,
                     'message' => 'Welcome! Your account has been registered. You can send messages and scan findings directly here.',
                     'is_read' => false,
                 ]);
