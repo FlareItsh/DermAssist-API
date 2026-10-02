@@ -4,6 +4,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -140,4 +141,57 @@ test('admin can cancel active training', function () {
 
     $response->assertStatus(200)
         ->assertJsonPath('status', 'cancelling');
+});
+
+test('admin cannot trigger expansion retraining with insufficient dataset', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/retrain', [
+        'architecture' => 'ensemble',
+        'epochs' => 5,
+        'sync_dataset' => true,
+        'expansion_disease' => 'psoriasis',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonPath('required', 10)
+        ->assertJsonPath('current', 0);
+});
+
+test('admin can trigger expansion retraining with candidate disease when dataset is sufficient', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    for ($i = 1; $i <= 10; $i++) {
+        Storage::disk('public')->put("out_of_scope_dataset/psoriasis/test_{$i}.jpg", 'dummy image content');
+    }
+
+    Http::fake([
+        '*/train/start' => function ($request) {
+            $data = $request->data();
+            expect($data)->toHaveKey('expansion_disease', 'psoriasis');
+
+            return Http::response([
+                'message' => 'Retraining started for ensemble (+psoriasis)',
+                'status' => 'started',
+                'epochs' => 5,
+                'expansion_disease' => 'psoriasis',
+            ], 200);
+        },
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/retrain', [
+        'architecture' => 'ensemble',
+        'epochs' => 5,
+        'sync_dataset' => true,
+        'expansion_disease' => 'psoriasis',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('status', 'started')
+        ->assertJsonPath('expansion_disease', 'psoriasis');
 });

@@ -26,9 +26,10 @@ class AdminModelTrainingController extends Controller
     {
         $validated = $request->validate([
             'architecture' => 'nullable|string|in:ensemble,all,swin_transformer,resnet50,efficientnet_v2',
-            'epochs' => 'nullable|integer|min:1|max:50',
+            'epochs' => 'nullable|integer|min:1|max:100',
             'sync_dataset' => 'nullable|boolean',
             'learning_rate' => 'nullable|numeric|min:0.000001|max:0.01',
+            'expansion_disease' => 'nullable|string|max:50',
         ]);
 
         return $this->trainingService->startTraining($validated);

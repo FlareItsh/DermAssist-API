@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['uuid', 'user_uuid', 'patient_uuid', 'doctor_uuid', 'image_path', 'label', 'confidence', 'probabilities', 'status', 'patient_consented_dataset', 'contributed_to_dataset', 'contributed_at'])]
+#[Fillable(['uuid', 'user_uuid', 'patient_uuid', 'doctor_uuid', 'image_path', 'label', 'confidence', 'probabilities', 'status', 'patient_consented_dataset', 'contributed_to_dataset', 'contributed_at', 'out_of_scope_category', 'is_out_of_scope', 'out_of_scope_contributed', 'out_of_scope_contributed_at'])]
 class Diagnosis extends Model
 {
     use HasUuids;
@@ -24,6 +24,9 @@ class Diagnosis extends Model
             'patient_consented_dataset' => 'boolean',
             'contributed_to_dataset' => 'boolean',
             'contributed_at' => 'datetime',
+            'is_out_of_scope' => 'boolean',
+            'out_of_scope_contributed' => 'boolean',
+            'out_of_scope_contributed_at' => 'datetime',
         ];
     }
 

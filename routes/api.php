@@ -21,6 +21,7 @@ use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\OutOfScopeDatasetController;
 use App\Http\Controllers\PatchNoteController;
 use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
@@ -74,6 +75,15 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/dataset/bulk', [DatasetController::class, 'destroyBulk']);
     Route::get('/dataset/download', [DatasetController::class, 'download']);
     Route::post('/dataset/save-diagnosis', [DatasetController::class, 'saveFromDiagnosis']);
+
+    // Out-of-Scope Research Dataset Routes (mirrors standard dataset routes, separate storage)
+    Route::get('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'index']);
+    Route::get('/out-of-scope-dataset/stats', [OutOfScopeDatasetController::class, 'stats']);
+    Route::post('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'store']);
+    Route::delete('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'destroy']);
+    Route::delete('/out-of-scope-dataset/bulk', [OutOfScopeDatasetController::class, 'destroyBulk']);
+    Route::get('/out-of-scope-dataset/download', [OutOfScopeDatasetController::class, 'download']);
+    Route::post('/out-of-scope-dataset/save-diagnosis', [OutOfScopeDatasetController::class, 'saveFromDiagnosis']);
 
     // Appointments Extra Routes
     Route::post('/appointments/schedule-for-patient', [AppointmentController::class, 'scheduleForPatient']);

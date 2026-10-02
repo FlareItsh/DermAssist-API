@@ -42,7 +42,22 @@ class ModelTrainingService
             }
         }
 
-        // 2. Query AI Python service for baseline dataset stats and active model
+        // 2. Gather Out-of-Scope Research Dataset Candidates
+        $oosCounts = [];
+        $totalOos = 0;
+        $oosCategories = ['psoriasis', 'ringworm', 'vitiligo', 'melanoma', 'hives', 'warts', 'lupus', 'rosacea'];
+        foreach ($oosCategories as $oosCat) {
+            $oosDir = 'out_of_scope_dataset/'.$oosCat;
+            if (Storage::disk($this->disk)->exists($oosDir)) {
+                $c = count(Storage::disk($this->disk)->files($oosDir));
+                $oosCounts[$oosCat] = $c;
+                $totalOos += $c;
+            } else {
+                $oosCounts[$oosCat] = 0;
+            }
+        }
+
+        // 3. Query AI Python service for baseline dataset stats and active model
         $aiStats = [];
         try {
             $response = Http::timeout(5)->get($this->aiUrl.'/model/stats');
@@ -65,6 +80,10 @@ class ModelTrainingService
                 'by_category' => $gatheredCounts,
                 'untrained_count' => $this->getUntrainedImageCount(),
                 'last_trained_at' => $this->getLastTrainedAt()?->toIso8601String(),
+            ],
+            'out_of_scope_candidates' => [
+                'total' => $totalOos,
+                'by_category' => $oosCounts,
             ],
             'ai_service' => $aiStats,
         ]);
@@ -138,16 +157,37 @@ class ModelTrainingService
     /**
      * Trigger background retraining of the AI model.
      *
-     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float}  $options
+     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float, expansion_disease?: string}  $options
      */
     public function startTraining(array $options): JsonResponse
     {
+        if (! empty($options['expansion_disease'])) {
+            $diseaseSlug = strtolower(trim($options['expansion_disease']));
+            $diseaseDir = 'out_of_scope_dataset/'.$diseaseSlug;
+            $count = 0;
+            if (Storage::disk($this->disk)->exists($diseaseDir)) {
+                $count = count(Storage::disk($this->disk)->files($diseaseDir));
+            }
+
+            if ($count < 10) {
+                $diseaseTitle = ucwords(str_replace('_', ' ', $diseaseSlug));
+
+                return response()->json([
+                    'message' => "Insufficient dataset for model expansion: At least 10 verified research images are required for {$diseaseTitle}. Currently {$count} available.",
+                    'required' => 10,
+                    'current' => $count,
+                    'disease' => $diseaseTitle,
+                ], 422);
+            }
+        }
+
         try {
             $response = Http::timeout(10)->post($this->aiUrl.'/train/start', [
                 'architecture' => $options['architecture'] ?? 'ensemble',
                 'epochs' => (int) ($options['epochs'] ?? 5),
                 'sync_dataset' => $options['sync_dataset'] ?? true,
                 'learning_rate' => $options['learning_rate'] ?? null,
+                'expansion_disease' => $options['expansion_disease'] ?? null,
             ]);
 
             return response()->json($response->json(), $response->status());
