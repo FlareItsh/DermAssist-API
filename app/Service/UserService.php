@@ -176,7 +176,7 @@ class UserService
             $base64String = substr($base64String, strpos($base64String, ',') + 1);
             $type = strtolower($type[1]);
 
-            if (! in_array($type, ['jpg', 'jpeg', 'gif', 'png'])) {
+            if (! in_array($type, ['jpg', 'jpeg', 'gif', 'png', 'webp'])) {
                 throw new \Exception('invalid image type');
             }
 
@@ -214,7 +214,12 @@ class UserService
         $user->load(['role', 'latestDoctorVerification']);
 
         if (! empty($payload['avatar'])) {
-            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'.png';
+            $ext = 'png';
+            if (preg_match('/^data:image\/(\w+);base64,/', $payload['avatar'], $match)) {
+                $matchedType = strtolower($match[1]);
+                $ext = $matchedType === 'jpeg' ? 'jpg' : $matchedType;
+            }
+            $path = 'avatars/'.Str::slug($user->first_name.'_'.$user->last_name).'_'.time().'_'.Str::random(6).'.'.$ext;
 
             try {
                 $avatarPath = $this->saveBase64Image($payload['avatar'], $path);
