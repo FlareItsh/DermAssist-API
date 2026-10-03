@@ -144,6 +144,7 @@ class UserRepository
             'role_id' => $secretaryRole->id,
             'doctor_id' => $doctorId,
             'uuid' => (string) Str::uuid(),
+            'affiliation' => $payload['affiliation'] ?? null,
         ]);
 
         return $secretary->load('role', 'doctor');

@@ -223,3 +223,60 @@ test('update secretary validates numbers in names and invalid age', function () 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['firstName', 'age']);
 });
+
+test('doctor can create secretary with multiple clinic affiliations', function () {
+    $doctor = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $plan = Plan::factory()->create([
+        'name' => 'Clinic Pro',
+        'max_secretaries' => 5,
+    ]);
+
+    Subscription::factory()->create([
+        'user_id' => $doctor->id,
+        'plan_id' => $plan->id,
+        'status' => 'active',
+        'ends_at' => now()->addMonth(),
+    ]);
+
+    $payload = [
+        'firstName' => 'Sarah',
+        'lastName' => 'Connor',
+        'email' => 'sarah.secretary@dermassist.com',
+        'password' => 'password123',
+        'affiliation' => ['Cruz Skin Clinic - SPMC Suite', 'Southern Philippines Medical Center'],
+    ];
+
+    Sanctum::actingAs($doctor);
+    $response = $this->postJson('/api/doctor/secretaries', $payload);
+
+    $response->assertStatus(201);
+    $this->assertDatabaseHas('users', [
+        'email' => 'sarah.secretary@dermassist.com',
+        'affiliation' => 'Cruz Skin Clinic - SPMC Suite, Southern Philippines Medical Center',
+    ]);
+});
+
+test('doctor can update secretary with multiple clinic affiliations array', function () {
+    $doctor = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $secretary = User::factory()->create([
+        'role_id' => Role::where('slug', 'secretary')->first()->id,
+        'doctor_id' => $doctor->id,
+        'affiliation' => 'Old Clinic',
+    ]);
+
+    Sanctum::actingAs($doctor);
+    $response = $this->putJson('/api/doctor/secretaries/'.$secretary->uuid, [
+        'affiliation' => ['Clinic A', 'Clinic B', 'Clinic C'],
+    ]);
+
+    $response->assertStatus(200);
+
+    $secretary->refresh();
+    expect($secretary->affiliation)->toBe('Clinic A, Clinic B, Clinic C');
+});

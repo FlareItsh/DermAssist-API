@@ -24,6 +24,7 @@ class DoctorSecretaryController extends Controller
             'lastName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
+            'affiliation' => ['nullable'],
         ]);
 
         return $this->userService->createDoctorSecretary($request->user(), $validated);
@@ -38,7 +39,7 @@ class DoctorSecretaryController extends Controller
             'middleName' => ['nullable', 'string', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
             'lastName' => ['sometimes', 'required', 'string', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
             'email' => ['sometimes', 'required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($secretary->id)],
-            'affiliation' => ['nullable', 'string', 'max:255'],
+            'affiliation' => ['nullable'],
             'age' => ['nullable', 'integer', 'min:0', 'max:130'],
             'gender' => ['nullable', 'string', 'max:50'],
             'password' => ['nullable', 'string', 'min:8'],

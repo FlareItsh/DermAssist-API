@@ -597,6 +597,18 @@ class UserService
         }
 
         return DB::transaction(function () use ($validated, $doctor) {
+            if (array_key_exists('affiliation', $validated)) {
+                if (is_array($validated['affiliation'])) {
+                    $clean = array_values(array_filter(array_map('trim', $validated['affiliation'])));
+                    $validated['affiliation'] = ! empty($clean) ? implode(', ', $clean) : null;
+                } elseif ($validated['affiliation'] !== null) {
+                    $trimmed = trim(strip_tags((string) $validated['affiliation']));
+                    $validated['affiliation'] = $trimmed !== '' ? $trimmed : null;
+                } else {
+                    $validated['affiliation'] = null;
+                }
+            }
+
             $secretary = $this->userRepository->createDoctorSecretary($validated, $doctor->id);
 
             return response()->json([
@@ -677,7 +689,15 @@ class UserService
         }
 
         if (array_key_exists('affiliation', $validated)) {
-            $updateData['affiliation'] = $validated['affiliation'] ? trim(strip_tags((string) $validated['affiliation'])) : null;
+            if (is_array($validated['affiliation'])) {
+                $clean = array_values(array_filter(array_map('trim', $validated['affiliation'])));
+                $updateData['affiliation'] = ! empty($clean) ? implode(', ', $clean) : null;
+            } elseif ($validated['affiliation'] !== null) {
+                $trimmed = trim(strip_tags((string) $validated['affiliation']));
+                $updateData['affiliation'] = $trimmed !== '' ? $trimmed : null;
+            } else {
+                $updateData['affiliation'] = null;
+            }
         }
 
         if (array_key_exists('age', $validated)) {
