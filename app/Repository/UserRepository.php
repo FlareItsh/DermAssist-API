@@ -144,7 +144,19 @@ class UserRepository
             'role_id' => $secretaryRole->id,
             'doctor_id' => $doctorId,
             'uuid' => (string) Str::uuid(),
+            'affiliation' => $payload['affiliation'] ?? null,
         ]);
+
+        return $secretary->load('role', 'doctor');
+    }
+
+    public function updateDoctorSecretary(string $uuid, int $doctorId, array $payload): User
+    {
+        $secretary = User::where('uuid', $uuid)
+            ->where('doctor_id', $doctorId)
+            ->firstOrFail();
+
+        $secretary->update($payload);
 
         return $secretary->load('role', 'doctor');
     }

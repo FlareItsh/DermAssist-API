@@ -278,6 +278,123 @@ class UserService
             }
         }
 
+        // Support camelCase payload keys if provided
+        if (isset($payload['firstName']) && ! isset($payload['first_name'])) {
+            $payload['first_name'] = $payload['firstName'];
+            unset($payload['firstName']);
+        }
+        if (isset($payload['middleName']) && ! isset($payload['middle_name'])) {
+            $payload['middle_name'] = $payload['middleName'];
+            unset($payload['middleName']);
+        }
+        if (isset($payload['lastName']) && ! isset($payload['last_name'])) {
+            $payload['last_name'] = $payload['lastName'];
+            unset($payload['lastName']);
+        }
+
+        // Sanitize and validate name fields
+        if (array_key_exists('first_name', $payload)) {
+            $fn = is_string($payload['first_name']) ? trim(strip_tags($payload['first_name'])) : '';
+            if ($fn !== '') {
+                if (preg_match('/[0-9]/', $fn)) {
+                    throw ValidationException::withMessages([
+                        'first_name' => ['First name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($fn) < 2 || mb_strlen($fn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $fn)) {
+                    throw ValidationException::withMessages([
+                        'first_name' => ['First name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $payload['first_name'] = $fn;
+            }
+        }
+
+        if (array_key_exists('middle_name', $payload)) {
+            $mn = is_string($payload['middle_name']) ? trim(strip_tags($payload['middle_name'])) : '';
+            if ($mn !== '') {
+                if (preg_match('/[0-9]/', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middle_name' => ['Middle name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($mn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middle_name' => ['Middle name may only contain letters, spaces, hyphens, and apostrophes (max 50 characters).'],
+                    ]);
+                }
+                $payload['middle_name'] = $mn;
+            } else {
+                $payload['middle_name'] = null;
+            }
+        }
+
+        if (array_key_exists('last_name', $payload)) {
+            $ln = is_string($payload['last_name']) ? trim(strip_tags($payload['last_name'])) : '';
+            if ($ln !== '') {
+                if (preg_match('/[0-9]/', $ln)) {
+                    throw ValidationException::withMessages([
+                        'last_name' => ['Last name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($ln) < 2 || mb_strlen($ln) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $ln)) {
+                    throw ValidationException::withMessages([
+                        'last_name' => ['Last name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $payload['last_name'] = $ln;
+            }
+        }
+
+        // Sanitize and validate age
+        if (array_key_exists('age', $payload)) {
+            if ($payload['age'] === null || $payload['age'] === '') {
+                $payload['age'] = null;
+            } else {
+                $rawAge = (string) $payload['age'];
+                if (str_contains($rawAge, '-') || (is_numeric($rawAge) && (float) $rawAge < 0)) {
+                    throw ValidationException::withMessages([
+                        'age' => ['Age must be a valid positive number.'],
+                    ]);
+                }
+                $cleanAge = preg_replace('/\D/', '', $rawAge);
+                if ($cleanAge === '') {
+                    $payload['age'] = null;
+                } else {
+                    $ageInt = (int) $cleanAge;
+                    if ($ageInt > 130) {
+                        throw ValidationException::withMessages([
+                            'age' => ['Age may not exceed 130.'],
+                        ]);
+                    }
+                    $payload['age'] = $ageInt;
+                }
+            }
+        }
+
+        // Sanitize and normalize gender if provided
+        if (array_key_exists('gender', $payload)) {
+            if ($payload['gender'] === null || trim((string) $payload['gender']) === '') {
+                $payload['gender'] = null;
+            } else {
+                $rawGender = trim((string) $payload['gender']);
+                $lower = strtolower($rawGender);
+                if (in_array($lower, ['not set', 'not_set', 'none', 'n/a', 'unset'])) {
+                    $payload['gender'] = null;
+                } elseif ($lower === 'male') {
+                    $payload['gender'] = 'Male';
+                } elseif ($lower === 'female') {
+                    $payload['gender'] = 'Female';
+                } elseif ($lower === 'other') {
+                    $payload['gender'] = 'Other';
+                } elseif ($lower === 'prefer_not_to_say' || $lower === 'prefer not to say') {
+                    $payload['gender'] = 'Prefer not to say';
+                } else {
+                    $payload['gender'] = ucfirst($rawGender);
+                }
+            }
+        }
+
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
         // integrity constraint violations when a field wasn't submitted.
@@ -480,6 +597,18 @@ class UserService
         }
 
         return DB::transaction(function () use ($validated, $doctor) {
+            if (array_key_exists('affiliation', $validated)) {
+                if (is_array($validated['affiliation'])) {
+                    $clean = array_values(array_filter(array_map('trim', $validated['affiliation'])));
+                    $validated['affiliation'] = ! empty($clean) ? implode(', ', $clean) : null;
+                } elseif ($validated['affiliation'] !== null) {
+                    $trimmed = trim(strip_tags((string) $validated['affiliation']));
+                    $validated['affiliation'] = $trimmed !== '' ? $trimmed : null;
+                } else {
+                    $validated['affiliation'] = null;
+                }
+            }
+
             $secretary = $this->userRepository->createDoctorSecretary($validated, $doctor->id);
 
             return response()->json([
@@ -487,6 +616,153 @@ class UserService
                 'data' => new UserResource($secretary),
             ], 201);
         });
+    }
+
+    public function updateDoctorSecretary(User $doctor, string $uuid, array $validated)
+    {
+        if ($doctor->role?->slug !== 'doctor') {
+            abort(403, 'Unauthorized. Doctor role required.');
+        }
+
+        $secretary = User::where('uuid', $uuid)
+            ->where('doctor_id', $doctor->id)
+            ->firstOrFail();
+
+        $updateData = [];
+
+        if (array_key_exists('firstName', $validated) || array_key_exists('first_name', $validated)) {
+            $fn = trim(strip_tags((string) ($validated['firstName'] ?? $validated['first_name'] ?? '')));
+            if ($fn !== '') {
+                if (preg_match('/[0-9]/', $fn)) {
+                    throw ValidationException::withMessages([
+                        'firstName' => ['First name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($fn) < 2 || mb_strlen($fn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $fn)) {
+                    throw ValidationException::withMessages([
+                        'firstName' => ['First name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $updateData['first_name'] = $fn;
+            }
+        }
+
+        if (array_key_exists('middleName', $validated) || array_key_exists('middle_name', $validated)) {
+            $mnRaw = $validated['middleName'] ?? $validated['middle_name'] ?? null;
+            if ($mnRaw === null || trim((string) $mnRaw) === '') {
+                $updateData['middle_name'] = null;
+            } else {
+                $mn = trim(strip_tags((string) $mnRaw));
+                if (preg_match('/[0-9]/', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middleName' => ['Middle name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($mn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middleName' => ['Middle name may only contain letters, spaces, hyphens, and apostrophes (max 50 characters).'],
+                    ]);
+                }
+                $updateData['middle_name'] = $mn;
+            }
+        }
+
+        if (array_key_exists('lastName', $validated) || array_key_exists('last_name', $validated)) {
+            $ln = trim(strip_tags((string) ($validated['lastName'] ?? $validated['last_name'] ?? '')));
+            if ($ln !== '') {
+                if (preg_match('/[0-9]/', $ln)) {
+                    throw ValidationException::withMessages([
+                        'lastName' => ['Last name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($ln) < 2 || mb_strlen($ln) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $ln)) {
+                    throw ValidationException::withMessages([
+                        'lastName' => ['Last name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $updateData['last_name'] = $ln;
+            }
+        }
+
+        if (array_key_exists('email', $validated)) {
+            $updateData['email'] = trim(strtolower((string) $validated['email']));
+        }
+
+        if (array_key_exists('affiliation', $validated)) {
+            if (is_array($validated['affiliation'])) {
+                $clean = array_values(array_filter(array_map('trim', $validated['affiliation'])));
+                $updateData['affiliation'] = ! empty($clean) ? implode(', ', $clean) : null;
+            } elseif ($validated['affiliation'] !== null) {
+                $trimmed = trim(strip_tags((string) $validated['affiliation']));
+                $updateData['affiliation'] = $trimmed !== '' ? $trimmed : null;
+            } else {
+                $updateData['affiliation'] = null;
+            }
+        }
+
+        if (array_key_exists('age', $validated)) {
+            if ($validated['age'] === null || $validated['age'] === '') {
+                $updateData['age'] = null;
+            } else {
+                $rawAge = (string) $validated['age'];
+                if (str_contains($rawAge, '-') || (is_numeric($rawAge) && (float) $rawAge < 0)) {
+                    throw ValidationException::withMessages([
+                        'age' => ['Age must be a valid positive number.'],
+                    ]);
+                }
+                $cleanAge = preg_replace('/\D/', '', $rawAge);
+                if ($cleanAge === '') {
+                    $updateData['age'] = null;
+                } else {
+                    $ageInt = (int) $cleanAge;
+                    if ($ageInt > 130) {
+                        throw ValidationException::withMessages([
+                            'age' => ['Age may not exceed 130.'],
+                        ]);
+                    }
+                    $updateData['age'] = $ageInt;
+                }
+            }
+        }
+
+        if (array_key_exists('gender', $validated)) {
+            if ($validated['gender'] === null || trim((string) $validated['gender']) === '') {
+                $updateData['gender'] = null;
+            } else {
+                $rawGender = trim((string) $validated['gender']);
+                $lower = strtolower($rawGender);
+                if (in_array($lower, ['not set', 'not_set', 'none', 'n/a', 'unset'])) {
+                    $updateData['gender'] = null;
+                } elseif ($lower === 'male') {
+                    $updateData['gender'] = 'Male';
+                } elseif ($lower === 'female') {
+                    $updateData['gender'] = 'Female';
+                } elseif ($lower === 'other') {
+                    $updateData['gender'] = 'Other';
+                } elseif ($lower === 'prefer_not_to_say' || $lower === 'prefer not to say') {
+                    $updateData['gender'] = 'Prefer not to say';
+                } else {
+                    $updateData['gender'] = ucfirst($rawGender);
+                }
+            }
+        }
+
+        if (! empty($validated['password'])) {
+            if (strlen($validated['password']) < 8) {
+                throw ValidationException::withMessages([
+                    'password' => ['Password must be at least 8 characters long.'],
+                ]);
+            }
+            $updateData['password'] = Hash::make($validated['password']);
+            $secretary->tokens()->delete();
+        }
+
+        $updated = $this->userRepository->updateDoctorSecretary($uuid, $doctor->id, $updateData);
+
+        return response()->json([
+            'message' => 'Secretary updated successfully.',
+            'data' => new UserResource($updated),
+        ], 200);
     }
 
     public function deleteDoctorSecretary(User $doctor, string $uuid)
