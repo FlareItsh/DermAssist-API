@@ -133,3 +133,36 @@ test('profile update accepts age below 18 without restriction', function () {
         'age' => 16,
     ]);
 });
+
+test('profile update normalizes gender and handles Not Set as null', function () {
+    $patientRole = Role::where('slug', 'patient')->first();
+    $user = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+        'gender' => 'Male',
+    ]);
+
+    Sanctum::actingAs($user);
+
+    // Update with lowercase female -> stored as Female
+    $res1 = $this->putJson("/api/users/{$user->uuid}", [
+        'gender' => 'female',
+    ]);
+    $res1->assertStatus(200);
+    expect($user->fresh()->gender)->toBe('Female');
+
+    // Update with 'Not Set' -> stored as null
+    $res2 = $this->putJson("/api/users/{$user->uuid}", [
+        'gender' => 'Not Set',
+    ]);
+    $res2->assertStatus(200);
+    expect($user->fresh()->gender)->toBeNull();
+
+    // Update with empty string '' -> stored as null
+    $res3 = $this->putJson("/api/users/{$user->uuid}", [
+        'gender' => '',
+    ]);
+    $res3->assertStatus(200);
+    expect($user->fresh()->gender)->toBeNull();
+});

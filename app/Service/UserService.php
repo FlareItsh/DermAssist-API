@@ -372,6 +372,29 @@ class UserService
             }
         }
 
+        // Sanitize and normalize gender if provided
+        if (array_key_exists('gender', $payload)) {
+            if ($payload['gender'] === null || trim((string) $payload['gender']) === '') {
+                $payload['gender'] = null;
+            } else {
+                $rawGender = trim((string) $payload['gender']);
+                $lower = strtolower($rawGender);
+                if (in_array($lower, ['not set', 'not_set', 'none', 'n/a', 'unset'])) {
+                    $payload['gender'] = null;
+                } elseif ($lower === 'male') {
+                    $payload['gender'] = 'Male';
+                } elseif ($lower === 'female') {
+                    $payload['gender'] = 'Female';
+                } elseif ($lower === 'other') {
+                    $payload['gender'] = 'Other';
+                } elseif ($lower === 'prefer_not_to_say' || $lower === 'prefer not to say') {
+                    $payload['gender'] = 'Prefer not to say';
+                } else {
+                    $payload['gender'] = ucfirst($rawGender);
+                }
+            }
+        }
+
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
         // integrity constraint violations when a field wasn't submitted.
