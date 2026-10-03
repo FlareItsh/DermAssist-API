@@ -278,6 +278,100 @@ class UserService
             }
         }
 
+        // Support camelCase payload keys if provided
+        if (isset($payload['firstName']) && ! isset($payload['first_name'])) {
+            $payload['first_name'] = $payload['firstName'];
+            unset($payload['firstName']);
+        }
+        if (isset($payload['middleName']) && ! isset($payload['middle_name'])) {
+            $payload['middle_name'] = $payload['middleName'];
+            unset($payload['middleName']);
+        }
+        if (isset($payload['lastName']) && ! isset($payload['last_name'])) {
+            $payload['last_name'] = $payload['lastName'];
+            unset($payload['lastName']);
+        }
+
+        // Sanitize and validate name fields
+        if (array_key_exists('first_name', $payload)) {
+            $fn = is_string($payload['first_name']) ? trim(strip_tags($payload['first_name'])) : '';
+            if ($fn !== '') {
+                if (preg_match('/[0-9]/', $fn)) {
+                    throw ValidationException::withMessages([
+                        'first_name' => ['First name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($fn) < 2 || mb_strlen($fn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $fn)) {
+                    throw ValidationException::withMessages([
+                        'first_name' => ['First name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $payload['first_name'] = $fn;
+            }
+        }
+
+        if (array_key_exists('middle_name', $payload)) {
+            $mn = is_string($payload['middle_name']) ? trim(strip_tags($payload['middle_name'])) : '';
+            if ($mn !== '') {
+                if (preg_match('/[0-9]/', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middle_name' => ['Middle name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($mn) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $mn)) {
+                    throw ValidationException::withMessages([
+                        'middle_name' => ['Middle name may only contain letters, spaces, hyphens, and apostrophes (max 50 characters).'],
+                    ]);
+                }
+                $payload['middle_name'] = $mn;
+            } else {
+                $payload['middle_name'] = null;
+            }
+        }
+
+        if (array_key_exists('last_name', $payload)) {
+            $ln = is_string($payload['last_name']) ? trim(strip_tags($payload['last_name'])) : '';
+            if ($ln !== '') {
+                if (preg_match('/[0-9]/', $ln)) {
+                    throw ValidationException::withMessages([
+                        'last_name' => ['Last name cannot contain numbers.'],
+                    ]);
+                }
+                if (mb_strlen($ln) < 2 || mb_strlen($ln) > 50 || ! preg_match('/^[\pL\s\-\'.]+$/u', $ln)) {
+                    throw ValidationException::withMessages([
+                        'last_name' => ['Last name may only contain letters, spaces, hyphens, and apostrophes (min 2, max 50 characters).'],
+                    ]);
+                }
+                $payload['last_name'] = $ln;
+            }
+        }
+
+        // Sanitize and validate age
+        if (array_key_exists('age', $payload)) {
+            if ($payload['age'] === null || $payload['age'] === '') {
+                $payload['age'] = null;
+            } else {
+                $rawAge = (string) $payload['age'];
+                if (str_contains($rawAge, '-') || (is_numeric($rawAge) && (float) $rawAge < 0)) {
+                    throw ValidationException::withMessages([
+                        'age' => ['Age must be a valid positive number.'],
+                    ]);
+                }
+                $cleanAge = preg_replace('/\D/', '', $rawAge);
+                if ($cleanAge === '') {
+                    $payload['age'] = null;
+                } else {
+                    $ageInt = (int) $cleanAge;
+                    if ($ageInt > 130) {
+                        throw ValidationException::withMessages([
+                            'age' => ['Age may not exceed 130.'],
+                        ]);
+                    }
+                    $payload['age'] = $ageInt;
+                }
+            }
+        }
+
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
         // integrity constraint violations when a field wasn't submitted.
