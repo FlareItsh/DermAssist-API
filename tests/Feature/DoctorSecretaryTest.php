@@ -5,6 +5,7 @@ use App\Models\Role;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
@@ -110,4 +111,115 @@ test('doctor cannot remove another doctor secretary', function () {
     $response = $this->deleteJson('/api/doctor/secretaries/'.$secretaryOfDoctor2->uuid);
 
     $response->assertStatus(404);
+});
+
+test('doctor can update their secretary details', function () {
+    $doctor = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $secretary = User::factory()->create([
+        'role_id' => Role::where('slug', 'secretary')->first()->id,
+        'doctor_id' => $doctor->id,
+        'first_name' => 'Alice',
+        'last_name' => 'Smith',
+        'age' => 25,
+        'gender' => 'Female',
+    ]);
+
+    Sanctum::actingAs($doctor);
+    $response = $this->putJson('/api/doctor/secretaries/'.$secretary->uuid, [
+        'firstName' => 'Alicia',
+        'middleName' => 'Marie',
+        'lastName' => 'Johnson',
+        'affiliation' => 'Skin Health Clinic',
+        'age' => 28,
+        'gender' => 'Female',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('data.first_name', 'Alicia')
+        ->assertJsonPath('data.middle_name', 'Marie')
+        ->assertJsonPath('data.last_name', 'Johnson')
+        ->assertJsonPath('data.affiliation', 'Skin Health Clinic')
+        ->assertJsonPath('data.age', 28)
+        ->assertJsonPath('data.gender', 'Female');
+
+    $this->assertDatabaseHas('users', [
+        'id' => $secretary->id,
+        'first_name' => 'Alicia',
+        'last_name' => 'Johnson',
+        'affiliation' => 'Skin Health Clinic',
+        'age' => 28,
+        'gender' => 'Female',
+    ]);
+});
+
+test('doctor can reset secretary password and revoke active tokens', function () {
+    $doctor = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $secretary = User::factory()->create([
+        'role_id' => Role::where('slug', 'secretary')->first()->id,
+        'doctor_id' => $doctor->id,
+        'password' => bcrypt('oldpassword123'),
+    ]);
+
+    $secretary->createToken('test-token');
+    expect($secretary->tokens()->count())->toBe(1);
+
+    Sanctum::actingAs($doctor);
+    $response = $this->putJson('/api/doctor/secretaries/'.$secretary->uuid, [
+        'password' => 'NewSecurePassword123!',
+    ]);
+
+    $response->assertStatus(200);
+
+    // Refresh secretary and verify password changed and token deleted
+    $secretary->refresh();
+    expect(Hash::check('NewSecurePassword123!', $secretary->password))->toBeTrue();
+    expect($secretary->tokens()->count())->toBe(0);
+});
+
+test('doctor cannot update another doctor secretary', function () {
+    $doctor1 = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $doctor2 = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $secretaryOfDoctor2 = User::factory()->create([
+        'role_id' => Role::where('slug', 'secretary')->first()->id,
+        'doctor_id' => $doctor2->id,
+    ]);
+
+    Sanctum::actingAs($doctor1);
+    $response = $this->putJson('/api/doctor/secretaries/'.$secretaryOfDoctor2->uuid, [
+        'firstName' => 'HackedName',
+    ]);
+
+    $response->assertStatus(404);
+});
+
+test('update secretary validates numbers in names and invalid age', function () {
+    $doctor = User::factory()->create([
+        'role_id' => Role::where('slug', 'doctor')->first()->id,
+    ]);
+
+    $secretary = User::factory()->create([
+        'role_id' => Role::where('slug', 'secretary')->first()->id,
+        'doctor_id' => $doctor->id,
+    ]);
+
+    Sanctum::actingAs($doctor);
+    $response = $this->putJson('/api/doctor/secretaries/'.$secretary->uuid, [
+        'firstName' => 'John123',
+        'age' => -5,
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['firstName', 'age']);
 });

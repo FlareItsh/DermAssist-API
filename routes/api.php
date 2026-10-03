@@ -66,6 +66,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     // Doctor Secretaries Management
     Route::get('/doctor/secretaries', [DoctorSecretaryController::class, 'index']);
     Route::post('/doctor/secretaries', [DoctorSecretaryController::class, 'store']);
+    Route::put('/doctor/secretaries/{uuid}', [DoctorSecretaryController::class, 'update']);
     Route::delete('/doctor/secretaries/{uuid}', [DoctorSecretaryController::class, 'destroy']);
 
     // Dataset Routes

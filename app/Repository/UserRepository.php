@@ -149,6 +149,17 @@ class UserRepository
         return $secretary->load('role', 'doctor');
     }
 
+    public function updateDoctorSecretary(string $uuid, int $doctorId, array $payload): User
+    {
+        $secretary = User::where('uuid', $uuid)
+            ->where('doctor_id', $doctorId)
+            ->firstOrFail();
+
+        $secretary->update($payload);
+
+        return $secretary->load('role', 'doctor');
+    }
+
     public function deleteDoctorSecretary(string $uuid, int $doctorId): bool
     {
         $secretary = User::where('uuid', $uuid)
