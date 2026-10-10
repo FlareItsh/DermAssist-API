@@ -134,8 +134,9 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
         Route::post('/payments/{invoice}/approve', [AdminPaymentController::class, 'approve']);
         Route::post('/payments/{invoice}/reject', [AdminPaymentController::class, 'reject']);
 
-        Route::apiResource('coupons', AdminCouponController::class)->except(['update', 'show']);
+        Route::apiResource('coupons', AdminCouponController::class);
         Route::patch('coupons/{coupon}/toggle-active', [AdminCouponController::class, 'toggleActive']);
+        Route::post('coupons/{coupon}/restore', [AdminCouponController::class, 'restore']);
 
         Route::apiResource('patch-notes', AdminPatchNoteController::class);
         Route::patch('patch-notes/{patch_note}/toggle-publish', [AdminPatchNoteController::class, 'togglePublish']);

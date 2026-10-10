@@ -16,9 +16,19 @@ class AdminCouponController extends Controller
     /**
      * Display a listing of coupons.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return $this->couponService->listCoupons();
+        return $this->couponService->listCoupons($request->query('status'));
+    }
+
+    /**
+     * Display the specified coupon.
+     */
+    public function show(int $id): JsonResponse
+    {
+        $coupon = Coupon::withTrashed()->findOrFail($id);
+
+        return $this->couponService->getCoupon($coupon);
     }
 
     /**
@@ -35,6 +45,10 @@ class AdminCouponController extends Controller
             'valid_from' => 'nullable|date',
             'valid_until' => 'nullable|date|after_or_equal:valid_from',
             'max_redemptions' => 'nullable|integer|min:1',
+            'max_redemptions_per_user' => 'nullable|integer|min:1',
+            'min_spend' => 'nullable|numeric|min:0',
+            'applicable_plans' => 'nullable|array',
+            'customer_segment' => 'nullable|string|in:all,new_doctors,renewals',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -44,18 +58,63 @@ class AdminCouponController extends Controller
     }
 
     /**
+     * Update the specified coupon.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $coupon = Coupon::withTrashed()->findOrFail($id);
+
+        $validated = $request->validate([
+            'code' => 'sometimes|required|string|max:50|unique:coupons,code,'.$coupon->id,
+            'discount_type' => 'sometimes|required|string|in:percentage,fixed_amount',
+            'value' => 'sometimes|required|numeric|min:0.01',
+            'duration' => 'nullable|string|in:once,repeating,forever',
+            'duration_in_months' => 'nullable|integer|min:1',
+            'valid_from' => 'nullable|date',
+            'valid_until' => 'nullable|date',
+            'max_redemptions' => 'nullable|integer|min:1',
+            'max_redemptions_per_user' => 'nullable|integer|min:1',
+            'min_spend' => 'nullable|numeric|min:0',
+            'applicable_plans' => 'nullable|array',
+            'customer_segment' => 'nullable|string|in:all,new_doctors,renewals',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        if (! empty($validated['code'])) {
+            $validated['code'] = Str::upper($validated['code']);
+        }
+
+        return $this->couponService->updateCoupon($coupon, $validated);
+    }
+
+    /**
      * Toggle active state of a coupon.
      */
-    public function toggleActive(Coupon $coupon): JsonResponse
+    public function toggleActive(int $id): JsonResponse
     {
+        $coupon = Coupon::withTrashed()->findOrFail($id);
+
         return $this->couponService->toggleActive($coupon);
     }
 
     /**
-     * Remove the specified coupon.
+     * Remove the specified coupon (soft delete by default, force if specified).
      */
-    public function destroy(Coupon $coupon): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        return $this->couponService->deleteCoupon($coupon);
+        $coupon = Coupon::withTrashed()->findOrFail($id);
+        $force = $request->boolean('force', false);
+
+        return $this->couponService->deleteCoupon($coupon, $force);
+    }
+
+    /**
+     * Restore the specified archived coupon.
+     */
+    public function restore(int $id): JsonResponse
+    {
+        $coupon = Coupon::withTrashed()->findOrFail($id);
+
+        return $this->couponService->restoreCoupon($coupon);
     }
 }
