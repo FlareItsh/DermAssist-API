@@ -20,6 +20,7 @@ use App\Http\Controllers\DoctorClinicDoctorController;
 use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\OutOfScopeDatasetController;
 use App\Http\Controllers\PatchNoteController;
@@ -29,19 +30,31 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
 use App\Http\Middleware\CheckAccountStatus;
 use App\Http\Middleware\CheckBlockedDeviceOrIp;
+use App\Http\Resources\UserResource;
 use App\Service\PaymentGatewayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware([CheckBlockedDeviceOrIp::class])->controller(AuthController::class)->group(function () {
-    Route::post('/login', 'login')->name('login');
-    Route::post('/register', 'register');
-    Route::post('/verify-account', 'verifyAccount');
+Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
+    Route::controller(AuthController::class)->group(function () {
+        Route::post('/login', 'login')->name('login');
+        Route::post('/register', 'register');
+        Route::post('/verify-account', 'verifyAccount');
+    });
+
+    Route::controller(GoogleAuthController::class)->prefix('auth/google')->group(function () {
+        Route::get('/redirect', 'redirect')->name('auth.google.redirect');
+        Route::get('/callback', 'callback')->name('auth.google.callback');
+    });
 });
 
 Route::post('/diagnose', [DiagnosisController::class, 'store']);
 
 Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function () {
+
+    Route::get('/user', function (Request $request) {
+        return new UserResource($request->user()->load('role'));
+    });
 
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/resend-verification', [AuthController::class, 'resendVerification']);
