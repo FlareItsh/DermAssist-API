@@ -166,3 +166,41 @@ test('profile update normalizes gender and handles Not Set as null', function ()
     $res3->assertStatus(200);
     expect($user->fresh()->gender)->toBeNull();
 });
+
+test('profile update validates date_of_birth and calculates age dynamically', function () {
+    $patientRole = Role::where('slug', 'patient')->first();
+    $user = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+    ]);
+
+    Sanctum::actingAs($user);
+
+    // Future date rejected
+    $resFuture = $this->putJson("/api/users/{$user->uuid}", [
+        'date_of_birth' => now()->addDays(5)->format('Y-m-d'),
+    ]);
+    $resFuture->assertStatus(422);
+    $resFuture->assertJsonValidationErrors(['date_of_birth']);
+
+    // Date exceeding 130 years rejected
+    $resTooOld = $this->putJson("/api/users/{$user->uuid}", [
+        'date_of_birth' => now()->subYears(135)->format('Y-m-d'),
+    ]);
+    $resTooOld->assertStatus(422);
+    $resTooOld->assertJsonValidationErrors(['date_of_birth']);
+
+    // Valid birth date accepted and calculates age
+    $validDob = now()->subYears(25)->subMonths(3)->format('Y-m-d');
+    $resValid = $this->putJson("/api/users/{$user->uuid}", [
+        'date_of_birth' => $validDob,
+    ]);
+    $resValid->assertStatus(200);
+    $resValid->assertJsonPath('date_of_birth', $validDob);
+    $resValid->assertJsonPath('age', 25);
+
+    $fresh = $user->fresh();
+    expect($fresh->date_of_birth?->format('Y-m-d'))->toBe($validDob);
+    expect($fresh->age)->toBe(25);
+});

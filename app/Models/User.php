@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Carbon\Carbon;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline'])]
 #[Hidden(['password', 'remember_token'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -38,6 +39,7 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
+            'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'consent_dataset' => 'boolean',
@@ -162,6 +164,18 @@ class User extends Authenticatable
     {
         return Attribute::make(
             get: fn () => $this->avatar_path ? Storage::url($this->avatar_path) : null,
+        );
+    }
+
+    /**
+     * Dynamic accessor for user's age based on date_of_birth.
+     */
+    protected function age(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $this->date_of_birth
+                ? Carbon::parse($this->date_of_birth)->age
+                : $value,
         );
     }
 

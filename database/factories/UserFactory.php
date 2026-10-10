@@ -24,11 +24,14 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $age = fake()->numberBetween(18, 65);
+
         return [
             'first_name' => fake()->firstName(),
             'middle_name' => fake()->optional()->firstName(),
             'last_name' => fake()->lastName(),
-            'age' => fake()->numberBetween(18, 65),
+            'date_of_birth' => now()->subYears($age)->startOfYear()->toDateString(),
+            'age' => $age,
             'gender' => fake()->randomElement(['Male', 'Female', 'Other']),
             'street' => fake()->streetAddress(),
             'barangay' => fake()->randomElement(['Buhangin', 'Matina', 'Agdao', 'Talomo', 'Toril', 'Ecoland', 'Obrero']),
