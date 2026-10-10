@@ -204,3 +204,31 @@ test('profile update validates date_of_birth and calculates age dynamically', fu
     expect($fresh->date_of_birth?->format('Y-m-d'))->toBe($validDob);
     expect($fresh->age)->toBe(25);
 });
+
+test('profile update validates and saves contact_number correctly', function () {
+    $patientRole = Role::where('slug', 'patient')->first();
+    $user = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+    ]);
+
+    Sanctum::actingAs($user);
+
+    // Invalid phone number with letters rejected
+    $resInvalid = $this->putJson("/api/users/{$user->uuid}", [
+        'contact_number' => '+63 917 ABCD 567',
+    ]);
+    $resInvalid->assertStatus(422);
+    $resInvalid->assertJsonValidationErrors(['contact_number']);
+
+    // Valid contact number saved
+    $resValid = $this->putJson("/api/users/{$user->uuid}", [
+        'contact_number' => '+63 917 123 4567',
+    ]);
+    $resValid->assertStatus(200);
+    $resValid->assertJsonPath('contact_number', '+63 917 123 4567');
+    $resValid->assertJsonPath('phone', '+63 917 123 4567');
+
+    expect($user->fresh()->contact_number)->toBe('+63 917 123 4567');
+});

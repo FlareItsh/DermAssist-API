@@ -38,6 +38,7 @@ class UserFactory extends Factory
             'city' => 'Davao City',
             'province' => 'Davao del Sur',
             'country' => 'Philippines',
+            'contact_number' => '+63 9'.fake()->numerify('## ### ####'),
             'latitude' => fake()->latitude(7.05, 7.15),
             'longitude' => fake()->longitude(125.55, 125.65),
             'email' => fake()->unique()->safeEmail(),

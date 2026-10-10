@@ -24,6 +24,7 @@ class DoctorSecretaryController extends Controller
             'lastName' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
+            'contact_number' => ['nullable', 'string', 'max:30'],
             'affiliation' => ['nullable'],
         ]);
 
@@ -40,6 +41,7 @@ class DoctorSecretaryController extends Controller
             'lastName' => ['sometimes', 'required', 'string', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
             'email' => ['sometimes', 'required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($secretary->id)],
             'affiliation' => ['nullable'],
+            'contact_number' => ['nullable', 'string', 'max:30'],
             'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'age' => ['nullable', 'integer', 'min:0', 'max:130'],
             'gender' => ['nullable', 'string', 'max:50'],
