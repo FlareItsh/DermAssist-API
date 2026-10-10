@@ -12,6 +12,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - php - 8.3
 - laravel/framework (LARAVEL) - v13
 - laravel/prompts (PROMPTS) - v0
+- laravel/reverb (REVERB) - v1
 - laravel/sanctum (SANCTUM) - v4
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0
@@ -160,38 +161,5 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - The `{name}` argument should not include the test suite directory. Use `php artisan make:test --pest SomeFeatureTest` instead of `php artisan make:test --pest Feature/SomeFeatureTest`.
 - Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
 - Do NOT delete tests without approval.
-
-=== artifacts rules ===
-
-# Mandatory Artifact Usage (Zero Exceptions)
-
-- **CRITICAL**: The AI assistant must **ALWAYS** create or update markdown artifacts for:
-  - **Implementation Plans** (`implementation_plan.md`): ALWAYS create a formal plan artifact before making any code modifications, refactorings, feature additions, or bug fixes (regardless of whether single-file or multi-file), and wait for user approval.
-  - **Evaluations, Analyses & Suggestions** (e.g. `analysis_results.md`, `evaluation_notes.md`): ALWAYS save detailed analyses, design evaluations, UI suggestions, architectural reviews, database schema investigations, and comparisons into a dedicated markdown artifact.
-  - **Walkthroughs** (`walkthrough.md`): ALWAYS document completed changes, how they were verified, and test outputs in a walkthrough artifact upon finishing work.
-- **Strict Prohibition on Dumping Large Text or Plans in Chat**:
-  - NEVER output long multi-point suggestions, design proposals, step-by-step plans, or deep code analyses directly into chat.
-  - ALWAYS write them to an artifact and provide ONLY a concise, high-level summary (1-2 paragraphs) in chat that directly links to the artifact.
-
-=== zero-mistake rules ===
-
-# Zero-Mistake & Rigorous Verification Protocol (CRITICAL)
-
-- **Make No Mistakes**: The AI assistant must operate with extreme precision, diligence, and zero tolerance for syntax, runtime, or architectural errors.
-- **Contextual Awareness**: Always read and verify surrounding lines, imports, and component hierarchies before proposing code modifications. Never guess or hallucinate parameters or schema columns.
-- **Vue Sequential Conditional Rule**: In multi-branch template conditionals (`v-if`, `v-else-if`, `v-else`), `v-else` must **always** be the final terminal branch. Never put `v-else-if` after `v-else`.
-- **Mandatory Automated Verification**: Immediately run the relevant Pest tests (`php artisan test --compact`) and code formatters (`vendor/bin/pint --dirty --format agent` / `npx prettier --write`) after making changes. Never claim a task is complete without programmatic verification.
-
-=== dermassist conventions ===
-
-# Core DermAssist Feature Patterns
-
-- **Doctor-Registered Patients**: Must strictly only book appointments with their registering doctor. Reject other doctor IDs with 403. Omit alternative doctor availability suggestions when the doctor is away. Frame attending physician as "Your Attending Doctor".
-- **Temporary Password Generator**: All patient registration forms (scanner modal, patients page, scan findings) must use `usePasswordGenerator` (`generateTemporaryPassword('Patient')`), provide inline Copy and Regenerate buttons, and toggle password visibility.
-- **Clinical Scan Patient Assignment**: Must default to an appointment-centric schedule (listing chronological appointments with Today, Tomorrow, Date Picker, and All Dates filters). Never fall back to `created_at` as the appointment date. Provide a separate "Registered (Walk-In)" tab for unscheduled patients.
-- **Chat Contrast Standards**: Primary colored sender bubbles must use pure white headers, elevated white status pill badges (`bg-white shadow-sm`), and solid white preview cards for clinical findings.
-- **Anti-Spam & Device Blocking**: Uses persistent `da_device_id` cookie and `X-Device-Id` headers. Rejects blocked devices/IPs with 403. Public registrations start in `pending_verification` with 48h deadline. Overdue accounts are soft-deleted, and trashed accounts (>14 days) are permanently force-deleted.
-- **Cookie & Terms Integration**: Cookie banner must be a minimal, friendly floating pill with a "Terms & Cookies" link to `AppModalTermsModal` (`initial-tab="cookies"`). Internal security tokens (`device_token`, `cookies_accepted_at`) must never be exposed in `UserResource`.
-- **AI Retraining Terminal Console**: Live training output must render realistic tqdm-style step progress bars (`[STEP] Epoch ... [=====>...]`) updated in-place (`replace_last`). The UI terminal must feature Unix window controls, auto-scroll toggle, clipboard copy, buffer clear, fullscreen expand, and an interactive prompt (`dermassist@ai-worker:~/algorithms$`) with command history.
 
 </laravel-boost-guidelines>

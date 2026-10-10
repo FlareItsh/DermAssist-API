@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Events\ModelTrainingProgressUpdated;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -205,8 +206,12 @@ class ModelTrainingService
     {
         try {
             $response = Http::timeout(5)->get($this->aiUrl.'/train/status');
+            $data = $response->json();
+            if ($response->successful() && is_array($data)) {
+                broadcast(new ModelTrainingProgressUpdated($data));
+            }
 
-            return response()->json($response->json(), $response->status());
+            return response()->json($data, $response->status());
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'offline',
@@ -224,8 +229,12 @@ class ModelTrainingService
     {
         try {
             $response = Http::timeout(10)->post($this->aiUrl.'/train/cancel');
+            $data = $response->json();
+            if ($response->successful() && is_array($data)) {
+                broadcast(new ModelTrainingProgressUpdated($data));
+            }
 
-            return response()->json($response->json(), $response->status());
+            return response()->json($data, $response->status());
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to cancel training: '.$e->getMessage(),

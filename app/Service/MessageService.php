@@ -2,6 +2,10 @@
 
 namespace App\Service;
 
+use App\Events\ChatMessageDeleted;
+use App\Events\ChatMessageEdited;
+use App\Events\ChatMessageSent;
+use App\Events\ChatMessagesRead;
 use App\Http\Resources\MessageResource;
 use App\Models\User;
 use App\Repository\ConversationRepository;
@@ -96,8 +100,16 @@ class MessageService
         $conversation->touch();
 
         $model->load(['sender', 'attachments']);
+        $conversation->loadMissing(['doctor', 'patient']);
 
-        return new MessageResource($model);
+        $recipientUuid = ($model->sender_id === $conversation->doctor_id)
+            ? $conversation->patient?->uuid
+            : $conversation->doctor?->uuid;
+
+        $resource = new MessageResource($model);
+        broadcast(new ChatMessageSent($conversation->uuid, $resource->resolve(), $recipientUuid))->toOthers();
+
+        return $resource;
     }
 
     public function markAsRead(User $user, string $messageUuid)
@@ -124,6 +136,13 @@ class MessageService
                 'is_read' => true,
                 'read_at' => now(),
             ]);
+
+            $conversation->loadMissing(['doctor', 'patient']);
+            $otherUuid = ($effectiveUserId === $conversation->doctor_id)
+                ? $conversation->patient?->uuid
+                : $conversation->doctor?->uuid;
+
+            broadcast(new ChatMessagesRead($conversation->uuid, [$message->uuid], $otherUuid))->toOthers();
         }
 
         return new MessageResource($message);
@@ -150,9 +169,18 @@ class MessageService
             'message' => $payload['message'],
         ]);
 
-        $message->load('sender');
+        $message->load(['sender', 'attachments']);
+        $conversation->loadMissing(['doctor', 'patient']);
 
-        return new MessageResource($message);
+        $recipientUuid = ($message->sender_id === $conversation->doctor_id)
+            ? $conversation->patient?->uuid
+            : $conversation->doctor?->uuid;
+
+        $resource = new MessageResource($message);
+
+        broadcast(new ChatMessageEdited($conversation->uuid, $resource->resolve(), $recipientUuid))->toOthers();
+
+        return $resource;
     }
 
     public function deleteMessage(User $user, string $messageUuid): bool
@@ -168,6 +196,18 @@ class MessageService
             abort(403, 'You can only delete your own messages.');
         }
 
-        return $this->messageRepository->delete($messageUuid);
+        $conversation->loadMissing(['doctor', 'patient']);
+        $conversationUuid = $conversation->uuid;
+        $recipientUuid = ($message->sender_id === $conversation->doctor_id)
+            ? $conversation->patient?->uuid
+            : $conversation->doctor?->uuid;
+
+        $deleted = $this->messageRepository->delete($messageUuid);
+
+        if ($deleted) {
+            broadcast(new ChatMessageDeleted($conversationUuid, $messageUuid, $recipientUuid))->toOthers();
+        }
+
+        return $deleted;
     }
 }
