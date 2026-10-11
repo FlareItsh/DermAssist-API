@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Events\AppointmentUpdated;
 use App\Http\Resources\UserResource;
 use App\Models\Appointment;
 use App\Models\Conversation;
@@ -140,6 +141,14 @@ class AppointmentService
             'sender_id' => $user->id,
             'message' => $messageContent,
         ]);
+
+        $activeAppointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $activeAppointment->patient?->uuid,
+            $activeAppointment->doctor?->uuid,
+            'created',
+            $activeAppointment->uuid
+        ));
 
         $result = [
             'message' => $responseMessage,
@@ -358,6 +367,14 @@ class AppointmentService
             }
         }
 
+        $appointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            $data['status'] ?? 'updated',
+            $appointment->uuid
+        ));
+
         return $appointment;
     }
 
@@ -402,6 +419,14 @@ class AppointmentService
             'sender_id' => $actor->id,
             'message' => "A new follow-up appointment has been scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\nPurpose: {$data['purpose']}\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
         ]);
+
+        $appointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            'scheduled',
+            $appointment->uuid
+        ));
 
         return [
             'message' => 'Appointment scheduled successfully.',
@@ -457,6 +482,14 @@ class AppointmentService
             'sender_id' => $user->id,
             'message' => "A new schedule has been proposed on <b>{$displayDateStr}</b> at <b>{$loc}</b>.\n[APPOINTMENT_RESCHEDULE_PROPOSED:{$appointment->uuid}:{$dateStr}:{$loc}]",
         ]);
+
+        $appointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            'reschedule_proposed',
+            $appointment->uuid
+        ));
 
         return [
             'message' => 'Reschedule proposed successfully.',
@@ -531,6 +564,14 @@ class AppointmentService
             'message' => $messageText,
         ]);
 
+        $appointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            'reschedule_accepted',
+            $appointment->uuid
+        ));
+
         return [
             'message' => 'Reschedule accepted successfully.',
             'appointment' => $appointment->refresh(),
@@ -539,6 +580,20 @@ class AppointmentService
 
     public function deleteAppointment(Appointment $appointment)
     {
-        return $this->appointmentRepository->deleteAppointment($appointment);
+        $appointment->loadMissing(['doctor', 'patient']);
+        $patientUuid = $appointment->patient?->uuid;
+        $doctorUuid = $appointment->doctor?->uuid;
+        $appointmentUuid = $appointment->uuid;
+
+        $result = $this->appointmentRepository->deleteAppointment($appointment);
+
+        broadcast(new AppointmentUpdated(
+            $patientUuid,
+            $doctorUuid,
+            'deleted',
+            $appointmentUuid
+        ));
+
+        return $result;
     }
 }

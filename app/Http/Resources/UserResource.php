@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -28,8 +29,11 @@ class UserResource extends JsonResource
             'country' => $this->country,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
+            'date_of_birth' => $this->date_of_birth ? Carbon::parse($this->date_of_birth)->format('Y-m-d') : null,
             'age' => $this->age,
             'gender' => $this->gender,
+            'contact_number' => $this->contact_number,
+            'phone' => $this->contact_number,
             'affiliation' => $this->affiliation,
             'prcNumber' => $this->prc_number,
             'email' => $this->email,

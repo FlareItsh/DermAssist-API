@@ -13,6 +13,7 @@ use App\Models\Message;
 use App\Models\Role;
 use App\Models\User;
 use App\Repository\UserRepository;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -112,6 +113,7 @@ class UserService
                 'middle_name' => $payload['middleName'] ?? null,
                 'last_name' => $payload['lastName'],
                 'email' => $payload['email'],
+                'contact_number' => ! empty($payload['contact_number']) ? trim((string) $payload['contact_number']) : (! empty($payload['phone']) ? trim((string) $payload['phone']) : null),
                 'password' => $payload['password'],
                 'affiliation' => $payload['affiliation'] ?? null,
                 'role_id' => $role->id,
@@ -346,10 +348,39 @@ class UserService
             }
         }
 
-        // Sanitize and validate age
-        if (array_key_exists('age', $payload)) {
+        // Sanitize and validate date_of_birth (and age)
+        if (array_key_exists('date_of_birth', $payload) || array_key_exists('dateOfBirth', $payload)) {
+            $rawDob = $payload['date_of_birth'] ?? $payload['dateOfBirth'] ?? null;
+            if ($rawDob === null || trim((string) $rawDob) === '') {
+                $payload['date_of_birth'] = null;
+            } else {
+                try {
+                    $dobCarbon = Carbon::parse($rawDob);
+                    if ($dobCarbon->isFuture()) {
+                        throw ValidationException::withMessages([
+                            'date_of_birth' => ['Date of birth cannot be in the future.'],
+                        ]);
+                    }
+                    if ($dobCarbon->diffInYears(now()) > 130) {
+                        throw ValidationException::withMessages([
+                            'date_of_birth' => ['Date of birth cannot exceed 130 years ago.'],
+                        ]);
+                    }
+                    $payload['date_of_birth'] = $dobCarbon->format('Y-m-d');
+                    $payload['age'] = $dobCarbon->age;
+                } catch (\Exception $e) {
+                    if ($e instanceof ValidationException) {
+                        throw $e;
+                    }
+                    throw ValidationException::withMessages([
+                        'date_of_birth' => ['Date of birth must be a valid date.'],
+                    ]);
+                }
+            }
+        } elseif (array_key_exists('age', $payload)) {
             if ($payload['age'] === null || $payload['age'] === '') {
                 $payload['age'] = null;
+                $payload['date_of_birth'] = null;
             } else {
                 $rawAge = (string) $payload['age'];
                 if (str_contains($rawAge, '-') || (is_numeric($rawAge) && (float) $rawAge < 0)) {
@@ -360,6 +391,7 @@ class UserService
                 $cleanAge = preg_replace('/\D/', '', $rawAge);
                 if ($cleanAge === '') {
                     $payload['age'] = null;
+                    $payload['date_of_birth'] = null;
                 } else {
                     $ageInt = (int) $cleanAge;
                     if ($ageInt > 130) {
@@ -368,6 +400,7 @@ class UserService
                         ]);
                     }
                     $payload['age'] = $ageInt;
+                    $payload['date_of_birth'] = now()->subYears($ageInt)->startOfYear()->toDateString();
                 }
             }
         }
@@ -393,6 +426,23 @@ class UserService
                     $payload['gender'] = ucfirst($rawGender);
                 }
             }
+        }
+
+        // Validate and sanitize contact number if provided
+        $phoneInput = $payload['contact_number'] ?? $payload['contactNumber'] ?? $payload['phone'] ?? null;
+        if (array_key_exists('contact_number', $payload) || array_key_exists('contactNumber', $payload) || array_key_exists('phone', $payload)) {
+            if ($phoneInput === null || trim((string) $phoneInput) === '') {
+                $payload['contact_number'] = null;
+            } else {
+                $cleanPhone = trim(strip_tags((string) $phoneInput));
+                if (! preg_match('/^\+?[0-9\s\-\(\)]{7,25}$/', $cleanPhone)) {
+                    throw ValidationException::withMessages([
+                        'contact_number' => ['Contact number must be a valid phone number.'],
+                    ]);
+                }
+                $payload['contact_number'] = $cleanPhone;
+            }
+            unset($payload['contactNumber'], $payload['phone']);
         }
 
         // Strip null/empty values for non-nullable columns so that
@@ -470,7 +520,9 @@ class UserService
                 'last_name' => $payload['lastName'],
                 'email' => $payload['email'],
                 'password' => $payload['password'],
+                'date_of_birth' => $payload['date_of_birth'] ?? null,
                 'gender' => $payload['gender'] ?? null,
+                'contact_number' => ! empty($payload['contact_number']) ? trim((string) $payload['contact_number']) : (! empty($payload['phone']) ? trim((string) $payload['phone']) : null),
                 'age' => $payload['age'] ?? null,
                 'street' => $payload['street'] ?? null,
                 'barangay' => $payload['barangay'] ?? null,
@@ -700,9 +752,39 @@ class UserService
             }
         }
 
-        if (array_key_exists('age', $validated)) {
+        if (array_key_exists('date_of_birth', $validated) || array_key_exists('dateOfBirth', $validated)) {
+            $rawDob = $validated['date_of_birth'] ?? $validated['dateOfBirth'] ?? null;
+            if ($rawDob === null || trim((string) $rawDob) === '') {
+                $updateData['date_of_birth'] = null;
+                $updateData['age'] = null;
+            } else {
+                try {
+                    $dobCarbon = Carbon::parse($rawDob);
+                    if ($dobCarbon->isFuture()) {
+                        throw ValidationException::withMessages([
+                            'date_of_birth' => ['Date of birth cannot be in the future.'],
+                        ]);
+                    }
+                    if ($dobCarbon->diffInYears(now()) > 130) {
+                        throw ValidationException::withMessages([
+                            'date_of_birth' => ['Date of birth cannot exceed 130 years ago.'],
+                        ]);
+                    }
+                    $updateData['date_of_birth'] = $dobCarbon->format('Y-m-d');
+                    $updateData['age'] = $dobCarbon->age;
+                } catch (\Exception $e) {
+                    if ($e instanceof ValidationException) {
+                        throw $e;
+                    }
+                    throw ValidationException::withMessages([
+                        'date_of_birth' => ['Date of birth must be a valid date.'],
+                    ]);
+                }
+            }
+        } elseif (array_key_exists('age', $validated)) {
             if ($validated['age'] === null || $validated['age'] === '') {
                 $updateData['age'] = null;
+                $updateData['date_of_birth'] = null;
             } else {
                 $rawAge = (string) $validated['age'];
                 if (str_contains($rawAge, '-') || (is_numeric($rawAge) && (float) $rawAge < 0)) {
@@ -713,6 +795,7 @@ class UserService
                 $cleanAge = preg_replace('/\D/', '', $rawAge);
                 if ($cleanAge === '') {
                     $updateData['age'] = null;
+                    $updateData['date_of_birth'] = null;
                 } else {
                     $ageInt = (int) $cleanAge;
                     if ($ageInt > 130) {
@@ -721,6 +804,7 @@ class UserService
                         ]);
                     }
                     $updateData['age'] = $ageInt;
+                    $updateData['date_of_birth'] = now()->subYears($ageInt)->startOfYear()->toDateString();
                 }
             }
         }
@@ -744,6 +828,21 @@ class UserService
                 } else {
                     $updateData['gender'] = ucfirst($rawGender);
                 }
+            }
+        }
+
+        if (array_key_exists('contact_number', $validated) || array_key_exists('phone', $validated)) {
+            $rawPhone = $validated['contact_number'] ?? $validated['phone'] ?? null;
+            if ($rawPhone === null || trim((string) $rawPhone) === '') {
+                $updateData['contact_number'] = null;
+            } else {
+                $cleanPhone = trim(strip_tags((string) $rawPhone));
+                if (! preg_match('/^\+?[0-9\s\-\(\)]{7,25}$/', $cleanPhone)) {
+                    throw ValidationException::withMessages([
+                        'contact_number' => ['Contact number must be a valid phone number.'],
+                    ]);
+                }
+                $updateData['contact_number'] = $cleanPhone;
             }
         }
 

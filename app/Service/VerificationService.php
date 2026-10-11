@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Events\DoctorVerificationStatusUpdated;
 use App\Http\Resources\VerificationResource;
 use App\Repository\VerificationRepository;
 
@@ -24,6 +25,9 @@ class VerificationService
     public function createVerification(array $payload)
     {
         $model = $this->verificationRepository->create($payload);
+        $model->loadMissing('user');
+        $doctorUuid = $model->user?->uuid;
+        broadcast(new DoctorVerificationStatusUpdated($doctorUuid, $model->status, $model->uuid));
 
         return new VerificationResource($model);
     }
@@ -45,6 +49,9 @@ class VerificationService
     public function updateVerification(string $uuid, array $payload)
     {
         $model = $this->verificationRepository->update($uuid, $payload);
+        $model->loadMissing('user');
+        $doctorUuid = $model->user?->uuid;
+        broadcast(new DoctorVerificationStatusUpdated($doctorUuid, $model->status, $model->uuid));
 
         return new VerificationResource($model);
     }

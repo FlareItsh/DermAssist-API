@@ -24,17 +24,21 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $age = fake()->numberBetween(18, 65);
+
         return [
             'first_name' => fake()->firstName(),
             'middle_name' => fake()->optional()->firstName(),
             'last_name' => fake()->lastName(),
-            'age' => fake()->numberBetween(18, 65),
+            'date_of_birth' => now()->subYears($age)->startOfYear()->toDateString(),
+            'age' => $age,
             'gender' => fake()->randomElement(['Male', 'Female', 'Other']),
             'street' => fake()->streetAddress(),
             'barangay' => fake()->randomElement(['Buhangin', 'Matina', 'Agdao', 'Talomo', 'Toril', 'Ecoland', 'Obrero']),
             'city' => 'Davao City',
             'province' => 'Davao del Sur',
             'country' => 'Philippines',
+            'contact_number' => '+63 9'.fake()->numerify('## ### ####'),
             'latitude' => fake()->latitude(7.05, 7.15),
             'longitude' => fake()->longitude(125.55, 125.65),
             'email' => fake()->unique()->safeEmail(),

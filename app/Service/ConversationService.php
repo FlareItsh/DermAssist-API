@@ -2,7 +2,9 @@
 
 namespace App\Service;
 
+use App\Events\ChatMessageSent;
 use App\Http\Resources\ConversationResource;
+use App\Http\Resources\MessageResource;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -162,7 +164,11 @@ class ConversationService
             'is_read' => false,
         ]);
 
-        $conversation->touch();
+        $message->load(['sender', 'attachments']);
+        $conversation->loadMissing(['doctor', 'patient']);
+
+        $resource = new MessageResource($message);
+        broadcast(new ChatMessageSent($conversation->uuid, $resource->resolve(), $patient->uuid))->toOthers();
 
         return $message;
     }
