@@ -167,6 +167,7 @@ class MessageService
 
         $message = $this->messageRepository->update($messageUuid, [
             'message' => $payload['message'],
+            'edited_at' => now(),
         ]);
 
         $message->load(['sender', 'attachments']);
