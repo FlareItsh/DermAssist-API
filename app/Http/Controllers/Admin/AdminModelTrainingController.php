@@ -20,6 +20,14 @@ class AdminModelTrainingController extends Controller
     }
 
     /**
+     * Get candidate training images with raw/local storage tangibility status.
+     */
+    public function trainingImages(Request $request): JsonResponse
+    {
+        return $this->trainingService->getTrainingImages($request->query('category'));
+    }
+
+    /**
      * Start background model retraining.
      */
     public function retrain(Request $request): JsonResponse
@@ -30,6 +38,8 @@ class AdminModelTrainingController extends Controller
             'sync_dataset' => 'nullable|boolean',
             'learning_rate' => 'nullable|numeric|min:0.000001|max:0.01',
             'expansion_disease' => 'nullable|string|max:50',
+            'selected_image_uuids' => 'nullable|array',
+            'selected_image_uuids.*' => 'string',
         ]);
 
         return $this->trainingService->startTraining($validated);

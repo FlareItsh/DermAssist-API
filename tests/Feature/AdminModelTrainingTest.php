@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Diagnosis;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -194,4 +195,97 @@ test('admin can trigger expansion retraining with candidate disease when dataset
     $response->assertStatus(200)
         ->assertJsonPath('status', 'started')
         ->assertJsonPath('expansion_disease', 'psoriasis');
+});
+
+test('admin can retrieve training images with tangibility status', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+
+    // 1. Diagnosis scan not yet in local storage or raw (TANGIBLE)
+    Storage::disk('public')->put('diagnoses/scan_new.jpg', 'fake content');
+    $tangibleDiag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.95,
+        'probabilities' => ['Acne' => 0.95, 'Eczema' => 0.03, 'Herpes' => 0.02],
+        'image_path' => 'diagnoses/scan_new.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    // 2. Diagnosis scan already in local storage (INTANGIBLE)
+    Storage::disk('public')->put('diagnoses/scan_stored.jpg', 'fake content');
+    Storage::disk('public')->put('dataset/acne/scan_stored.jpg', 'fake content');
+    $intangibleDiag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.92,
+        'probabilities' => ['Acne' => 0.92, 'Eczema' => 0.05, 'Herpes' => 0.03],
+        'image_path' => 'diagnoses/scan_stored.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => true,
+    ]);
+
+    $response = $this->actingAs($admin)->getJson('/api/admin/model/training-images');
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'data' => [
+                '*' => ['uuid', 'filename', 'image_url', 'category', 'label', 'is_in_local_storage', 'is_in_raw', 'is_tangible', 'storage_status'],
+            ],
+            'summary' => ['total', 'tangible_count', 'in_local_storage_count', 'in_raw_count'],
+        ]);
+
+    $data = collect($response->json('data'));
+    $tangibleItem = $data->firstWhere('uuid', $tangibleDiag->uuid);
+    $intangibleItem = $data->firstWhere('uuid', $intangibleDiag->uuid);
+
+    expect($tangibleItem['is_tangible'])->toBeTrue();
+    expect($tangibleItem['storage_status'])->toBe('ready');
+
+    expect($intangibleItem['is_tangible'])->toBeFalse();
+    expect($intangibleItem['is_in_local_storage'])->toBeTrue();
+});
+
+test('admin can retrain with selected candidate image uuids', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('diagnoses/scan_to_train.jpg', 'sample scan photo content');
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Eczema',
+        'confidence' => 0.88,
+        'probabilities' => ['Acne' => 0.05, 'Eczema' => 0.88, 'Herpes' => 0.07],
+        'image_path' => 'diagnoses/scan_to_train.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    Http::fake([
+        '*/train/start' => Http::response([
+            'message' => 'Retraining started for ensemble',
+            'status' => 'started',
+            'epochs' => 3,
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/retrain', [
+        'architecture' => 'ensemble',
+        'epochs' => 3,
+        'selected_image_uuids' => [$diag->uuid],
+    ]);
+
+    $response->assertStatus(200);
+
+    // Assert that the diagnosis was promoted to local dataset storage
+    expect(Storage::disk('public')->exists('dataset/eczema/scan_to_train.jpg'))->toBeTrue();
+    expect($diag->fresh()->contributed_to_dataset)->toBeTrue();
 });

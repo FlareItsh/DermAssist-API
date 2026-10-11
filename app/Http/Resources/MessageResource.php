@@ -23,6 +23,8 @@ class MessageResource extends JsonResource
             'message' => $this->message,
             'is_read' => $this->is_read,
             'read_at' => $this->read_at,
+            'is_edited' => ! is_null($this->edited_at),
+            'edited_at' => $this->edited_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'attachments' => AttachmentResource::collection($this->whenLoaded('attachments')),

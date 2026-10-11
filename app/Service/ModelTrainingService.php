@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Events\ModelTrainingProgressUpdated;
+use App\Models\Diagnosis;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -91,6 +92,169 @@ class ModelTrainingService
     }
 
     /**
+     * Get candidate clinical scans and dataset images with raw and local storage tangibility statuses.
+     */
+    public function getTrainingImages(?string $category = null): JsonResponse
+    {
+        $allowedCategories = ['acne', 'eczema', 'herpes'];
+        $filterCategory = $category ? strtolower(trim($category)) : null;
+
+        if ($filterCategory && ! in_array($filterCategory, $allowedCategories)) {
+            return response()->json([
+                'data' => [],
+                'summary' => [
+                    'total' => 0,
+                    'tangible_count' => 0,
+                    'in_local_storage_count' => 0,
+                    'in_raw_count' => 0,
+                ],
+            ]);
+        }
+
+        $targetCategories = $filterCategory ? [$filterCategory] : $allowedCategories;
+
+        // Path to Algorithm's data/raw directory
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+
+        // 1. Fetch diagnosis scans
+        $query = Diagnosis::query()
+            ->whereNotNull('image_path')
+            ->where(function ($q) use ($targetCategories) {
+                foreach ($targetCategories as $cat) {
+                    $q->orWhereRaw('LOWER(label) = ?', [$cat]);
+                }
+            })
+            ->latest();
+
+        $diagnoses = $query->get();
+
+        $items = [];
+        $seenFilenames = [];
+
+        foreach ($diagnoses as $diag) {
+            $filename = basename($diag->image_path);
+            $catSlug = strtolower(trim($diag->label));
+            $catTitle = ucfirst($catSlug);
+
+            $seenFilenames[$filename] = true;
+
+            // Check if present in Laravel local dataset storage
+            $isInLocalStorage = (bool) $diag->contributed_to_dataset
+                || Storage::disk($this->disk)->exists($this->datasetDir.'/'.$catSlug.'/'.$filename);
+
+            // Check if present in Algorithms raw storage
+            $isInRaw = false;
+            if ($hasAlgorithmsRaw) {
+                $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                if (is_dir($rawCatPath)) {
+                    $isInRaw = file_exists($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename)
+                        || file_exists($rawCatPath.DIRECTORY_SEPARATOR.$filename);
+                }
+            }
+
+            // Storage Tangibility Rule: Intangible if already in raw OR local storage
+            $isTangible = ! $isInLocalStorage && ! $isInRaw;
+
+            $storageStatus = 'ready';
+            if ($isInRaw && $isInLocalStorage) {
+                $storageStatus = 'both';
+            } elseif ($isInRaw) {
+                $storageStatus = 'raw';
+            } elseif ($isInLocalStorage) {
+                $storageStatus = 'local_storage';
+            }
+
+            $items[] = [
+                'uuid' => $diag->uuid,
+                'filename' => $filename,
+                'image_url' => Storage::disk($this->disk)->url($diag->image_path),
+                'category' => $catSlug,
+                'label' => ucwords($catSlug),
+                'confidence' => (float) $diag->confidence,
+                'patient_consented' => (bool) $diag->patient_consented_dataset,
+                'contributed_to_dataset' => (bool) $diag->contributed_to_dataset,
+                'created_at' => $diag->created_at?->toIso8601String(),
+                'is_in_local_storage' => $isInLocalStorage,
+                'is_in_raw' => $isInRaw,
+                'is_tangible' => $isTangible,
+                'storage_status' => $storageStatus,
+                'source' => 'diagnosis',
+            ];
+        }
+
+        // 2. Also check if there are standalone images in dataset storage not linked to a diagnosis
+        foreach ($targetCategories as $catSlug) {
+            $catDir = $this->datasetDir.'/'.$catSlug;
+            $catTitle = ucfirst($catSlug);
+            if (! Storage::disk($this->disk)->exists($catDir)) {
+                continue;
+            }
+
+            $files = Storage::disk($this->disk)->files($catDir);
+            foreach ($files as $file) {
+                $fname = basename($file);
+                if (isset($seenFilenames[$fname])) {
+                    continue;
+                }
+
+                $isInRaw = false;
+                if ($hasAlgorithmsRaw) {
+                    $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                    if (is_dir($rawCatPath)) {
+                        $isInRaw = file_exists($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$fname)
+                            || file_exists($rawCatPath.DIRECTORY_SEPARATOR.$fname);
+                    }
+                }
+
+                $items[] = [
+                    'uuid' => md5($file),
+                    'filename' => $fname,
+                    'image_url' => Storage::disk($this->disk)->url($file),
+                    'category' => $catSlug,
+                    'label' => ucwords($catSlug),
+                    'confidence' => 1.0,
+                    'patient_consented' => true,
+                    'contributed_to_dataset' => true,
+                    'created_at' => null,
+                    'is_in_local_storage' => true,
+                    'is_in_raw' => $isInRaw,
+                    'is_tangible' => ! $isInRaw,
+                    'storage_status' => $isInRaw ? 'both' : 'local_storage',
+                    'source' => 'dataset_gallery',
+                ];
+            }
+        }
+
+        $tangibleCount = count(array_filter($items, fn ($i) => $i['is_tangible']));
+        $intangibleCount = count($items) - $tangibleCount;
+        $inLocalStorageCount = count(array_filter($items, fn ($i) => $i['is_in_local_storage']));
+        $inRawCount = count(array_filter($items, fn ($i) => $i['is_in_raw']));
+
+        $byCategory = [
+            'acne' => count(array_filter($items, fn ($i) => $i['category'] === 'acne')),
+            'eczema' => count(array_filter($items, fn ($i) => $i['category'] === 'eczema')),
+            'herpes' => count(array_filter($items, fn ($i) => $i['category'] === 'herpes')),
+        ];
+
+        return response()->json([
+            'data' => $items,
+            'images' => $items,
+            'total' => count($items),
+            'tangible_count' => $tangibleCount,
+            'intangible_count' => $intangibleCount,
+            'by_category' => $byCategory,
+            'summary' => [
+                'total' => count($items),
+                'tangible_count' => $tangibleCount,
+                'intangible_count' => $intangibleCount,
+                'in_local_storage_count' => $inLocalStorageCount,
+                'in_raw_count' => $inRawCount,
+            ],
+        ]);
+    }
+
+    /**
      * Record the current timestamp as the last successful training time.
      */
     public function markTrainingCompleted(): JsonResponse
@@ -158,10 +322,34 @@ class ModelTrainingService
     /**
      * Trigger background retraining of the AI model.
      *
-     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float, expansion_disease?: string}  $options
+     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float, expansion_disease?: string, selected_image_uuids?: array<string>}  $options
      */
     public function startTraining(array $options): JsonResponse
     {
+        // If specific candidate diagnoses were selected for retraining, promote them to local dataset storage first
+        if (! empty($options['selected_image_uuids']) && is_array($options['selected_image_uuids'])) {
+            $diagnoses = Diagnosis::whereIn('uuid', $options['selected_image_uuids'])->get();
+            foreach ($diagnoses as $diag) {
+                if (empty($diag->image_path) || ! Storage::disk($this->disk)->exists($diag->image_path)) {
+                    continue;
+                }
+                $catSlug = strtolower(trim($diag->label));
+                if (! in_array($catSlug, ['acne', 'eczema', 'herpes'])) {
+                    continue;
+                }
+                $targetPath = $this->datasetDir.'/'.$catSlug.'/'.basename($diag->image_path);
+                if (! Storage::disk($this->disk)->exists($targetPath)) {
+                    Storage::disk($this->disk)->copy($diag->image_path, $targetPath);
+                }
+                $diag->update([
+                    'contributed_to_dataset' => true,
+                    'contributed_at' => now(),
+                ]);
+            }
+            // Automatically ensure dataset is synchronized to data/raw/
+            $options['sync_dataset'] = true;
+        }
+
         if (! empty($options['expansion_disease'])) {
             $diseaseSlug = strtolower(trim($options['expansion_disease']));
             $diseaseDir = 'out_of_scope_dataset/'.$diseaseSlug;

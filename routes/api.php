@@ -142,6 +142,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
         // AI Model Retraining & Performance Monitoring
         Route::get('/model/stats', [AdminModelTrainingController::class, 'stats']);
+        Route::get('/model/training-images', [AdminModelTrainingController::class, 'trainingImages']);
         Route::post('/model/retrain', [AdminModelTrainingController::class, 'retrain']);
         Route::get('/model/retrain/status', [AdminModelTrainingController::class, 'status']);
         Route::post('/model/retrain/cancel', [AdminModelTrainingController::class, 'cancel']);

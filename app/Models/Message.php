@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['uuid', 'conversation_id', 'sender_id', 'message', 'is_read', 'read_at'])]
+#[Fillable(['uuid', 'conversation_id', 'sender_id', 'message', 'is_read', 'read_at', 'edited_at'])]
 class Message extends Model
 {
     use HasFactory, HasUuids;
@@ -24,6 +24,7 @@ class Message extends Model
         return [
             'is_read' => 'boolean',
             'read_at' => 'datetime',
+            'edited_at' => 'datetime',
         ];
     }
 
