@@ -1,9 +1,13 @@
 <?php
 
+use App\Mail\GoogleLoginConfirmMail;
 use App\Models\BlockedDevice;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 
@@ -16,18 +20,25 @@ beforeEach(function () {
     );
 });
 
-test('redirect endpoint redirects to google oauth consent screen', function () {
+test('redirect endpoint redirects to google oauth consent screen with basic profile and email scopes', function () {
     $response = $this->get('/api/auth/google/redirect');
 
     $response->assertStatus(302);
-    expect($response->headers->get('Location'))->toContain('accounts.google.com');
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('accounts.google.com')
+        ->and($location)->not->toContain('birthday.read')
+        ->and($location)->not->toContain('gender.read');
 });
 
-test('callback creates new patient and redirects to frontend with token', function () {
+test('callback for new user creates patient and sends confirmation email', function () {
+    Mail::fake();
+
     $socialiteUser = Mockery::mock(SocialiteUser::class);
     $socialiteUser->shouldReceive('getId')->andReturn('google-unique-123456');
     $socialiteUser->shouldReceive('getEmail')->andReturn('googleuser@example.com');
     $socialiteUser->shouldReceive('getName')->andReturn('Jane Google');
+    $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
+    $socialiteUser->token = 'mock-google-token';
     $socialiteUser->user = [
         'given_name' => 'Jane',
         'family_name' => 'Google',
@@ -39,11 +50,12 @@ test('callback creates new patient and redirects to frontend with token', functi
 
     Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
-    $response = $this->get('/api/auth/google/callback');
+    $response = $this->withUnencryptedCookie('da_device_id', 'device-xyz-123')
+        ->get('/api/auth/google/callback');
 
     $response->assertStatus(302);
-    $location = $response->headers->get('Location');
-    expect($location)->toContain('http://localhost:3000/auth/callback?token=');
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('http://localhost:3000/auth/check-email?email=googleuser%40example.com');
 
     $createdUser = User::where('google_id', 'google-unique-123456')->first();
     expect($createdUser)->not->toBeNull()
@@ -51,25 +63,28 @@ test('callback creates new patient and redirects to frontend with token', functi
         ->and($createdUser->first_name)->toBe('Jane')
         ->and($createdUser->last_name)->toBe('Google')
         ->and($createdUser->account_status)->toBe('active')
-        ->and($createdUser->email_verified_at)->not->toBeNull()
         ->and($createdUser->role_id)->toBe($this->patientRole->id);
+
+    Mail::assertSent(GoogleLoginConfirmMail::class, function ($mail) {
+        return $mail->user->email === 'googleuser@example.com';
+    });
 });
 
-test('callback links google_id if existing user registers with same email', function () {
+test('callback for existing user on recognized device skips email confirmation and issues auth code', function () {
     $existingUser = User::factory()->create([
-        'email' => 'existing@example.com',
+        'email' => 'recognized@example.com',
         'role_id' => $this->patientRole->id,
-        'google_id' => null,
+        'google_id' => 'google-recog-999',
+        'device_token' => 'recognized-device-token',
     ]);
 
     $socialiteUser = Mockery::mock(SocialiteUser::class);
-    $socialiteUser->shouldReceive('getId')->andReturn('google-linked-789');
-    $socialiteUser->shouldReceive('getEmail')->andReturn('existing@example.com');
-    $socialiteUser->shouldReceive('getName')->andReturn('Existing User');
-    $socialiteUser->user = [
-        'given_name' => 'Existing',
-        'family_name' => 'User',
-    ];
+    $socialiteUser->shouldReceive('getId')->andReturn('google-recog-999');
+    $socialiteUser->shouldReceive('getEmail')->andReturn('recognized@example.com');
+    $socialiteUser->shouldReceive('getName')->andReturn('Recognized User');
+    $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
+    $socialiteUser->token = 'mock-token';
+    $socialiteUser->user = [];
 
     $provider = Mockery::mock('Laravel\Socialite\Two\GoogleProvider');
     $provider->shouldReceive('stateless')->andReturnSelf();
@@ -77,11 +92,57 @@ test('callback links google_id if existing user registers with same email', func
 
     Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
-    $response = $this->get('/api/auth/google/callback');
+    $response = $this->withUnencryptedCookie('da_device_id', 'recognized-device-token')
+        ->get('/api/auth/google/callback');
 
     $response->assertStatus(302);
-    $existingUser->refresh();
-    expect($existingUser->google_id)->toBe('google-linked-789');
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('http://localhost:3000/auth/callback?code=');
+});
+
+test('confirming email with signed route authorizes device and redirects with code', function () {
+    $user = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'device_token' => 'old-device',
+    ]);
+
+    $signedUrl = URL::temporarySignedRoute(
+        'auth.google.confirm',
+        now()->addMinutes(15),
+        ['uuid' => $user->uuid, 'device_id' => 'new-authorized-device']
+    );
+
+    $response = $this->get($signedUrl);
+
+    $response->assertStatus(302);
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('http://localhost:3000/auth/callback?code=');
+
+    $user->refresh();
+    expect($user->device_token)->toBe('new-authorized-device');
+});
+
+test('exchanging auth code returns sanctum token and user payload', function () {
+    $user = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+    ]);
+
+    Cache::put('google_auth_code_testcode123', [
+        'user_id' => $user->id,
+        'device_id' => 'some-device',
+    ], now()->addMinutes(2));
+
+    $response = $this->postJson('/api/auth/google/exchange', [
+        'code' => 'testcode123',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'token',
+            'user' => ['uuid', 'first_name', 'last_name', 'email', 'role', 'account_status'],
+        ]);
+
+    expect(Cache::has('google_auth_code_testcode123'))->toBeFalse();
 });
 
 test('callback rejects blocked devices', function () {

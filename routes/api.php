@@ -45,6 +45,9 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
     Route::controller(GoogleAuthController::class)->prefix('auth/google')->group(function () {
         Route::get('/redirect', 'redirect')->name('auth.google.redirect');
         Route::get('/callback', 'callback')->name('auth.google.callback');
+        Route::get('/confirm/{uuid}', 'confirm')->name('auth.google.confirm');
+        Route::post('/exchange', 'exchange')->name('auth.google.exchange');
+        Route::post('/resend-confirm', 'resendConfirm')->name('auth.google.resend-confirm');
     });
 });
 
