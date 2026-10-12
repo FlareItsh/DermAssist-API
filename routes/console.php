@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\ProcessScheduledAccountActions;
+use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -17,3 +18,4 @@ Schedule::call(function () {
 })->daily();
 
 Schedule::command('subscriptions:process-renewals')->daily();
+Schedule::command('app:send-verification-reminders')->hourly();

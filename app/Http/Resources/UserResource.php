@@ -60,6 +60,7 @@ class UserResource extends JsonResource
                 'avatar_path' => $this->registeredByDoctor->avatar_path,
             ] : null,
             'account_status' => $this->account_status ?? 'active',
+            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
             'account_action' => $this->account_action,
             'account_action_scheduled_at' => $this->account_action_scheduled_at,
             'verification_deadline' => $this->verification_deadline?->toIso8601String(),

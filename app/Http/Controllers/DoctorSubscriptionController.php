@@ -34,11 +34,14 @@ class DoctorSubscriptionController extends Controller
         $request->validate([
             'code' => 'required|string',
             'amount' => 'required|numeric|min:0',
+            'plan_uuid' => 'nullable|string',
         ]);
 
         return $this->doctorSubscriptionService->validateCoupon(
             $request->input('code'),
-            (float) $request->input('amount')
+            (float) $request->input('amount'),
+            $request->user(),
+            $request->input('plan_uuid')
         );
     }
 

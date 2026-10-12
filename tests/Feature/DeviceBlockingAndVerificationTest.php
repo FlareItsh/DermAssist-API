@@ -1,11 +1,13 @@
 <?php
 
 use App\Console\Commands\ProcessScheduledAccountActions;
+use App\Mail\VerifyAccountMail;
 use App\Models\BlockedDevice;
 use App\Models\BlockedIp;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 
 uses(RefreshDatabase::class);
 
@@ -15,7 +17,9 @@ beforeEach(function () {
     $this->adminRole = Role::firstOrCreate(['slug' => 'admin', 'name' => 'Admin']);
 });
 
-test('public patient registration sets active status with device and cookie tracking', function () {
+test('public patient registration sets pending_verification status and sends verification email', function () {
+    Mail::fake();
+
     $response = $this->postJson('/api/register', [
         'firstName' => 'Spam',
         'lastName' => 'Tester',
@@ -32,13 +36,20 @@ test('public patient registration sets active status with device and cookie trac
 
     $this->assertDatabaseHas('users', [
         'email' => 'spamtester@example.com',
-        'account_status' => 'active',
+        'account_status' => 'pending_verification',
         'device_token' => 'device-uuid-12345',
     ]);
 
     $user = User::where('email', 'spamtester@example.com')->first();
-    expect($user->account_status)->toBe('active')
+    expect($user->account_status)->toBe('pending_verification')
+        ->and($user->verification_token)->not->toBeNull()
+        ->and($user->verification_deadline)->not->toBeNull()
         ->and($user->cookies_accepted_at)->not->toBeNull();
+
+    Mail::assertSent(VerifyAccountMail::class, function ($mail) use ($user) {
+        return $mail->hasTo('spamtester@example.com')
+            && $mail->verificationToken === $user->verification_token;
+    });
 });
 
 test('blocked device cannot login or register', function () {
@@ -157,4 +168,27 @@ test('aged trashed dummy accounts are permanently force deleted', function () {
 
     // Should be permanently gone
     expect(User::withTrashed()->find($trashedUser->id))->toBeNull();
+});
+
+test('resend verification generates new token and sends fresh verification email', function () {
+    Mail::fake();
+
+    $user = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'account_status' => 'pending_verification',
+        'verification_token' => 'old-token',
+        'verification_deadline' => now()->addHours(10),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/resend-verification');
+
+    $response->assertStatus(200);
+    $user->refresh();
+
+    expect($user->verification_token)->not->toBe('old-token');
+
+    Mail::assertSent(VerifyAccountMail::class, function ($mail) use ($user) {
+        return $mail->hasTo($user->email)
+            && $mail->verificationToken === $user->verification_token;
+    });
 });

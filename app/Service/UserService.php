@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Http\Resources\UserResource;
+use App\Mail\VerifyAccountMail;
 use App\Models\Appointment;
 use App\Models\BlockedDevice;
 use App\Models\Conversation;
@@ -16,6 +17,8 @@ use App\Repository\UserRepository;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -104,6 +107,12 @@ class UserService
             $verificationToken = null;
             $verificationDeadline = null;
 
+            if (! $isDoctorRegistered && $roleSlug === 'patient') {
+                $accountStatus = 'pending_verification';
+                $verificationToken = Str::random(40);
+                $verificationDeadline = now()->addHours(48);
+            }
+
             // Map frontend camelCase to backend snake_case
             // Ensure UUID is generated if trait doesn't pick it up for non-primary keys
             $prcSanitized = ! empty($payload['prcNumber']) ? preg_replace('/\D/', '', (string) $payload['prcNumber']) : null;
@@ -164,6 +173,15 @@ class UserService
             }
 
             $token = $user->createToken($user->email)->plainTextToken;
+
+            // Send account verification email for unverified public patients
+            if ($accountStatus === 'pending_verification' && $verificationToken) {
+                try {
+                    Mail::to($user->email)->send(new VerifyAccountMail($user, $verificationToken));
+                } catch (\Throwable $e) {
+                    Log::error("Failed to send verification email to {$user->email}: ".$e->getMessage());
+                }
+            }
 
             // Load role relationship for the resource
             $user->load('role');
@@ -891,7 +909,7 @@ class UserService
         if ($user->verification_deadline && $user->verification_deadline->isPast()) {
             return [
                 'status' => false,
-                'message' => 'Verification deadline has passed. Please contact support.',
+                'message' => 'Verification deadline has passed. Please resend a new verification email.',
             ];
         }
 
@@ -924,9 +942,15 @@ class UserService
             'verification_deadline' => now()->addHours(48),
         ]);
 
+        try {
+            Mail::to($user->email)->send(new VerifyAccountMail($user, $token));
+        } catch (\Throwable $e) {
+            Log::error("Failed to resend verification email to {$user->email}: ".$e->getMessage());
+        }
+
         return [
             'status' => true,
-            'message' => 'A new verification link has been generated.',
+            'message' => 'A new verification link has been sent to your email.',
             'verification_token' => $token,
             'verification_deadline' => $user->verification_deadline?->toIso8601String(),
         ];

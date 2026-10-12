@@ -8,6 +8,7 @@ use App\Models\Coupon;
 use App\Models\PaymentInvoice;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Models\SubscriptionDiscount;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
@@ -115,14 +116,26 @@ class DoctorSubscriptionService
     /**
      * Validate a coupon code.
      */
-    public function validateCoupon(string $code, float $amount): JsonResponse
+    public function validateCoupon(string $code, float $amount, ?User $user = null, ?string $planUuid = null): JsonResponse
     {
         $coupon = Coupon::where('code', strtoupper(trim($code)))->first();
+        $plan = $planUuid ? Plan::where('uuid', $planUuid)->first() : null;
 
-        if (! $coupon || ! $coupon->isValid()) {
+        if (! $coupon || ! $coupon->isValid($amount, $user, $plan)) {
+            $errorMessage = 'Invalid or expired coupon code.';
+            if ($coupon) {
+                if ($coupon->min_spend !== null && $amount < (float) $coupon->min_spend) {
+                    $errorMessage = 'Minimum spend of ₱'.number_format((float) $coupon->min_spend, 2).' required for this coupon.';
+                } elseif (! empty($coupon->applicable_plans) && $plan && ! in_array((string) $plan->id, array_map('strval', $coupon->applicable_plans), true)) {
+                    $errorMessage = 'This coupon is not applicable to the selected subscription plan.';
+                } elseif ($user && $coupon->max_redemptions_per_user !== null) {
+                    $errorMessage = 'You have already reached the redemption limit for this coupon.';
+                }
+            }
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Invalid or expired coupon code.',
+                'message' => $errorMessage,
             ], 422);
         }
 
@@ -171,9 +184,10 @@ class DoctorSubscriptionService
         $originalAmount = $billingCycle === 'annual' ? (float) $plan->price_annual : (float) $plan->price_monthly;
 
         $discountAmount = 0.00;
+        $coupon = null;
         if (! empty($data['coupon_code'])) {
             $coupon = Coupon::where('code', strtoupper(trim($data['coupon_code'])))->first();
-            if ($coupon && $coupon->isValid()) {
+            if ($coupon && $coupon->isValid($originalAmount, $user, $plan)) {
                 if ($coupon->discount_type === 'percentage') {
                     $discountAmount = ($originalAmount * $coupon->value) / 100;
                 } else {
@@ -219,6 +233,14 @@ class DoctorSubscriptionService
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
         ]);
+
+        if ($coupon && $discountAmount > 0) {
+            SubscriptionDiscount::create([
+                'subscription_id' => $subscription->id,
+                'coupon_id' => $coupon->id,
+                'discount_amount' => round($discountAmount, 2),
+            ]);
+        }
 
         // Create Payment Invoice record
         $invoice = PaymentInvoice::create([
