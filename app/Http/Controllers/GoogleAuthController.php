@@ -209,6 +209,19 @@ class GoogleAuthController extends Controller
             $user->update(['device_token' => $deviceId]);
         }
 
+        if ($user->hasTwoFactorEnabled()) {
+            $challenge = (string) Str::uuid();
+            Cache::put("2fa_challenge_{$challenge}", [
+                'user_id' => $user->id,
+                'device_id' => $deviceId,
+            ], now()->addMinutes(5));
+
+            return response()->json([
+                'two_factor_required' => true,
+                'challenge' => $challenge,
+            ]);
+        }
+
         $token = $user->createToken('google-auth-token')->plainTextToken;
 
         return response()->json([

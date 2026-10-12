@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
 {
@@ -46,7 +46,15 @@ class User extends Authenticatable
             'terms_accepted_at' => 'datetime',
             'cookies_accepted_at' => 'datetime',
             'verification_deadline' => 'datetime',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function hasTwoFactorEnabled(): bool
+    {
+        return ! is_null($this->two_factor_confirmed_at);
     }
 
     /**
