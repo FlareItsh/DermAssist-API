@@ -129,6 +129,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
     // Unified Records Endpoint
     Route::get('/records', [RecordController::class, 'index']);
+    Route::get('/records/{uuid}/export-pdf', [RecordController::class, 'exportPdf']);
 
     // Doctor Subscription Routes
     Route::get('/subscription/plans', [DoctorSubscriptionController::class, 'plans']);
