@@ -26,6 +26,7 @@ use App\Http\Controllers\OutOfScopeDatasetController;
 use App\Http\Controllers\PatchNoteController;
 use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
+use App\Http\Controllers\TwoFactorController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
 use App\Http\Middleware\CheckAccountStatus;
@@ -42,6 +43,10 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
         Route::post('/verify-account', 'verifyAccount');
     });
 
+    Route::post('/two-factor/challenge', [TwoFactorController::class, 'challenge'])
+        ->middleware('throttle:5,1')
+        ->name('two-factor.challenge');
+
     Route::controller(GoogleAuthController::class)->prefix('auth/google')->group(function () {
         Route::get('/redirect', 'redirect')->name('auth.google.redirect');
         Route::get('/callback', 'callback')->name('auth.google.callback');
@@ -57,6 +62,13 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
     Route::get('/user', function (Request $request) {
         return new UserResource($request->user()->load('role'));
+    });
+
+    Route::controller(TwoFactorController::class)->prefix('two-factor')->group(function () {
+        Route::post('/enable', 'enable')->name('two-factor.enable');
+        Route::post('/confirm', 'confirm')->name('two-factor.confirm');
+        Route::delete('/', 'disable')->name('two-factor.disable');
+        Route::post('/recovery-codes', 'regenerateRecoveryCodes')->name('two-factor.recovery-codes');
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);

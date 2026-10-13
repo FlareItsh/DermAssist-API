@@ -66,6 +66,7 @@ class UserResource extends JsonResource
             'verification_deadline' => $this->verification_deadline?->toIso8601String(),
             'consent_dataset' => (bool) $this->consent_dataset,
             'terms_accepted_at' => $this->terms_accepted_at?->toIso8601String(),
+            'two_factor_enabled' => $this->hasTwoFactorEnabled(),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

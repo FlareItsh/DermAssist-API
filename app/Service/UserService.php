@@ -15,6 +15,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Repository\UserRepository;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -67,6 +68,19 @@ class UserService
 
         if (! empty($payload['cookies_accepted']) && ! $user->cookies_accepted_at) {
             $user->update(['cookies_accepted_at' => now()]);
+        }
+
+        if ($user->hasTwoFactorEnabled()) {
+            $challenge = (string) Str::uuid();
+            Cache::put("2fa_challenge_{$challenge}", [
+                'user_id' => $user->id,
+                'device_id' => $deviceId,
+            ], now()->addMinutes(5));
+
+            return response()->json([
+                'two_factor_required' => true,
+                'challenge' => $challenge,
+            ], 200);
         }
 
         $token = $user->createToken($user->email)->plainTextToken;
