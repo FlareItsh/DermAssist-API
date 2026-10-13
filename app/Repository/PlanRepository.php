@@ -20,7 +20,13 @@ class PlanRepository
 
     public function create(array $payload): Plan
     {
-        $features = $payload['features'] ?? null;
+        $features = $payload['features'] ?? [];
+        if (is_array($features)) {
+            $maxSec = $payload['max_secretaries'] ?? null;
+            $features['can_have_secretary'] = ($maxSec === null || (int) $maxSec > 0);
+            $payload['features'] = $features;
+        }
+
         $payload['version'] = $payload['version'] ?? 1;
         $plan = Plan::create($payload);
 
@@ -31,7 +37,13 @@ class PlanRepository
 
     public function update(Plan $plan, array $payload): Plan
     {
-        $features = $payload['features'] ?? null;
+        $features = $payload['features'] ?? $plan->features ?? [];
+        if (is_array($features)) {
+            $maxSec = array_key_exists('max_secretaries', $payload) ? $payload['max_secretaries'] : $plan->max_secretaries;
+            $features['can_have_secretary'] = ($maxSec === null || (int) $maxSec > 0);
+            $payload['features'] = $features;
+        }
+
         $payload['version'] = ($plan->version ?? 1) + 1;
         $plan->update($payload);
 
@@ -55,7 +67,9 @@ class PlanRepository
         foreach ($allFeatures as $feature) {
             $isIncluded = false;
 
-            if (isset($features[$feature->code])) {
+            if ($feature->code === 'can_have_secretary') {
+                $isIncluded = ($plan->max_secretaries === null || (int) $plan->max_secretaries > 0);
+            } elseif (isset($features[$feature->code])) {
                 $isIncluded = (bool) $features[$feature->code];
             } elseif (isset($features[$feature->id])) {
                 $isIncluded = (bool) $features[$feature->id];
