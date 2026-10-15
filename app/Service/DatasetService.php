@@ -16,28 +16,138 @@ class DatasetService
 
     private string $datasetDir = 'dataset';
 
-    public function listDatasets(): JsonResponse
+    public function listDatasets(?string $category = null, ?int $page = null, ?int $perPage = 12, bool $all = false): JsonResponse
     {
-        if (! Storage::disk($this->disk)->exists($this->datasetDir)) {
+        $categoryImages = [];
+        $categoryItems = [];
+        $seenFilenames = [];
+
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+        $filterCategory = $category ? strtolower(trim($category)) : null;
+
+        if ($filterCategory && ! in_array($filterCategory, $allowedPriorityCategories)) {
             return response()->json([]);
         }
 
-        $categories = Storage::disk($this->disk)->directories($this->datasetDir);
-        $result = [];
+        $targetCategories = $filterCategory ? [$filterCategory] : $allowedPriorityCategories;
 
-        foreach ($categories as $categoryPath) {
-            $categoryName = basename($categoryPath);
-            $files = Storage::disk($this->disk)->files($categoryPath);
-            $imageUrls = array_map(function ($file) {
-                return Storage::disk($this->disk)->url($file);
-            }, $files);
+        // 1. Read files from storage/app/public/dataset/{category}
+        if (Storage::disk($this->disk)->exists($this->datasetDir)) {
+            $categories = Storage::disk($this->disk)->directories($this->datasetDir);
+            foreach ($categories as $categoryPath) {
+                $categoryName = strtolower(basename($categoryPath));
+                if (! in_array($categoryName, $targetCategories)) {
+                    continue;
+                }
+                $files = Storage::disk($this->disk)->files($categoryPath);
+                foreach ($files as $file) {
+                    $fname = basename($file);
+                    $seenFilenames[$fname] = true;
+                    $url = Storage::disk($this->disk)->url($file);
+                    $categoryImages[$categoryName][] = $url;
+                    $categoryItems[$categoryName][] = [
+                        'url' => $url,
+                        'filename' => $fname,
+                        'is_synced' => true,
+                        'sync_status' => 'synced',
+                        'source' => 'dataset_gallery',
+                        'storage_location' => 'dataset_storage',
+                        'created_at' => null,
+                    ];
+                }
+            }
+        }
 
-            if (count($imageUrls) > 0) {
-                $result[] = [
-                    'category' => $categoryName,
-                    'images' => $imageUrls,
+        // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records
+        $diagnoses = Diagnosis::query()
+            ->whereNotNull('image_path')
+            ->where(function ($q) use ($targetCategories) {
+                foreach ($targetCategories as $cat) {
+                    $q->orWhereRaw('LOWER(label) = ?', [$cat]);
+                }
+            })
+            ->latest()
+            ->get();
+
+        foreach ($diagnoses as $diag) {
+            $catSlug = strtolower(trim($diag->label));
+            if (empty($catSlug) || ! in_array($catSlug, $targetCategories)) {
+                continue;
+            }
+
+            $filename = basename($diag->image_path);
+            if (isset($seenFilenames[$filename])) {
+                continue;
+            }
+
+            if (Storage::disk($this->disk)->exists($diag->image_path)) {
+                $seenFilenames[$filename] = true;
+                $url = Storage::disk($this->disk)->url($diag->image_path);
+                $isSynced = (bool) $diag->contributed_to_dataset
+                    || Storage::disk($this->disk)->exists($this->datasetDir.'/'.$catSlug.'/'.$filename);
+
+                $categoryImages[$catSlug][] = $url;
+                $categoryItems[$catSlug][] = [
+                    'url' => $url,
+                    'filename' => $filename,
+                    'is_synced' => $isSynced,
+                    'sync_status' => $isSynced ? 'synced' : 'needs_sync',
+                    'source' => 'diagnosis',
+                    'storage_location' => $isSynced ? 'dataset_storage' : 'diagnosis_scan',
+                    'diagnosis_uuid' => $diag->uuid,
+                    'created_at' => $diag->created_at?->toIso8601String(),
                 ];
             }
+        }
+
+        // 3. Format into standard paginated API response
+        $result = [];
+        $currentPage = max(1, $page ?? 1);
+        $perPageCount = max(1, $perPage ?? 12);
+
+        foreach ($targetCategories as $cat) {
+            $rawUrls = $categoryImages[$cat] ?? [];
+            $rawItems = $categoryItems[$cat] ?? [];
+            $uniqueUrls = array_values(array_unique($rawUrls));
+            $total = count($uniqueUrls);
+
+            // Compute global sync metrics across ALL items in this category
+            $syncedCount = 0;
+            $needsSyncCount = 0;
+            foreach ($rawItems as $item) {
+                if (! empty($item['is_synced'])) {
+                    $syncedCount++;
+                } else {
+                    $needsSyncCount++;
+                }
+            }
+
+            if ($total === 0 && $filterCategory === null) {
+                continue;
+            }
+
+            if ($all) {
+                $pagedUrls = $uniqueUrls;
+                $pagedItems = $rawItems;
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            } else {
+                $offset = ($currentPage - 1) * $perPageCount;
+                $pagedUrls = array_values(array_slice($uniqueUrls, $offset, $perPageCount));
+                $pagedItems = array_values(array_slice($rawItems, $offset, $perPageCount));
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            }
+
+            $result[] = [
+                'category' => $cat,
+                'total' => $total,
+                'current_page' => $currentPage,
+                'per_page' => $perPageCount,
+                'last_page' => $lastPage,
+                'synced_count' => $syncedCount,
+                'needs_sync_count' => $needsSyncCount,
+                'images' => $pagedUrls,
+                'items' => $pagedItems,
+            ];
         }
 
         return response()->json($result);
@@ -76,7 +186,7 @@ class DatasetService
     }
 
     /**
-     * Resolve a dataset image URL or path into a relative storage path.
+     * Resolve a dataset or diagnosis image URL or path into a relative storage path.
      */
     private function resolveRelativeDatasetPath(string $url): ?string
     {
@@ -96,7 +206,10 @@ class DatasetService
 
         $relativePath = ltrim($relativePath, '/');
 
-        if (! str_starts_with($relativePath, $this->datasetDir.'/') || str_contains($relativePath, '..')) {
+        $isDataset = str_starts_with($relativePath, $this->datasetDir.'/');
+        $isDiagnoses = str_starts_with($relativePath, 'diagnoses/');
+
+        if ((! $isDataset && ! $isDiagnoses) || str_contains($relativePath, '..')) {
             return null;
         }
 
@@ -111,8 +224,53 @@ class DatasetService
             return response()->json(['error' => 'Invalid dataset image path'], 403);
         }
 
+        $filename = basename($relativePath);
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+
         if (Storage::disk($this->disk)->exists($relativePath)) {
             Storage::disk($this->disk)->delete($relativePath);
+
+            // If it's a diagnosis scan or linked to diagnosis, clear image_path on Diagnosis record
+            $diag = Diagnosis::where('image_path', $relativePath)
+                ->orWhere('image_path', 'like', "%{$filename}")
+                ->first();
+
+            if ($diag) {
+                $catSlug = strtolower(trim($diag->label));
+                $catTitle = ucfirst($catSlug);
+
+                // Also delete from dataset if a copy was there
+                $copyInDataset = $this->datasetDir.'/'.$catSlug.'/'.$filename;
+                if (Storage::disk($this->disk)->exists($copyInDataset)) {
+                    Storage::disk($this->disk)->delete($copyInDataset);
+                }
+
+                // Delete from algorithm data/raw if synced
+                if ($hasAlgorithmsRaw) {
+                    $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                    if (is_dir($rawCatPath)) {
+                        @unlink($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename);
+                        @unlink($rawCatPath.DIRECTORY_SEPARATOR.$filename);
+                    }
+                }
+
+                $diag->update([
+                    'image_path' => null,
+                    'contributed_to_dataset' => false,
+                ]);
+            } else {
+                // If it was in dataset/, also clean up from algorithm raw if present
+                if ($hasAlgorithmsRaw) {
+                    foreach (['Acne', 'Eczema', 'Herpes'] as $catTitle) {
+                        $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                        if (is_dir($rawCatPath)) {
+                            @unlink($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename);
+                            @unlink($rawCatPath.DIRECTORY_SEPARATOR.$filename);
+                        }
+                    }
+                }
+            }
 
             return response()->json(['message' => 'Image deleted successfully']);
         }
@@ -128,12 +286,56 @@ class DatasetService
     public function removeImages(array $urls): JsonResponse
     {
         $deletedCount = 0;
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+
         foreach ($urls as $url) {
             $relativePath = $this->resolveRelativeDatasetPath($url);
-            if ($relativePath && Storage::disk($this->disk)->exists($relativePath)) {
-                Storage::disk($this->disk)->delete($relativePath);
-                $deletedCount++;
+            if (! $relativePath || ! Storage::disk($this->disk)->exists($relativePath)) {
+                continue;
             }
+
+            $filename = basename($relativePath);
+            Storage::disk($this->disk)->delete($relativePath);
+
+            $diag = Diagnosis::where('image_path', $relativePath)
+                ->orWhere('image_path', 'like', "%{$filename}")
+                ->first();
+
+            if ($diag) {
+                $catSlug = strtolower(trim($diag->label));
+                $catTitle = ucfirst($catSlug);
+
+                $copyInDataset = $this->datasetDir.'/'.$catSlug.'/'.$filename;
+                if (Storage::disk($this->disk)->exists($copyInDataset)) {
+                    Storage::disk($this->disk)->delete($copyInDataset);
+                }
+
+                if ($hasAlgorithmsRaw) {
+                    $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                    if (is_dir($rawCatPath)) {
+                        @unlink($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename);
+                        @unlink($rawCatPath.DIRECTORY_SEPARATOR.$filename);
+                    }
+                }
+
+                $diag->update([
+                    'image_path' => null,
+                    'contributed_to_dataset' => false,
+                ]);
+            } else {
+                if ($hasAlgorithmsRaw) {
+                    foreach (['Acne', 'Eczema', 'Herpes'] as $catTitle) {
+                        $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                        if (is_dir($rawCatPath)) {
+                            @unlink($rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename);
+                            @unlink($rawCatPath.DIRECTORY_SEPARATOR.$filename);
+                        }
+                    }
+                }
+            }
+
+            $deletedCount++;
         }
 
         return response()->json([
@@ -165,6 +367,15 @@ class DatasetService
         }
 
         $category = Str::slug($diagnosis->label);
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+
+        if (! in_array($category, $allowedPriorityCategories)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot save to priority dataset: Only verified Acne, Eczema, or Herpes scans can be contributed.',
+            ], 422);
+        }
+
         $path = $diagnosis->image_path;
 
         if (! Storage::disk($this->disk)->exists($path)) {

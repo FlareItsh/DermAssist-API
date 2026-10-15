@@ -9,9 +9,17 @@ class OutOfScopeDatasetController extends Controller
 {
     public function __construct(private OutOfScopeDatasetService $service) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        return $this->service->listDatasets();
+        $hasPagination = $request->has('page') || $request->has('per_page');
+        $perPage = $request->query('per_page') ? (int) $request->query('per_page') : ($hasPagination ? 12 : null);
+
+        return $this->service->listDatasets(
+            category: $request->query('category'),
+            page: $request->query('page') ? (int) $request->query('page') : ($hasPagination ? 1 : null),
+            perPage: $perPage,
+            all: $request->boolean('all', ! $hasPagination)
+        );
     }
 
     public function stats()

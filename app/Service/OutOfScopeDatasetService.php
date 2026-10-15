@@ -32,7 +32,7 @@ class OutOfScopeDatasetService
         'rosacea',
     ];
 
-    public function listDatasets(): JsonResponse
+    public function listDatasets(?string $category = null, ?int $page = null, ?int $perPage = 12, bool $all = false): JsonResponse
     {
         if (! Storage::disk($this->disk)->exists($this->datasetDir)) {
             return response()->json([]);
@@ -40,20 +40,43 @@ class OutOfScopeDatasetService
 
         $categories = Storage::disk($this->disk)->directories($this->datasetDir);
         $result = [];
+        $filterCategory = $category ? strtolower(trim($category)) : null;
+        $currentPage = max(1, $page ?? 1);
+        $perPageCount = max(1, $perPage ?? 12);
 
         foreach ($categories as $categoryPath) {
             $categoryName = basename($categoryPath);
+            if ($filterCategory && strtolower($categoryName) !== $filterCategory) {
+                continue;
+            }
+
             $files = Storage::disk($this->disk)->files($categoryPath);
             $imageUrls = array_map(function ($file) {
                 return Storage::disk($this->disk)->url($file);
             }, $files);
 
-            if (count($imageUrls) > 0) {
-                $result[] = [
-                    'category' => $categoryName,
-                    'images' => $imageUrls,
-                ];
+            $total = count($imageUrls);
+            if ($total === 0 && $filterCategory === null) {
+                continue;
             }
+
+            if ($all) {
+                $pagedUrls = $imageUrls;
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            } else {
+                $offset = ($currentPage - 1) * $perPageCount;
+                $pagedUrls = array_values(array_slice($imageUrls, $offset, $perPageCount));
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            }
+
+            $result[] = [
+                'category' => $categoryName,
+                'total' => $total,
+                'current_page' => $currentPage,
+                'per_page' => $perPageCount,
+                'last_page' => $lastPage,
+                'images' => $pagedUrls,
+            ];
         }
 
         return response()->json($result);

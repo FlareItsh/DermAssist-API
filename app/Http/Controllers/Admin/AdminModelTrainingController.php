@@ -28,6 +28,33 @@ class AdminModelTrainingController extends Controller
     }
 
     /**
+     * Delete candidate or dataset training images permanently.
+     */
+    public function deleteTrainingImages(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'uuid' => 'nullable|string',
+            'uuids' => 'nullable|array',
+            'uuids.*' => 'string',
+        ]);
+
+        $uuids = [];
+        if (! empty($validated['uuid'])) {
+            $uuids[] = $validated['uuid'];
+        }
+        if (! empty($validated['uuids'])) {
+            $uuids = array_merge($uuids, $validated['uuids']);
+        }
+        $uuids = array_unique(array_filter($uuids));
+
+        if (empty($uuids)) {
+            return response()->json(['message' => 'No image UUIDs provided for deletion.'], 422);
+        }
+
+        return $this->trainingService->deleteTrainingImages($uuids);
+    }
+
+    /**
      * Start background model retraining.
      */
     public function retrain(Request $request): JsonResponse
@@ -64,9 +91,14 @@ class AdminModelTrainingController extends Controller
     /**
      * Synchronize newly gathered scan images to the training pipeline.
      */
-    public function sync(): JsonResponse
+    public function sync(Request $request): JsonResponse
     {
-        return $this->trainingService->syncDataset();
+        $validated = $request->validate([
+            'uuids' => 'nullable|array',
+            'uuids.*' => 'string',
+        ]);
+
+        return $this->trainingService->syncDataset($validated['uuids'] ?? null);
     }
 
     /**
