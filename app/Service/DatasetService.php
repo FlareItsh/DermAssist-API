@@ -19,6 +19,7 @@ class DatasetService
     public function listDatasets(): JsonResponse
     {
         $categoryImages = [];
+        $categoryItems = [];
         $seenFilenames = [];
 
         // 1. Read files from storage/app/public/dataset/{category}
@@ -30,20 +31,36 @@ class DatasetService
                 foreach ($files as $file) {
                     $fname = basename($file);
                     $seenFilenames[$fname] = true;
-                    $categoryImages[$categoryName][] = Storage::disk($this->disk)->url($file);
+                    $url = Storage::disk($this->disk)->url($file);
+                    $categoryImages[$categoryName][] = $url;
+                    $categoryItems[$categoryName][] = [
+                        'url' => $url,
+                        'filename' => $fname,
+                        'is_synced' => true,
+                        'sync_status' => 'synced',
+                        'source' => 'dataset_gallery',
+                        'storage_location' => 'dataset_storage',
+                        'created_at' => null,
+                    ];
                 }
             }
         }
 
         // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
         $diagnoses = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where(function ($q) use ($allowedPriorityCategories) {
+                foreach ($allowedPriorityCategories as $cat) {
+                    $q->orWhereRaw('LOWER(label) = ?', [$cat]);
+                }
+            })
             ->latest()
             ->get();
 
         foreach ($diagnoses as $diag) {
             $catSlug = strtolower(trim($diag->label));
-            if (empty($catSlug)) {
+            if (empty($catSlug) || ! in_array($catSlug, $allowedPriorityCategories)) {
                 continue;
             }
 
@@ -54,17 +71,32 @@ class DatasetService
 
             if (Storage::disk($this->disk)->exists($diag->image_path)) {
                 $seenFilenames[$filename] = true;
-                $categoryImages[$catSlug][] = Storage::disk($this->disk)->url($diag->image_path);
+                $url = Storage::disk($this->disk)->url($diag->image_path);
+                $isSynced = (bool) $diag->contributed_to_dataset
+                    || Storage::disk($this->disk)->exists($this->datasetDir.'/'.$catSlug.'/'.$filename);
+
+                $categoryImages[$catSlug][] = $url;
+                $categoryItems[$catSlug][] = [
+                    'url' => $url,
+                    'filename' => $filename,
+                    'is_synced' => $isSynced,
+                    'sync_status' => $isSynced ? 'synced' : 'needs_sync',
+                    'source' => 'diagnosis',
+                    'storage_location' => $isSynced ? 'dataset_storage' : 'diagnosis_scan',
+                    'diagnosis_uuid' => $diag->uuid,
+                    'created_at' => $diag->created_at?->toIso8601String(),
+                ];
             }
         }
 
-        // Format into standard API response: [ { 'category' => 'acne', 'images' => [...] }, ... ]
+        // Format into standard API response: [ { 'category' => 'acne', 'images' => [...], 'items' => [...] }, ... ]
         $result = [];
         foreach ($categoryImages as $cat => $urls) {
             if (count($urls) > 0) {
                 $result[] = [
                     'category' => $cat,
                     'images' => array_values(array_unique($urls)),
+                    'items' => $categoryItems[$cat] ?? [],
                 ];
             }
         }
