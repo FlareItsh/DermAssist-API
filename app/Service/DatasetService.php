@@ -22,11 +22,16 @@ class DatasetService
         $categoryItems = [];
         $seenFilenames = [];
 
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+
         // 1. Read files from storage/app/public/dataset/{category}
         if (Storage::disk($this->disk)->exists($this->datasetDir)) {
             $categories = Storage::disk($this->disk)->directories($this->datasetDir);
             foreach ($categories as $categoryPath) {
                 $categoryName = strtolower(basename($categoryPath));
+                if (! in_array($categoryName, $allowedPriorityCategories)) {
+                    continue;
+                }
                 $files = Storage::disk($this->disk)->files($categoryPath);
                 foreach ($files as $file) {
                     $fname = basename($file);
@@ -318,6 +323,15 @@ class DatasetService
         }
 
         $category = Str::slug($diagnosis->label);
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+
+        if (! in_array($category, $allowedPriorityCategories)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot save to priority dataset: Only verified Acne, Eczema, or Herpes scans can be contributed.',
+            ], 422);
+        }
+
         $path = $diagnosis->image_path;
 
         if (! Storage::disk($this->disk)->exists($path)) {
