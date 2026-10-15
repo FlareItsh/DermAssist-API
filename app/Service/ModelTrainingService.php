@@ -583,20 +583,27 @@ class ModelTrainingService
     /**
      * Manually trigger sync of newly gathered scans to local dataset storage
      * and the AI algorithm training raw directory.
+     *
+     * @param  array<string>|null  $selectedUuids
      */
-    public function syncDataset(): JsonResponse
+    public function syncDataset(?array $selectedUuids = null): JsonResponse
     {
         $allowedCategories = ['acne', 'eczema', 'herpes'];
         $promotedCount = 0;
 
-        $diagnoses = Diagnosis::query()
+        $query = Diagnosis::query()
             ->whereNotNull('image_path')
             ->where(function ($q) use ($allowedCategories) {
                 foreach ($allowedCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
                 }
-            })
-            ->get();
+            });
+
+        if (! empty($selectedUuids)) {
+            $query->whereIn('uuid', $selectedUuids);
+        }
+
+        $diagnoses = $query->get();
 
         foreach ($diagnoses as $diag) {
             $catSlug = strtolower(trim($diag->label));

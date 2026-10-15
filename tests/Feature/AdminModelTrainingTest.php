@@ -396,3 +396,58 @@ test('getTrainingImages includes is_synced and sync_status indicators', function
     expect($unsyncedItem['is_synced'])->toBeFalse();
     expect($unsyncedItem['sync_status'])->toBe('needs_sync');
 });
+
+test('admin can selectively sync specific diagnosis scans by uuid', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('diagnoses/selected_scan.jpg', 'selected content');
+    Storage::disk('public')->put('diagnoses/unselected_scan.jpg', 'unselected content');
+
+    $selected = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.95,
+        'probabilities' => ['Acne' => 0.95, 'Eczema' => 0.03, 'Herpes' => 0.02],
+        'image_path' => 'diagnoses/selected_scan.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    $unselected = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Eczema',
+        'confidence' => 0.90,
+        'probabilities' => ['Acne' => 0.05, 'Eczema' => 0.90, 'Herpes' => 0.05],
+        'image_path' => 'diagnoses/unselected_scan.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    Http::fake([
+        '*/dataset/sync' => Http::response([
+            'message' => 'Synced 1 images from webapp storage.',
+            'copied_count' => 1,
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/dataset/sync', [
+        'uuids' => [$selected->uuid],
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'promoted_count' => 1,
+            'raw_copied_count' => 1,
+        ]);
+
+    expect(Storage::disk('public')->exists('dataset/acne/selected_scan.jpg'))->toBeTrue();
+    expect($selected->fresh()->contributed_to_dataset)->toBeTrue();
+
+    // Verify unselected scan was NOT promoted to dataset storage
+    expect(Storage::disk('public')->exists('dataset/eczema/unselected_scan.jpg'))->toBeFalse();
+    expect($unselected->fresh()->contributed_to_dataset)->toBeFalse();
+});

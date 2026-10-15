@@ -91,9 +91,14 @@ class AdminModelTrainingController extends Controller
     /**
      * Synchronize newly gathered scan images to the training pipeline.
      */
-    public function sync(): JsonResponse
+    public function sync(Request $request): JsonResponse
     {
-        return $this->trainingService->syncDataset();
+        $validated = $request->validate([
+            'uuids' => 'nullable|array',
+            'uuids.*' => 'string',
+        ]);
+
+        return $this->trainingService->syncDataset($validated['uuids'] ?? null);
     }
 
     /**
