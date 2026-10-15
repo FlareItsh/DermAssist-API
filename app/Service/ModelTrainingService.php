@@ -146,6 +146,7 @@ class ModelTrainingService
 
         $items = [];
         $seenFilenames = [];
+        $lastTrained = $this->getLastTrainedAt();
 
         foreach ($diagnoses as $diag) {
             $filename = basename($diag->image_path);
@@ -173,6 +174,14 @@ class ModelTrainingService
             $isSynced = $isInLocalStorage || $isInRaw;
             $syncStatus = $isSynced ? 'synced' : 'needs_sync';
 
+            // Trained Status: True only if synced AND contributed/created at or before the last training run
+            $isTrained = false;
+            if ($isSynced && $lastTrained) {
+                $diagTime = $diag->contributed_at ?? $diag->created_at;
+                $isTrained = $diagTime ? $diagTime->lte($lastTrained) : false;
+            }
+            $stage = $isTrained ? 'trained' : ($isSynced ? 'synced' : 'pending');
+
             $storageStatus = 'ready';
             if ($isInRaw && $isInLocalStorage) {
                 $storageStatus = 'both';
@@ -198,6 +207,8 @@ class ModelTrainingService
                 'is_tangible' => $isTangible,
                 'is_synced' => $isSynced,
                 'sync_status' => $syncStatus,
+                'is_trained' => $isTrained,
+                'stage' => $stage,
                 'storage_status' => $storageStatus,
                 'source' => 'diagnosis',
             ];
@@ -243,6 +254,8 @@ class ModelTrainingService
                     'is_tangible' => ! $isInRaw,
                     'is_synced' => true,
                     'sync_status' => 'synced',
+                    'is_trained' => true,
+                    'stage' => 'trained',
                     'storage_status' => $isInRaw ? 'both' : 'local_storage',
                     'source' => 'dataset_gallery',
                 ];
@@ -255,6 +268,8 @@ class ModelTrainingService
         $inRawCount = count(array_filter($items, fn ($i) => $i['is_in_raw']));
         $syncedCount = count(array_filter($items, fn ($i) => $i['is_synced']));
         $needsSyncCount = count($items) - $syncedCount;
+        $trainedCount = count(array_filter($items, fn ($i) => $i['is_trained']));
+        $syncedUntrainedCount = count(array_filter($items, fn ($i) => $i['is_synced'] && ! $i['is_trained']));
 
         $byCategory = [
             'acne' => count(array_filter($items, fn ($i) => $i['category'] === 'acne')),
@@ -270,6 +285,8 @@ class ModelTrainingService
             'intangible_count' => $intangibleCount,
             'synced_count' => $syncedCount,
             'needs_sync_count' => $needsSyncCount,
+            'trained_count' => $trainedCount,
+            'synced_untrained_count' => $syncedUntrainedCount,
             'by_category' => $byCategory,
             'summary' => [
                 'total' => count($items),
@@ -279,6 +296,8 @@ class ModelTrainingService
                 'in_raw_count' => $inRawCount,
                 'synced_count' => $syncedCount,
                 'needs_sync_count' => $needsSyncCount,
+                'trained_count' => $trainedCount,
+                'synced_untrained_count' => $syncedUntrainedCount,
             ],
         ]);
     }
