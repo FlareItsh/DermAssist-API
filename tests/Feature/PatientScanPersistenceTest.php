@@ -1,11 +1,15 @@
 <?php
 
+use App\Http\Resources\MessageResource;
+use App\Models\Conversation;
 use App\Models\Diagnosis;
 use App\Models\Role;
 use App\Models\User;
 use App\Repository\DiagnosisRepository;
 use App\Repository\RecordRepository;
 use App\Service\ClinicalReportPdfService;
+use App\Service\ConversationService;
+use App\Service\MessageService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -138,4 +142,79 @@ test('patient can export pdf for their diagnosis without mysql integer coercion 
 
     expect($response->getStatusCode())->toBe(200);
     expect($response->headers->get('Content-Type'))->toContain('application/pdf');
+});
+
+test('patient can start conversation using doctor uuid and send scan result message', function () {
+    $doctor = User::factory()->create([
+        'role_id' => $this->doctorRole->id,
+        'first_name' => 'Doctor',
+        'last_name' => 'Who',
+    ]);
+
+    $diagnosis = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'user_uuid' => $this->patient->uuid,
+        'patient_uuid' => $this->patient->uuid,
+        'label' => 'Acne',
+        'confidence' => 0.91,
+        'probabilities' => ['Acne' => 0.91],
+        'image_path' => 'diagnoses/test.jpg',
+        'status' => 'completed',
+    ]);
+
+    // Start conversation with doctor using uuid
+    $convService = app(ConversationService::class);
+    $conversation = $convService->startConversation($this->patient, ['doctor_id' => $doctor->uuid]);
+
+    expect($conversation->uuid)->not->toBeNull();
+
+    // Send direct scan result message
+    $msgService = app(MessageService::class);
+    $message = $msgService->sendMessage($this->patient, $conversation->uuid, [
+        'message' => "Hello doctor\n[SCAN_RESULT:{$diagnosis->uuid}]",
+    ]);
+
+    expect($message->message)->toContain("[SCAN_RESULT:{$diagnosis->uuid}]");
+
+    // Resource should enrich with diagnosis data without appointment
+    $resourceData = (new MessageResource($message))->toArray(request());
+    expect($resourceData)->toHaveKey('appointment_data');
+    expect($resourceData['appointment_data']['status'])->toBe('scan_result');
+    expect($resourceData['appointment_data']['diagnosis']['label'])->toBe('Acne');
+});
+
+test('patient can book appointment passing doctor uuid directly with diagnosis', function () {
+    $doctor = User::factory()->create([
+        'role_id' => $this->doctorRole->id,
+        'first_name' => 'Skin',
+        'last_name' => 'Specialist',
+    ]);
+
+    // Create existing conversation so referral is allowed
+    Conversation::create([
+        'doctor_id' => $doctor->id,
+        'patient_id' => $this->patient->id,
+    ]);
+
+    $diagnosis = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'user_uuid' => $this->patient->uuid,
+        'patient_uuid' => $this->patient->uuid,
+        'label' => 'Eczema',
+        'confidence' => 0.89,
+        'probabilities' => ['Eczema' => 0.89],
+        'image_path' => 'diagnoses/eczema.jpg',
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($this->patient)
+        ->postJson('/api/appointments', [
+            'doctor_id' => $doctor->uuid,
+            'diagnosis_uuid' => $diagnosis->uuid,
+            'message' => 'Consultation requested',
+        ]);
+
+    $response->assertStatus(200);
+    $response->assertJsonStructure(['conversation_uuid', 'appointment']);
+    expect($response->json('appointment.status'))->toBe('pending');
 });

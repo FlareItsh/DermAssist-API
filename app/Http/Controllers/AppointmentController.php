@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\User;
 use App\Service\AppointmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,13 @@ class AppointmentController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('doctor_id') && ! is_numeric($request->input('doctor_id'))) {
+            $doc = User::where('uuid', $request->input('doctor_id'))->first();
+            if ($doc) {
+                $request->merge(['doctor_id' => $doc->id]);
+            }
+        }
+
         $validated = $request->validate([
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',

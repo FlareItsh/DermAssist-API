@@ -82,10 +82,13 @@ class ConversationService
                 throw ValidationException::withMessages(['patient_id' => 'Patient ID is required.']);
             }
 
-            $targetUser = User::with('role')->findOrFail($patientId);
-            if ($targetUser->role->slug !== 'patient') {
+            $targetUser = is_numeric($patientId)
+                ? User::with('role')->findOrFail($patientId)
+                : User::with('role')->where('uuid', $patientId)->firstOrFail();
+            if ($targetUser->role?->slug !== 'patient') {
                 throw ValidationException::withMessages(['patient_id' => 'Target user is not a patient.']);
             }
+            $patientId = $targetUser->id;
         } else {
             $patientId = $user->id;
             $doctorId = $payload['doctor_id'] ?? null;
@@ -94,9 +97,17 @@ class ConversationService
                 throw ValidationException::withMessages(['doctor_id' => 'Doctor ID is required.']);
             }
 
-            $targetUser = User::with('role')->findOrFail($doctorId);
-            if ($targetUser->role->slug !== 'doctor') {
+            $targetUser = is_numeric($doctorId)
+                ? User::with('role')->findOrFail($doctorId)
+                : User::with('role')->where('uuid', $doctorId)->firstOrFail();
+            if ($targetUser->role?->slug !== 'doctor') {
                 throw ValidationException::withMessages(['doctor_id' => 'Target user is not a doctor.']);
+            }
+            $doctorId = $targetUser->id;
+
+            // Strict guard: Doctor-registered patients can only converse with their registering doctor
+            if ($user->is_doctor_registered && $user->registered_by_doctor_id && (int) $doctorId !== (int) $user->registered_by_doctor_id) {
+                abort(403, 'You are registered under an attending doctor and cannot converse with other doctors.');
             }
         }
 
