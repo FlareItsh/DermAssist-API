@@ -11,11 +11,14 @@ class DatasetController extends Controller
 
     public function index(Request $request)
     {
+        $hasPagination = $request->has('page') || $request->has('per_page');
+        $perPage = $request->query('per_page') ? (int) $request->query('per_page') : ($hasPagination ? 12 : null);
+
         return $this->datasetService->listDatasets(
             category: $request->query('category'),
-            page: $request->query('page') ? (int) $request->query('page') : null,
-            perPage: $request->query('per_page') ? (int) $request->query('per_page') : 12,
-            all: $request->boolean('all', false)
+            page: $request->query('page') ? (int) $request->query('page') : ($hasPagination ? 1 : null),
+            perPage: $perPage,
+            all: $request->boolean('all', ! $hasPagination)
         );
     }
 
