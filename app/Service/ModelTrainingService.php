@@ -37,11 +37,26 @@ class ModelTrainingService
 
         foreach (array_keys($gatheredCounts) as $cat) {
             $dir = $this->datasetDir.'/'.$cat;
+            $seen = [];
             if (Storage::disk($this->disk)->exists($dir)) {
-                $count = count(Storage::disk($this->disk)->files($dir));
-                $gatheredCounts[$cat] = $count;
-                $totalGathered += $count;
+                foreach (Storage::disk($this->disk)->files($dir) as $f) {
+                    $seen[basename($f)] = true;
+                }
             }
+
+            $diagScans = Diagnosis::query()
+                ->whereNotNull('image_path')
+                ->whereRaw('LOWER(label) = ?', [$cat])
+                ->pluck('image_path');
+            foreach ($diagScans as $ip) {
+                if (! empty($ip)) {
+                    $seen[basename($ip)] = true;
+                }
+            }
+
+            $count = count($seen);
+            $gatheredCounts[$cat] = $count;
+            $totalGathered += $count;
         }
 
         // 2. Gather Out-of-Scope Research Dataset Candidates
@@ -155,6 +170,8 @@ class ModelTrainingService
 
             // Storage Tangibility Rule: Intangible if already in raw OR local storage
             $isTangible = ! $isInLocalStorage && ! $isInRaw;
+            $isSynced = $isInLocalStorage || $isInRaw;
+            $syncStatus = $isSynced ? 'synced' : 'needs_sync';
 
             $storageStatus = 'ready';
             if ($isInRaw && $isInLocalStorage) {
@@ -168,6 +185,7 @@ class ModelTrainingService
             $items[] = [
                 'uuid' => $diag->uuid,
                 'filename' => $filename,
+                'file_name' => $filename,
                 'image_url' => Storage::disk($this->disk)->url($diag->image_path),
                 'category' => $catSlug,
                 'label' => ucwords($catSlug),
@@ -178,6 +196,8 @@ class ModelTrainingService
                 'is_in_local_storage' => $isInLocalStorage,
                 'is_in_raw' => $isInRaw,
                 'is_tangible' => $isTangible,
+                'is_synced' => $isSynced,
+                'sync_status' => $syncStatus,
                 'storage_status' => $storageStatus,
                 'source' => 'diagnosis',
             ];
@@ -210,6 +230,7 @@ class ModelTrainingService
                 $items[] = [
                     'uuid' => md5($file),
                     'filename' => $fname,
+                    'file_name' => $fname,
                     'image_url' => Storage::disk($this->disk)->url($file),
                     'category' => $catSlug,
                     'label' => ucwords($catSlug),
@@ -220,6 +241,8 @@ class ModelTrainingService
                     'is_in_local_storage' => true,
                     'is_in_raw' => $isInRaw,
                     'is_tangible' => ! $isInRaw,
+                    'is_synced' => true,
+                    'sync_status' => 'synced',
                     'storage_status' => $isInRaw ? 'both' : 'local_storage',
                     'source' => 'dataset_gallery',
                 ];
@@ -230,6 +253,8 @@ class ModelTrainingService
         $intangibleCount = count($items) - $tangibleCount;
         $inLocalStorageCount = count(array_filter($items, fn ($i) => $i['is_in_local_storage']));
         $inRawCount = count(array_filter($items, fn ($i) => $i['is_in_raw']));
+        $syncedCount = count(array_filter($items, fn ($i) => $i['is_synced']));
+        $needsSyncCount = count($items) - $syncedCount;
 
         $byCategory = [
             'acne' => count(array_filter($items, fn ($i) => $i['category'] === 'acne')),
@@ -243,6 +268,8 @@ class ModelTrainingService
             'total' => count($items),
             'tangible_count' => $tangibleCount,
             'intangible_count' => $intangibleCount,
+            'synced_count' => $syncedCount,
+            'needs_sync_count' => $needsSyncCount,
             'by_category' => $byCategory,
             'summary' => [
                 'total' => count($items),
@@ -250,7 +277,106 @@ class ModelTrainingService
                 'intangible_count' => $intangibleCount,
                 'in_local_storage_count' => $inLocalStorageCount,
                 'in_raw_count' => $inRawCount,
+                'synced_count' => $syncedCount,
+                'needs_sync_count' => $needsSyncCount,
             ],
+        ]);
+    }
+
+    /**
+     * Completely delete candidate scans or dataset gallery images from disk,
+     * consultation records, and the algorithm raw directory.
+     *
+     * @param  array<string>  $uuids
+     */
+    public function deleteTrainingImages(array $uuids): JsonResponse
+    {
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+        $deletedCount = 0;
+
+        // 1. Check for Diagnoses matching the UUIDs
+        $diagnoses = Diagnosis::whereIn('uuid', $uuids)->get();
+        foreach ($diagnoses as $diag) {
+            $catSlug = strtolower(trim($diag->label));
+            $catTitle = ucfirst($catSlug);
+            $filename = basename($diag->image_path);
+
+            // Delete original diagnosis scan photo if present
+            if (! empty($diag->image_path) && Storage::disk($this->disk)->exists($diag->image_path)) {
+                Storage::disk($this->disk)->delete($diag->image_path);
+            }
+
+            // Delete from webapp dataset if copied
+            $datasetPath = $this->datasetDir.'/'.$catSlug.'/'.$filename;
+            if (Storage::disk($this->disk)->exists($datasetPath)) {
+                Storage::disk($this->disk)->delete($datasetPath);
+            }
+
+            // Delete from Algorithms data/raw if synced
+            if ($hasAlgorithmsRaw) {
+                $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                if (is_dir($rawCatPath)) {
+                    $webappFile = $rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+                    $directFile = $rawCatPath.DIRECTORY_SEPARATOR.$filename;
+                    if (file_exists($webappFile)) {
+                        @unlink($webappFile);
+                    }
+                    if (file_exists($directFile)) {
+                        @unlink($directFile);
+                    }
+                }
+            }
+
+            // Clear image path on the diagnosis so it can never be used or trained on
+            $diag->update([
+                'image_path' => null,
+                'contributed_to_dataset' => false,
+            ]);
+
+            $deletedCount++;
+        }
+
+        // 2. Also check for dataset gallery files matching md5 or filename
+        $remainingUuids = array_diff($uuids, $diagnoses->pluck('uuid')->all());
+        if (! empty($remainingUuids)) {
+            $categories = ['acne', 'eczema', 'herpes'];
+            foreach ($categories as $catSlug) {
+                $catDir = $this->datasetDir.'/'.$catSlug;
+                $catTitle = ucfirst($catSlug);
+                if (! Storage::disk($this->disk)->exists($catDir)) {
+                    continue;
+                }
+                $files = Storage::disk($this->disk)->files($catDir);
+                foreach ($files as $file) {
+                    $fname = basename($file);
+                    $fileMd5 = md5($file);
+                    if (in_array($fileMd5, $remainingUuids) || in_array($fname, $remainingUuids)) {
+                        Storage::disk($this->disk)->delete($file);
+
+                        if ($hasAlgorithmsRaw) {
+                            $rawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                            if (is_dir($rawCatPath)) {
+                                $webappFile = $rawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$fname;
+                                $directFile = $rawCatPath.DIRECTORY_SEPARATOR.$fname;
+                                if (file_exists($webappFile)) {
+                                    @unlink($webappFile);
+                                }
+                                if (file_exists($directFile)) {
+                                    @unlink($directFile);
+                                }
+                            }
+                        }
+
+                        $deletedCount++;
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => "Successfully deleted {$deletedCount} image(s).",
+            'deleted_count' => $deletedCount,
         ]);
     }
 
@@ -290,9 +416,22 @@ class ModelTrainingService
             $count = 0;
             foreach (['acne', 'eczema', 'herpes'] as $cat) {
                 $dir = $this->datasetDir.'/'.$cat;
+                $seen = [];
                 if (Storage::disk($this->disk)->exists($dir)) {
-                    $count += count(Storage::disk($this->disk)->files($dir));
+                    foreach (Storage::disk($this->disk)->files($dir) as $f) {
+                        $seen[basename($f)] = true;
+                    }
                 }
+                $diagScans = Diagnosis::query()
+                    ->whereNotNull('image_path')
+                    ->whereRaw('LOWER(label) = ?', [$cat])
+                    ->pluck('image_path');
+                foreach ($diagScans as $ip) {
+                    if (! empty($ip)) {
+                        $seen[basename($ip)] = true;
+                    }
+                }
+                $count += count($seen);
             }
 
             return $count;
@@ -304,16 +443,27 @@ class ModelTrainingService
 
         foreach (['acne', 'eczema', 'herpes'] as $cat) {
             $dir = $this->datasetDir.'/'.$cat;
-            if (! Storage::disk($this->disk)->exists($dir)) {
-                continue;
-            }
-            $files = Storage::disk($this->disk)->files($dir);
-            foreach ($files as $file) {
-                $fullPath = $basePath.DIRECTORY_SEPARATOR.$file;
-                if (file_exists($fullPath) && filemtime($fullPath) > $lastTrainedTimestamp) {
-                    $count++;
+            $seen = [];
+            if (Storage::disk($this->disk)->exists($dir)) {
+                $files = Storage::disk($this->disk)->files($dir);
+                foreach ($files as $file) {
+                    $fullPath = $basePath.DIRECTORY_SEPARATOR.$file;
+                    if (file_exists($fullPath) && filemtime($fullPath) > $lastTrainedTimestamp) {
+                        $seen[basename($file)] = true;
+                    }
                 }
             }
+            $recentDiags = Diagnosis::query()
+                ->whereNotNull('image_path')
+                ->whereRaw('LOWER(label) = ?', [$cat])
+                ->where('created_at', '>', $lastTrained)
+                ->pluck('image_path');
+            foreach ($recentDiags as $ip) {
+                if (! empty($ip)) {
+                    $seen[basename($ip)] = true;
+                }
+            }
+            $count += count($seen);
         }
 
         return $count;
@@ -346,8 +496,6 @@ class ModelTrainingService
                     'contributed_at' => now(),
                 ]);
             }
-            // Automatically ensure dataset is synchronized to data/raw/
-            $options['sync_dataset'] = true;
         }
 
         if (! empty($options['expansion_disease'])) {
@@ -370,11 +518,13 @@ class ModelTrainingService
             }
         }
 
+        $shouldSync = (bool) ($options['sync_dataset'] ?? false);
+
         try {
             $response = Http::timeout(10)->post($this->aiUrl.'/train/start', [
                 'architecture' => $options['architecture'] ?? 'ensemble',
                 'epochs' => (int) ($options['epochs'] ?? 5),
-                'sync_dataset' => $options['sync_dataset'] ?? true,
+                'sync_dataset' => $shouldSync,
                 'learning_rate' => $options['learning_rate'] ?? null,
                 'expansion_disease' => $options['expansion_disease'] ?? null,
             ]);
@@ -431,18 +581,66 @@ class ModelTrainingService
     }
 
     /**
-     * Manually trigger sync of newly gathered scans to the training raw dataset.
+     * Manually trigger sync of newly gathered scans to local dataset storage
+     * and the AI algorithm training raw directory.
      */
     public function syncDataset(): JsonResponse
     {
-        try {
-            $response = Http::timeout(10)->post($this->aiUrl.'/dataset/sync');
+        $allowedCategories = ['acne', 'eczema', 'herpes'];
+        $promotedCount = 0;
 
-            return response()->json($response->json(), $response->status());
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to trigger dataset sync: '.$e->getMessage(),
-            ], 503);
+        $diagnoses = Diagnosis::query()
+            ->whereNotNull('image_path')
+            ->where(function ($q) use ($allowedCategories) {
+                foreach ($allowedCategories as $cat) {
+                    $q->orWhereRaw('LOWER(label) = ?', [$cat]);
+                }
+            })
+            ->get();
+
+        foreach ($diagnoses as $diag) {
+            $catSlug = strtolower(trim($diag->label));
+            if (! in_array($catSlug, $allowedCategories)) {
+                continue;
+            }
+
+            if (empty($diag->image_path) || ! Storage::disk($this->disk)->exists($diag->image_path)) {
+                continue;
+            }
+
+            $filename = basename($diag->image_path);
+            $targetPath = $this->datasetDir.'/'.$catSlug.'/'.$filename;
+
+            if (! Storage::disk($this->disk)->exists($targetPath)) {
+                Storage::disk($this->disk)->copy($diag->image_path, $targetPath);
+                $promotedCount++;
+            }
+
+            if (! $diag->contributed_to_dataset) {
+                $diag->update([
+                    'contributed_to_dataset' => true,
+                    'contributed_at' => now(),
+                ]);
+            }
         }
+
+        $aiResult = null;
+        try {
+            $response = Http::timeout(15)->post($this->aiUrl.'/dataset/sync');
+            if ($response->successful()) {
+                $aiResult = $response->json();
+            }
+        } catch (\Exception $e) {
+            $aiResult = ['warning' => 'AI Service unreachable for raw folder sync: '.$e->getMessage()];
+        }
+
+        $rawCopiedCount = $aiResult['copied_count'] ?? 0;
+
+        return response()->json([
+            'message' => "Successfully synced {$promotedCount} webapp scan(s) to local dataset storage and {$rawCopiedCount} to training raw directory.",
+            'promoted_count' => $promotedCount,
+            'raw_copied_count' => $rawCopiedCount,
+            'ai_result' => $aiResult,
+        ]);
     }
 }

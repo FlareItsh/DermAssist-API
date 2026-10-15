@@ -289,3 +289,110 @@ test('admin can retrain with selected candidate image uuids', function () {
     expect(Storage::disk('public')->exists('dataset/eczema/scan_to_train.jpg'))->toBeTrue();
     expect($diag->fresh()->contributed_to_dataset)->toBeTrue();
 });
+
+test('admin can permanently delete candidate training images', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('diagnoses/delete_me.jpg', 'scan image data');
+    Storage::disk('public')->put('dataset/acne/delete_me.jpg', 'dataset copy');
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.95,
+        'probabilities' => ['Acne' => 0.95, 'Eczema' => 0.03, 'Herpes' => 0.02],
+        'image_path' => 'diagnoses/delete_me.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => true,
+    ]);
+
+    $response = $this->actingAs($admin)->deleteJson('/api/admin/model/training-images', [
+        'uuids' => [$diag->uuid],
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'deleted_count' => 1,
+        ]);
+
+    expect(Storage::disk('public')->exists('diagnoses/delete_me.jpg'))->toBeFalse();
+    expect(Storage::disk('public')->exists('dataset/acne/delete_me.jpg'))->toBeFalse();
+    expect($diag->fresh()->image_path)->toBeNull();
+    expect($diag->fresh()->contributed_to_dataset)->toBeFalse();
+});
+
+test('admin can sync dataset and promote webapp scans into local dataset storage', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('diagnoses/new_scan.jpg', 'new clinical scan');
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Herpes',
+        'confidence' => 0.91,
+        'probabilities' => ['Acne' => 0.04, 'Eczema' => 0.05, 'Herpes' => 0.91],
+        'image_path' => 'diagnoses/new_scan.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    Http::fake([
+        '*/dataset/sync' => Http::response([
+            'message' => 'Synced 1 images from webapp storage.',
+            'copied_count' => 1,
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/dataset/sync');
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'promoted_count' => 1,
+            'raw_copied_count' => 1,
+        ]);
+
+    expect(Storage::disk('public')->exists('dataset/herpes/new_scan.jpg'))->toBeTrue();
+    expect($diag->fresh()->contributed_to_dataset)->toBeTrue();
+});
+
+test('getTrainingImages includes is_synced and sync_status indicators', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('diagnoses/unsynced_scan.jpg', 'unsynced scan');
+    Storage::disk('public')->put('dataset/acne/synced_photo.jpg', 'already in dataset');
+
+    $unsynced = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.90,
+        'probabilities' => ['Acne' => 0.90, 'Eczema' => 0.05, 'Herpes' => 0.05],
+        'image_path' => 'diagnoses/unsynced_scan.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => false,
+    ]);
+
+    $response = $this->actingAs($admin)->getJson('/api/admin/model/training-images');
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'data' => [
+                '*' => ['uuid', 'is_synced', 'sync_status'],
+            ],
+            'summary' => ['synced_count', 'needs_sync_count'],
+        ]);
+
+    $data = collect($response->json('data'));
+    $unsyncedItem = $data->firstWhere('uuid', $unsynced->uuid);
+
+    expect($unsyncedItem['is_synced'])->toBeFalse();
+    expect($unsyncedItem['sync_status'])->toBe('needs_sync');
+});
