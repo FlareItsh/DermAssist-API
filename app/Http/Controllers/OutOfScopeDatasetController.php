@@ -9,9 +9,14 @@ class OutOfScopeDatasetController extends Controller
 {
     public function __construct(private OutOfScopeDatasetService $service) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        return $this->service->listDatasets();
+        return $this->service->listDatasets(
+            category: $request->query('category'),
+            page: $request->query('page') ? (int) $request->query('page') : null,
+            perPage: $request->query('per_page') ? (int) $request->query('per_page') : 12,
+            all: $request->boolean('all', false)
+        );
     }
 
     public function stats()

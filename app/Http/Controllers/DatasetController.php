@@ -9,9 +9,14 @@ class DatasetController extends Controller
 {
     public function __construct(private DatasetService $datasetService) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        return $this->datasetService->listDatasets();
+        return $this->datasetService->listDatasets(
+            category: $request->query('category'),
+            page: $request->query('page') ? (int) $request->query('page') : null,
+            perPage: $request->query('per_page') ? (int) $request->query('per_page') : 12,
+            all: $request->boolean('all', false)
+        );
     }
 
     public function store(Request $request)

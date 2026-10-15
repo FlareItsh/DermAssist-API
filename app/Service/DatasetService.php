@@ -16,20 +16,27 @@ class DatasetService
 
     private string $datasetDir = 'dataset';
 
-    public function listDatasets(): JsonResponse
+    public function listDatasets(?string $category = null, ?int $page = null, ?int $perPage = 12, bool $all = false): JsonResponse
     {
         $categoryImages = [];
         $categoryItems = [];
         $seenFilenames = [];
 
         $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+        $filterCategory = $category ? strtolower(trim($category)) : null;
+
+        if ($filterCategory && ! in_array($filterCategory, $allowedPriorityCategories)) {
+            return response()->json([]);
+        }
+
+        $targetCategories = $filterCategory ? [$filterCategory] : $allowedPriorityCategories;
 
         // 1. Read files from storage/app/public/dataset/{category}
         if (Storage::disk($this->disk)->exists($this->datasetDir)) {
             $categories = Storage::disk($this->disk)->directories($this->datasetDir);
             foreach ($categories as $categoryPath) {
                 $categoryName = strtolower(basename($categoryPath));
-                if (! in_array($categoryName, $allowedPriorityCategories)) {
+                if (! in_array($categoryName, $targetCategories)) {
                     continue;
                 }
                 $files = Storage::disk($this->disk)->files($categoryPath);
@@ -52,11 +59,10 @@ class DatasetService
         }
 
         // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records
-        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
         $diagnoses = Diagnosis::query()
             ->whereNotNull('image_path')
-            ->where(function ($q) use ($allowedPriorityCategories) {
-                foreach ($allowedPriorityCategories as $cat) {
+            ->where(function ($q) use ($targetCategories) {
+                foreach ($targetCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
                 }
             })
@@ -65,7 +71,7 @@ class DatasetService
 
         foreach ($diagnoses as $diag) {
             $catSlug = strtolower(trim($diag->label));
-            if (empty($catSlug) || ! in_array($catSlug, $allowedPriorityCategories)) {
+            if (empty($catSlug) || ! in_array($catSlug, $targetCategories)) {
                 continue;
             }
 
@@ -94,16 +100,54 @@ class DatasetService
             }
         }
 
-        // Format into standard API response: [ { 'category' => 'acne', 'images' => [...], 'items' => [...] }, ... ]
+        // 3. Format into standard paginated API response
         $result = [];
-        foreach ($categoryImages as $cat => $urls) {
-            if (count($urls) > 0) {
-                $result[] = [
-                    'category' => $cat,
-                    'images' => array_values(array_unique($urls)),
-                    'items' => $categoryItems[$cat] ?? [],
-                ];
+        $currentPage = max(1, $page ?? 1);
+        $perPageCount = max(1, $perPage ?? 12);
+
+        foreach ($targetCategories as $cat) {
+            $rawUrls = $categoryImages[$cat] ?? [];
+            $rawItems = $categoryItems[$cat] ?? [];
+            $uniqueUrls = array_values(array_unique($rawUrls));
+            $total = count($uniqueUrls);
+
+            // Compute global sync metrics across ALL items in this category
+            $syncedCount = 0;
+            $needsSyncCount = 0;
+            foreach ($rawItems as $item) {
+                if (! empty($item['is_synced'])) {
+                    $syncedCount++;
+                } else {
+                    $needsSyncCount++;
+                }
             }
+
+            if ($total === 0 && $filterCategory === null) {
+                continue;
+            }
+
+            if ($all) {
+                $pagedUrls = $uniqueUrls;
+                $pagedItems = $rawItems;
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            } else {
+                $offset = ($currentPage - 1) * $perPageCount;
+                $pagedUrls = array_values(array_slice($uniqueUrls, $offset, $perPageCount));
+                $pagedItems = array_values(array_slice($rawItems, $offset, $perPageCount));
+                $lastPage = max(1, (int) ceil($total / $perPageCount));
+            }
+
+            $result[] = [
+                'category' => $cat,
+                'total' => $total,
+                'current_page' => $currentPage,
+                'per_page' => $perPageCount,
+                'last_page' => $lastPage,
+                'synced_count' => $syncedCount,
+                'needs_sync_count' => $needsSyncCount,
+                'images' => $pagedUrls,
+                'items' => $pagedItems,
+            ];
         }
 
         return response()->json($result);

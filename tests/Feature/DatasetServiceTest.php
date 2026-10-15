@@ -114,3 +114,45 @@ test('returns 404 when deleting a non-existent image url', function () {
         ->deleteJson('/api/dataset', ['url' => 'http://localhost/storage/dataset/acne/nonexistent.jpg'])
         ->assertNotFound();
 });
+
+test('paginates dataset images on the server side', function () {
+    $user = User::factory()->create();
+
+    // Upload 5 images into Acne
+    for ($i = 1; $i <= 5; $i++) {
+        $this->actingAs($user)->postJson('/api/dataset', [
+            'image' => UploadedFile::fake()->image("acne_{$i}.jpg"),
+            'category' => 'Acne',
+        ])->assertStatus(201);
+    }
+
+    // Page 1 with per_page=2
+    $responseP1 = $this->actingAs($user)
+        ->getJson('/api/dataset?category=acne&page=1&per_page=2')
+        ->assertSuccessful()
+        ->json();
+
+    expect($responseP1)->toHaveCount(1);
+    expect($responseP1[0]['total'])->toBe(5);
+    expect($responseP1[0]['current_page'])->toBe(1);
+    expect($responseP1[0]['per_page'])->toBe(2);
+    expect($responseP1[0]['last_page'])->toBe(3);
+    expect($responseP1[0]['images'])->toHaveCount(2);
+
+    // Page 3 with per_page=2 should have 1 remaining image
+    $responseP3 = $this->actingAs($user)
+        ->getJson('/api/dataset?category=acne&page=3&per_page=2')
+        ->assertSuccessful()
+        ->json();
+
+    expect($responseP3[0]['current_page'])->toBe(3);
+    expect($responseP3[0]['images'])->toHaveCount(1);
+
+    // all=true should return all 5 images
+    $responseAll = $this->actingAs($user)
+        ->getJson('/api/dataset?category=acne&all=true')
+        ->assertSuccessful()
+        ->json();
+
+    expect($responseAll[0]['images'])->toHaveCount(5);
+});
