@@ -69,6 +69,7 @@ class UserResource extends JsonResource
             'consent_dataset' => (bool) $this->consent_dataset,
             'terms_accepted_at' => $this->terms_accepted_at?->toIso8601String(),
             'two_factor_enabled' => $this->hasTwoFactorEnabled(),
+            'must_change_password' => (bool) $this->must_change_password,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

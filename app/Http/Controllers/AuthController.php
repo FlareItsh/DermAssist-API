@@ -42,6 +42,17 @@ class AuthController extends Controller
         return response()->json($result, 200);
     }
 
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        return $this->userService->resetPasswordWithToken($validated);
+    }
+
     public function resendVerification(Request $request): JsonResponse
     {
         $user = $request->user();

@@ -41,6 +41,7 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
         Route::post('/login', 'login')->name('login');
         Route::post('/register', 'register');
         Route::post('/verify-account', 'verifyAccount');
+        Route::post('/reset-password', 'resetPassword');
     });
 
     Route::post('/two-factor/challenge', [TwoFactorController::class, 'challenge'])
@@ -189,6 +190,9 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     // Doctor-Created Patients
     Route::get('/doctor/patients', [DoctorPatientController::class, 'index']);
     Route::post('/doctor/patients', [DoctorPatientController::class, 'store']);
+    Route::put('/doctor/patients/{uuid}', [DoctorPatientController::class, 'update']);
+    Route::post('/doctor/patients/{uuid}/send-reset-link', [DoctorPatientController::class, 'sendResetLink']);
+    Route::post('/doctor/patients/{uuid}/temporary-password', [DoctorPatientController::class, 'issueTemporaryPassword']);
     Route::post('/doctor/patients/{uuid}/enable', [DoctorPatientController::class, 'enable']);
     Route::post('/doctor/patients/{uuid}/disable', [DoctorPatientController::class, 'disable']);
     Route::delete('/doctor/patients/{uuid}', [DoctorPatientController::class, 'destroy']);

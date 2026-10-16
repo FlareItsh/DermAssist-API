@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Http\Resources\UserResource;
+use App\Mail\PatientResetPasswordMail;
 use App\Mail\VerifyAccountMail;
 use App\Models\Appointment;
 use App\Models\BlockedDevice;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -358,6 +360,7 @@ class UserService
             }
 
             $payload['password'] = $payload['new_password'];
+            $payload['must_change_password'] = false;
             unset($payload['current_password'], $payload['new_password'], $payload['new_password_confirmation']);
 
             // Security Hardening: Revoke other tokens on password change
@@ -716,6 +719,204 @@ class UserService
         ]);
 
         return new UserResource($user);
+    }
+
+    private function resolveDoctorId(User $operator): int
+    {
+        if ($operator->role?->slug === 'secretary' && $operator->doctor_id) {
+            return (int) $operator->doctor_id;
+        }
+
+        return (int) $operator->id;
+    }
+
+    private function authorizeDoctorPatientAccess(User $operator, User $patient): void
+    {
+        if ($operator->role?->slug === 'admin') {
+            return;
+        }
+
+        $doctorId = $this->resolveDoctorId($operator);
+
+        if ($patient->registered_by_doctor_id && (int) $patient->registered_by_doctor_id === $doctorId) {
+            return;
+        }
+
+        $hasAppointment = Appointment::where('patient_id', $patient->id)
+            ->where('doctor_id', $doctorId)
+            ->exists();
+        if ($hasAppointment) {
+            return;
+        }
+
+        $hasConversation = Conversation::where('patient_id', $patient->id)
+            ->where('doctor_id', $doctorId)
+            ->exists();
+        if ($hasConversation) {
+            return;
+        }
+
+        abort(403, 'You are not authorized to manage this patient record.');
+    }
+
+    public function updateDoctorPatient(string $patientUuid, array $payload, User $doctorOrSecretary)
+    {
+        $patient = $this->userRepository->findByUuid($patientUuid);
+        if (! $patient || $patient->role?->slug !== 'patient') {
+            throw ValidationException::withMessages([
+                'patient' => ['Patient record not found.'],
+            ]);
+        }
+
+        $this->authorizeDoctorPatientAccess($doctorOrSecretary, $patient);
+
+        $validator = Validator::make($payload, [
+            'first_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
+            'middle_name' => ['nullable', 'string', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
+            'last_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\-\'.]+$/u'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$patient->id],
+            'contact_number' => ['nullable', 'string', 'regex:/^\+?[0-9\s\-\(\)]{7,25}$/'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
+            'gender' => ['nullable', 'string', 'max:50'],
+            'street' => ['nullable', 'string', 'max:255'],
+            'barangay' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'province' => ['nullable', 'string', 'max:255'],
+        ], [
+            'first_name.regex' => 'First name may only contain letters, spaces, hyphens, and apostrophes.',
+            'middle_name.regex' => 'Middle name may only contain letters, spaces, hyphens, and apostrophes.',
+            'last_name.regex' => 'Last name may only contain letters, spaces, hyphens, and apostrophes.',
+            'email.unique' => 'The email address is already taken by another account.',
+            'date_of_birth.before_or_equal' => 'Date of birth cannot be in the future.',
+        ]);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        $validated = $validator->validated();
+
+        if (! empty($validated['date_of_birth'])) {
+            $dob = Carbon::parse($validated['date_of_birth']);
+            $validated['age'] = $dob->age;
+            $validated['date_of_birth'] = $dob->format('Y-m-d');
+        } elseif (array_key_exists('age', $payload) && is_numeric($payload['age'])) {
+            $validated['age'] = (int) $payload['age'];
+        }
+
+        $wasWalkIn = str_starts_with($patient->email ?? '', 'walkin.') && str_ends_with($patient->email ?? '', '@clinic.local');
+        if ($wasWalkIn && ! str_starts_with($validated['email'], 'walkin.')) {
+            $validated['is_doctor_registered'] = true;
+            if (! $patient->registered_by_doctor_id) {
+                $validated['registered_by_doctor_id'] = $this->resolveDoctorId($doctorOrSecretary);
+            }
+        }
+
+        $patient->update($validated);
+
+        return new UserResource($patient->fresh(['role', 'registeredByDoctor']));
+    }
+
+    public function sendPatientResetLink(string $patientUuid, User $doctorOrSecretary)
+    {
+        $patient = $this->userRepository->findByUuid($patientUuid);
+        if (! $patient || $patient->role?->slug !== 'patient') {
+            throw ValidationException::withMessages([
+                'patient' => ['Patient record not found.'],
+            ]);
+        }
+
+        $this->authorizeDoctorPatientAccess($doctorOrSecretary, $patient);
+
+        $isWalkIn = str_starts_with($patient->email ?? '', 'walkin.') && str_ends_with($patient->email ?? '', '@clinic.local');
+        if ($isWalkIn || empty($patient->email)) {
+            return response()->json([
+                'message' => 'This walk-in patient does not have a real email address. Please update their email first or use a temporary access code.',
+            ], 422);
+        }
+
+        $token = PasswordBroker::broker()->createToken($patient);
+
+        $requesterName = $doctorOrSecretary->first_name.' '.$doctorOrSecretary->last_name;
+        if ($doctorOrSecretary->role?->slug === 'doctor') {
+            $requesterName = 'Dr. '.$requesterName;
+        }
+
+        try {
+            Mail::to($patient->email)->send(new PatientResetPasswordMail($patient, $token, $requesterName));
+        } catch (\Throwable $e) {
+            Log::error("Failed to send password reset email to {$patient->email}: ".$e->getMessage());
+
+            return response()->json([
+                'message' => 'Could not dispatch password reset email. Please verify mail configuration or issue a temporary password.',
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => "Secure password reset link has been dispatched to {$patient->email}.",
+        ], 200);
+    }
+
+    public function issuePatientTemporaryPassword(string $patientUuid, array $payload, User $doctorOrSecretary)
+    {
+        $patient = $this->userRepository->findByUuid($patientUuid);
+        if (! $patient || $patient->role?->slug !== 'patient') {
+            throw ValidationException::withMessages([
+                'patient' => ['Patient record not found.'],
+            ]);
+        }
+
+        $this->authorizeDoctorPatientAccess($doctorOrSecretary, $patient);
+
+        $tempPassword = ! empty($payload['temporary_password']) ? trim((string) $payload['temporary_password']) : null;
+        if ($tempPassword) {
+            if (strlen($tempPassword) < 8) {
+                throw ValidationException::withMessages([
+                    'temporary_password' => ['Temporary password must be at least 8 characters long.'],
+                ]);
+            }
+        } else {
+            $tempPassword = 'Derm-'.Str::random(4).'-'.Str::random(4);
+        }
+
+        $patient->password = $tempPassword;
+        $patient->must_change_password = true;
+        $patient->save();
+
+        $patient->tokens()->delete();
+
+        return response()->json([
+            'message' => 'Temporary password issued successfully. The patient will be required to choose a new private password upon next login.',
+            'temporary_password' => $tempPassword,
+            'must_change_password' => true,
+        ], 200);
+    }
+
+    public function resetPasswordWithToken(array $payload)
+    {
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower(trim($payload['email']))])->first();
+        if (! $user) {
+            return response()->json([
+                'message' => 'We could not find an account with that email address.',
+            ], 422);
+        }
+
+        if (! PasswordBroker::broker()->tokenExists($user, $payload['token'])) {
+            return response()->json([
+                'message' => 'The password reset token is invalid or has expired. Please request a new link.',
+            ], 422);
+        }
+
+        $user->password = $payload['password'];
+        $user->must_change_password = false;
+        $user->save();
+
+        PasswordBroker::broker()->deleteToken($user);
+        $user->tokens()->delete();
+
+        return response()->json([
+            'message' => 'Your password has been reset successfully. You can now log in with your new password.',
+        ], 200);
     }
 
     public function listDoctorSecretaries(User $doctor)
