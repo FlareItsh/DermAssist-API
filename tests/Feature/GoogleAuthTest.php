@@ -18,6 +18,10 @@ beforeEach(function () {
         ['slug' => 'patient'],
         ['name' => 'Patient']
     );
+    $this->doctorRole = Role::firstOrCreate(
+        ['slug' => 'doctor'],
+        ['name' => 'Doctor']
+    );
 });
 
 test('redirect endpoint redirects to google oauth consent screen with basic profile and email scopes', function () {
@@ -28,6 +32,16 @@ test('redirect endpoint redirects to google oauth consent screen with basic prof
     expect($location)->toContain('accounts.google.com')
         ->and($location)->not->toContain('birthday.read')
         ->and($location)->not->toContain('gender.read');
+});
+
+test('redirect endpoint sets oauth role cookie and state when requested as doctor', function () {
+    $response = $this->get('/api/auth/google/redirect?role=doctor');
+
+    $response->assertStatus(302);
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('accounts.google.com')
+        ->and($location)->toContain('state=');
+    $response->assertPlainCookie('da_oauth_role', 'doctor');
 });
 
 test('callback for new user creates patient and sends confirmation email', function () {
@@ -68,6 +82,48 @@ test('callback for new user creates patient and sends confirmation email', funct
     Mail::assertSent(GoogleLoginConfirmMail::class, function ($mail) {
         return $mail->user->email === 'googleuser@example.com';
     });
+});
+
+test('callback creates doctor when doctor role is requested via state', function () {
+    Mail::fake();
+
+    $socialiteUser = Mockery::mock(SocialiteUser::class);
+    $socialiteUser->shouldReceive('getId')->andReturn('google-doctor-123456');
+    $socialiteUser->shouldReceive('getEmail')->andReturn('doctorgoogle@example.com');
+    $socialiteUser->shouldReceive('getName')->andReturn('John Doctor');
+    $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
+    $socialiteUser->token = 'mock-google-token';
+    $socialiteUser->user = [
+        'given_name' => 'John',
+        'family_name' => 'Doctor',
+    ];
+
+    $provider = Mockery::mock('Laravel\Socialite\Two\GoogleProvider');
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->andReturn($socialiteUser);
+
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    $state = base64_encode(json_encode(['role' => 'doctor']));
+
+    $response = $this->withUnencryptedCookie('da_device_id', 'device-doc-123')
+        ->get("/api/auth/google/callback?state={$state}");
+
+    $response->assertStatus(302);
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('http://localhost:3000/auth/check-email?email=doctorgoogle%40example.com');
+
+    Mail::assertSent(GoogleLoginConfirmMail::class, function ($mail) {
+        return $mail->user->email === 'doctorgoogle@example.com';
+    });
+
+    $createdDoctor = User::where('google_id', 'google-doctor-123456')->first();
+    expect($createdDoctor)->not->toBeNull()
+        ->and($createdDoctor->email)->toBe('doctorgoogle@example.com')
+        ->and($createdDoctor->first_name)->toBe('John')
+        ->and($createdDoctor->last_name)->toBe('Doctor')
+        ->and($createdDoctor->role_id)->toBe($this->doctorRole->id)
+        ->and($createdDoctor->prc_number)->toBeNull();
 });
 
 test('callback for existing user on recognized device skips email confirmation and issues auth code', function () {
@@ -120,6 +176,33 @@ test('confirming email with signed route authorizes device and redirects with co
 
     $user->refresh();
     expect($user->device_token)->toBe('new-authorized-device');
+});
+
+test('confirming email for doctor without prc details sets needs_prc_onboarding in code', function () {
+    $doctor = User::factory()->create([
+        'role_id' => $this->doctorRole->id,
+        'prc_number' => null,
+    ]);
+
+    $signedUrl = URL::temporarySignedRoute(
+        'auth.google.confirm',
+        now()->addMinutes(15),
+        ['uuid' => $doctor->uuid, 'device_id' => 'device-doc-confirm']
+    );
+
+    $response = $this->get($signedUrl);
+
+    $response->assertStatus(302);
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('http://localhost:3000/auth/callback?code=');
+
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $queryParams);
+    $authCode = $queryParams['code'] ?? null;
+    expect($authCode)->not->toBeNull();
+
+    $cached = Cache::get("google_auth_code_{$authCode}");
+    expect($cached)->not->toBeNull()
+        ->and($cached['needs_prc_onboarding'])->toBeTrue();
 });
 
 test('exchanging auth code returns sanctum token and user payload', function () {

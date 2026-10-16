@@ -55,8 +55,8 @@ class RegisterRequest extends FormRequest
             ],
             'affiliation' => ['nullable', 'string', 'max:255'],
             'role' => ['required', 'string', 'in:patient,doctor'],
-            'prcNumber' => ['required_if:role,doctor', 'nullable', 'string', 'digits:7'],
-            'idPhoto' => ['required_if:role,doctor', 'nullable', 'string'],
+            'prcNumber' => ['nullable', 'string', 'digits:7'],
+            'idPhoto' => ['nullable', 'string'],
             'consent_dataset' => ['nullable', 'boolean'],
             'agree_to_terms' => ['required', 'accepted'],
         ];

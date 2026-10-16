@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\VerificationResource;
 use App\Mail\GoogleLoginConfirmMail;
 use App\Models\BlockedDevice;
+use App\Models\DoctorVerification;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -24,12 +26,19 @@ class GoogleAuthController extends Controller
     /**
      * Redirect the user to the Google authentication page.
      */
-    public function redirect(): RedirectResponse
+    public function redirect(Request $request): RedirectResponse
     {
-        return Socialite::driver('google')
+        $role = $request->query('role');
+        $role = in_array($role, ['doctor', 'patient'], true) ? $role : 'patient';
+        $statePayload = json_encode(['role' => $role]);
+
+        $redirect = Socialite::driver('google')
             ->scopes(['openid', 'profile', 'email'])
+            ->with(['state' => base64_encode($statePayload)])
             ->stateless()
             ->redirect();
+
+        return $redirect->withCookie(cookie('da_oauth_role', $role, 15, null, null, false, false));
     }
 
     /**
@@ -54,6 +63,25 @@ class GoogleAuthController extends Controller
             return redirect("{$frontendUrl}/login?error=".urlencode('Unable to retrieve email from Google account.'));
         }
 
+        // Determine requested role from state or cookie fallback
+        $requestedRole = 'patient';
+        if ($request->has('state')) {
+            try {
+                $decodedState = json_decode(base64_decode((string) $request->query('state')), true);
+                if (! empty($decodedState['role']) && in_array($decodedState['role'], ['doctor', 'patient'], true)) {
+                    $requestedRole = $decodedState['role'];
+                }
+            } catch (\Throwable $e) {
+                // fallback
+            }
+        }
+        if ($requestedRole === 'patient' && $request->hasCookie('da_oauth_role')) {
+            $cookieRole = (string) $request->cookie('da_oauth_role');
+            if (in_array($cookieRole, ['doctor', 'patient'], true)) {
+                $requestedRole = $cookieRole;
+            }
+        }
+
         // Check if device or IP is blocked
         $deviceId = $request->cookie('da_device_id') ?? $request->header('X-Device-Id');
         if ($deviceId && BlockedDevice::where('device_id', $deviceId)->exists()) {
@@ -73,11 +101,11 @@ class GoogleAuthController extends Controller
                 ]);
             } else {
                 $isNewUser = true;
-                $patientRole = Role::where('slug', 'patient')->first();
-                if (! $patientRole) {
-                    Log::error('Patient role not found during Google registration.');
+                $targetRole = Role::where('slug', $requestedRole)->first();
+                if (! $targetRole) {
+                    Log::error("Role {$requestedRole} not found during Google registration.");
 
-                    return redirect("{$frontendUrl}/login?error=".urlencode('System configuration error: Patient role missing.'));
+                    return redirect("{$frontendUrl}/login?error=".urlencode("System configuration error: {$requestedRole} role missing."));
                 }
 
                 $rawUser = $googleUser->user ?? [];
@@ -87,11 +115,11 @@ class GoogleAuthController extends Controller
                 if (empty($firstName)) {
                     $nameParts = explode(' ', trim((string) $googleUser->getName()));
                     $firstName = $nameParts[0] ?? 'Google';
-                    $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : 'Patient';
+                    $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : ($requestedRole === 'doctor' ? 'Doctor' : 'Patient');
                 }
 
                 if (empty($lastName)) {
-                    $lastName = 'Patient';
+                    $lastName = $requestedRole === 'doctor' ? 'Doctor' : 'Patient';
                 }
 
                 $user = User::create([
@@ -99,7 +127,7 @@ class GoogleAuthController extends Controller
                     'last_name' => $lastName,
                     'email' => $email,
                     'password' => Hash::make(Str::random(32)),
-                    'role_id' => $patientRole->id,
+                    'role_id' => $targetRole->id,
                     'uuid' => (string) Str::uuid(),
                     'google_id' => $googleId,
                     'account_status' => 'active',
@@ -108,7 +136,27 @@ class GoogleAuthController extends Controller
                     'cookies_accepted_at' => now(),
                     'device_token' => $deviceId,
                 ]);
+
+                if ($requestedRole === 'doctor') {
+                    DoctorVerification::create([
+                        'user_id' => $user->id,
+                        'prc_number' => null,
+                        'id_photo_path' => null,
+                        'status' => DoctorVerification::STATUS_PENDING,
+                    ]);
+                }
             }
+        }
+
+        $user->loadMissing('role', 'latestDoctorVerification');
+        if (($user->role?->slug ?? '') === 'doctor' && ! $user->latestDoctorVerification) {
+            DoctorVerification::create([
+                'user_id' => $user->id,
+                'prc_number' => $user->prc_number,
+                'id_photo_path' => null,
+                'status' => DoctorVerification::STATUS_PENDING,
+            ]);
+            $user->load('latestDoctorVerification');
         }
 
         if ($user->account_status === 'disabled') {
@@ -120,10 +168,14 @@ class GoogleAuthController extends Controller
             $this->saveGoogleAvatar($user, (string) $googleUser->getAvatar());
         }
 
-        // Recognized if existing user has device_token matching current deviceId
-        $isRecognizedDevice = (! $isNewUser) && (! empty($user->device_token)) && $deviceId && ($user->device_token === $deviceId);
+        // Check if doctor needs PRC onboarding
+        $user->loadMissing('role', 'latestDoctorVerification');
+        $isDoctor = ($user->role?->slug ?? '') === 'doctor';
+        $needsPrcOnboarding = $isDoctor && (empty($user->prc_number) || empty($user->latestDoctorVerification?->id_photo_path));
 
         // Option C: If new signup OR device is not recognized, require email confirmation first
+        $isRecognizedDevice = (! $isNewUser) && (! empty($user->device_token)) && $deviceId && ($user->device_token === $deviceId);
+
         if (! $isRecognizedDevice) {
             $confirmUrl = URL::temporarySignedRoute(
                 'auth.google.confirm',
@@ -145,6 +197,8 @@ class GoogleAuthController extends Controller
         Cache::put("google_auth_code_{$code}", [
             'user_id' => $user->id,
             'device_id' => $deviceId,
+            'needs_prc_onboarding' => $needsPrcOnboarding,
+            'is_new_user' => $isNewUser,
         ], now()->addMinutes(2));
 
         return redirect("{$frontendUrl}/auth/callback?code={$code}");
@@ -161,7 +215,7 @@ class GoogleAuthController extends Controller
             return redirect("{$frontendUrl}/login?error=".urlencode('Sign in link has expired or is invalid. Please sign in again.'));
         }
 
-        $user = User::where('uuid', $uuid)->first();
+        $user = User::with('role', 'latestDoctorVerification')->where('uuid', $uuid)->first();
         if (! $user) {
             return redirect("{$frontendUrl}/login?error=".urlencode('User account not found.'));
         }
@@ -171,10 +225,14 @@ class GoogleAuthController extends Controller
             $user->update(['device_token' => $deviceId]);
         }
 
+        $isDoctor = ($user->role?->slug ?? '') === 'doctor';
+        $needsPrcOnboarding = $isDoctor && (empty($user->prc_number) || empty($user->latestDoctorVerification?->id_photo_path));
+
         $code = Str::random(40);
         Cache::put("google_auth_code_{$code}", [
             'user_id' => $user->id,
             'device_id' => $deviceId,
+            'needs_prc_onboarding' => $needsPrcOnboarding,
         ], now()->addMinutes(2));
 
         return redirect("{$frontendUrl}/auth/callback?code={$code}");
@@ -195,7 +253,7 @@ class GoogleAuthController extends Controller
             return response()->json(['message' => 'Invalid or expired authorization code.'], 401);
         }
 
-        $user = User::with('role', 'doctor')->find($cached['user_id']);
+        $user = User::with('role', 'doctor', 'latestDoctorVerification')->find($cached['user_id']);
         if (! $user) {
             return response()->json(['message' => 'User account not found.'], 404);
         }
@@ -223,9 +281,13 @@ class GoogleAuthController extends Controller
         }
 
         $token = $user->createToken('google-auth-token')->plainTextToken;
+        $needsPrcOnboarding = ! empty($cached['needs_prc_onboarding']);
+        $isNewUser = ! empty($cached['is_new_user']);
 
         return response()->json([
             'token' => $token,
+            'needs_prc_onboarding' => $needsPrcOnboarding,
+            'is_new_user' => $isNewUser,
             'user' => [
                 'uuid' => $user->uuid,
                 'first_name' => $user->first_name,
@@ -235,6 +297,8 @@ class GoogleAuthController extends Controller
                 'account_status' => $user->account_status ?? 'active',
                 'doctor_uuid' => $user->doctor?->uuid,
                 'verification_deadline' => $user->verification_deadline?->toIso8601String(),
+                'prc_number' => $user->prc_number,
+                'doctor_verification' => $user->latestDoctorVerification ? new VerificationResource($user->latestDoctorVerification) : null,
             ],
         ]);
     }

@@ -22,7 +22,7 @@ test('updating doctor verification status dispatches DoctorVerificationStatusUpd
     $verification = DoctorVerification::create([
         'user_id' => $doctor->id,
         'prc_number' => '1234567',
-        'prc_id_path' => 'licenses/test.jpg',
+        'id_photo_path' => 'licenses/test.jpg',
         'status' => 'pending',
     ]);
 
@@ -39,4 +39,42 @@ test('updating doctor verification status dispatches DoctorVerificationStatusUpd
                $event->status === 'verified' &&
                $event->verificationUuid === $verification->uuid;
     });
+});
+
+test('admin cannot verify doctor if prc number or id photo is missing', function () {
+    $adminRole = Role::factory()->create(['slug' => 'admin']);
+    $doctorRole = Role::factory()->create(['slug' => 'doctor']);
+
+    $admin = User::factory()->create(['role_id' => $adminRole->id]);
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+
+    $verificationWithoutPhoto = DoctorVerification::create([
+        'user_id' => $doctor->id,
+        'prc_number' => '1234567',
+        'id_photo_path' => null,
+        'status' => 'pending',
+    ]);
+
+    Sanctum::actingAs($admin);
+
+    $response = $this->putJson('/api/verifications/'.$verificationWithoutPhoto->uuid, [
+        'status' => 'verified',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['status']);
+
+    $verificationWithoutPrc = DoctorVerification::create([
+        'user_id' => $doctor->id,
+        'prc_number' => null,
+        'id_photo_path' => 'licenses/doc.jpg',
+        'status' => 'pending',
+    ]);
+
+    $response2 = $this->putJson('/api/verifications/'.$verificationWithoutPrc->uuid, [
+        'status' => 'verified',
+    ]);
+
+    $response2->assertStatus(422)
+        ->assertJsonValidationErrors(['status']);
 });
