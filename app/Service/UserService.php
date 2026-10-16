@@ -164,10 +164,10 @@ class UserService
             $user = $this->userRepository->create($userData);
 
             // Handle Doctor Verification
-            if ($roleSlug === 'doctor' && ! empty($prcSanitized)) {
+            if ($roleSlug === 'doctor') {
                 $verificationData = [
                     'user_id' => $user->id,
-                    'prc_number' => $prcSanitized,
+                    'prc_number' => $prcSanitized ?: null,
                     'id_photo_path' => null,
                     'status' => DoctorVerification::STATUS_PENDING,
                 ];
@@ -272,8 +272,48 @@ class UserService
             }
         }
 
-        // Do not allow overwriting an existing PRC number from regular profile updates
-        if ($user->role?->slug === 'doctor' && ! empty($user->prc_number)) {
+        // Handle doctor PRC verification details if provided
+        if ($user->role?->slug === 'doctor') {
+            $isVerified = $user->latestDoctorVerification?->status === DoctorVerification::STATUS_VERIFIED;
+            $prcSanitized = ! empty($payload['prcNumber']) ? preg_replace('/\D/', '', (string) $payload['prcNumber']) : ($user->prc_number ?? null);
+            $idPhotoPath = null;
+            if (! empty($payload['idPhoto'])) {
+                try {
+                    $path = 'verifications/doctor_'.$user->id.'_'.time().'.png';
+                    $idPhotoPath = $this->saveBase64Image($payload['idPhoto'], $path);
+                } catch (\Throwable $e) {
+                    Log::warning("Failed to save ID photo for doctor {$user->id}: ".$e->getMessage());
+                }
+            }
+
+            if (! $isVerified && (! empty($idPhotoPath) || ! empty($prcSanitized))) {
+                $verification = $user->latestDoctorVerification;
+                if ($verification) {
+                    $updateFields = [
+                        'status' => DoctorVerification::STATUS_PENDING,
+                        'rejection_reason' => null,
+                    ];
+                    if ($prcSanitized) {
+                        $updateFields['prc_number'] = $prcSanitized;
+                    }
+                    if ($idPhotoPath) {
+                        $updateFields['id_photo_path'] = $idPhotoPath;
+                    }
+                    $verification->update($updateFields);
+                } else {
+                    DoctorVerification::create([
+                        'user_id' => $user->id,
+                        'prc_number' => $prcSanitized ?? '',
+                        'id_photo_path' => $idPhotoPath,
+                        'status' => DoctorVerification::STATUS_PENDING,
+                    ]);
+                }
+            }
+            unset($payload['idPhoto']);
+        }
+
+        // Do not allow overwriting an existing PRC number if already verified
+        if ($user->role?->slug === 'doctor' && $user->latestDoctorVerification?->status === DoctorVerification::STATUS_VERIFIED) {
             unset($payload['prcNumber'], $payload['prc_number']);
         } elseif (isset($payload['prcNumber'])) {
             $payload['prc_number'] = preg_replace('/\D/', '', (string) $payload['prcNumber']);

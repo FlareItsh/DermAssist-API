@@ -36,6 +36,7 @@ class UserResource extends JsonResource
             'phone' => $this->contact_number,
             'affiliation' => $this->affiliation,
             'prcNumber' => $this->prc_number,
+            'prc_number' => $this->prc_number,
             'email' => $this->email,
             'role' => $this->role->slug,
             'doctor_uuid' => $this->doctor?->uuid,

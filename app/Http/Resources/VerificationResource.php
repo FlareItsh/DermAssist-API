@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class VerificationResource extends JsonResource
 {
@@ -18,7 +19,9 @@ class VerificationResource extends JsonResource
             'id' => $this->id,
             'uuid' => $this->uuid,
             'prcNumber' => $this->prc_number,
+            'prc_number' => $this->prc_number,
             'id_photo_path' => $this->id_photo_path,
+            'id_photo_url' => $this->id_photo_path ? Storage::url($this->id_photo_path) : null,
             'status' => $this->status,
             'rejection_reason' => $this->rejection_reason,
             'user' => new UserResource($this->whenLoaded('user')),

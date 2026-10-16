@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Events\DoctorVerificationStatusUpdated;
 use App\Http\Resources\VerificationResource;
 use App\Repository\VerificationRepository;
+use Illuminate\Validation\ValidationException;
 
 class VerificationService
 {
@@ -48,6 +49,19 @@ class VerificationService
 
     public function updateVerification(string $uuid, array $payload)
     {
+        if (isset($payload['status']) && $payload['status'] === 'verified') {
+            $verification = $this->verificationRepository->findByUuid($uuid);
+            $verification->loadMissing('user');
+            $hasPrcNumber = ! empty($verification->prc_number) || ! empty($verification->user?->prc_number);
+            $hasIdPhoto = ! empty($verification->id_photo_path);
+
+            if (! $hasPrcNumber || ! $hasIdPhoto) {
+                throw ValidationException::withMessages([
+                    'status' => ['Cannot verify doctor without a valid PRC license number and uploaded PRC ID document.'],
+                ]);
+            }
+        }
+
         $model = $this->verificationRepository->update($uuid, $payload);
         $model->loadMissing('user');
         $doctorUuid = $model->user?->uuid;
