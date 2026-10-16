@@ -167,3 +167,29 @@ test('availability check for doctor registered patient does not return alternati
         'alternatives' => [],
     ]);
 });
+
+test('doctor can create walk-in patient without email and password', function () {
+    Sanctum::actingAs($this->doctor);
+
+    $response = $this->postJson('/api/doctor/patients', [
+        'firstName' => 'Maria',
+        'lastName' => 'Santos',
+        'date_of_birth' => '1995-05-10',
+        'age' => 31,
+        'gender' => 'Female',
+        'is_walk_in' => true,
+    ]);
+
+    $response->assertStatus(201);
+    $user = $response->json('user');
+    expect($user['first_name'])->toBe('Maria')
+        ->and($user['last_name'])->toBe('Santos')
+        ->and($user['uuid'])->not->toBeEmpty();
+
+    $this->assertDatabaseHas('users', [
+        'first_name' => 'Maria',
+        'last_name' => 'Santos',
+        'is_doctor_registered' => true,
+        'registered_by_doctor_id' => $this->doctor->id,
+    ]);
+});

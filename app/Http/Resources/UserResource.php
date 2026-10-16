@@ -45,6 +45,7 @@ class UserResource extends JsonResource
             'doctor_verification' => $this->latestDoctorVerification ? new VerificationResource($this->latestDoctorVerification) : null,
             'can_be_recommended' => $this->role?->slug === 'doctor' ? $this->canBeRecommended() : false,
             'is_doctor_registered' => (bool) $this->is_doctor_registered,
+            'is_walk_in' => (bool) (str_starts_with($this->email ?? '', 'walkin.') && str_ends_with($this->email ?? '', '@clinic.local')),
             'registered_by_doctor_id' => $this->registered_by_doctor_id,
             'registered_by_doctor' => $this->registeredByDoctor ? [
                 'id' => $this->registeredByDoctor->id,

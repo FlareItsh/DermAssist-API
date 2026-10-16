@@ -603,12 +603,22 @@ class UserService
                 ? $doctor->doctor_id
                 : $doctor->id;
 
+            $isWalkIn = empty($payload['email']) || ! empty($payload['is_walk_in']);
+
+            $email = ! empty($payload['email'])
+                ? trim((string) $payload['email'])
+                : 'walkin.'.(string) Str::uuid().'@clinic.local';
+
+            $password = ! empty($payload['password'])
+                ? $payload['password']
+                : Str::random(32);
+
             $userData = [
                 'first_name' => $payload['firstName'],
                 'middle_name' => $payload['middleName'] ?? null,
                 'last_name' => $payload['lastName'],
-                'email' => $payload['email'],
-                'password' => $payload['password'],
+                'email' => $email,
+                'password' => $password,
                 'date_of_birth' => $payload['date_of_birth'] ?? null,
                 'gender' => $payload['gender'] ?? null,
                 'contact_number' => ! empty($payload['contact_number']) ? trim((string) $payload['contact_number']) : (! empty($payload['phone']) ? trim((string) $payload['phone']) : null),
