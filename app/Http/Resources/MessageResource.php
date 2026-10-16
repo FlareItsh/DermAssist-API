@@ -35,20 +35,49 @@ class MessageResource extends JsonResource
             $appointmentUuid = $matches[2];
             $diagnosisUuid = $matches[3];
 
-            $appointment = Appointment::where('uuid', $appointmentUuid)->with(['patient'])->first();
+            $appointment = Appointment::where('uuid', $appointmentUuid)->with(['patient', 'doctor'])->first();
             $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->first();
 
             if ($appointment && $diagnosis) {
                 $data['appointment_data'] = [
                     'status' => $appointment->status,
+                    'appointment_uuid' => $appointment->uuid,
+                    'diagnosis_uuid' => $diagnosis->uuid,
+                    'doctor_id' => $appointment->doctor?->id,
+                    'doctor_uuid' => $appointment->doctor?->uuid,
+                    'doctor_name' => $appointment->doctor ? trim($appointment->doctor->first_name.' '.$appointment->doctor->last_name) : null,
                     'diagnosis' => [
                         'label' => $diagnosis->label,
                         'confidence' => $diagnosis->confidence,
                         'image_path' => $diagnosis->image_path,
-                        'patient_name' => $appointment->patient?->first_name.' '.$appointment->patient?->last_name,
+                        'patient_name' => $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient',
                         'patient_age' => $diagnosis->patient_age,
                         'date' => $diagnosis->created_at->format('M d, Y'),
                     ],
+                ];
+            }
+        } elseif (preg_match('/\[APPOINTMENT_DECLINED:([a-f0-9-]+)\]/', $this->message, $matches)) {
+            $appointmentUuid = $matches[1];
+
+            $appointment = Appointment::where('uuid', $appointmentUuid)->with(['patient', 'diagnosis', 'doctor'])->first();
+
+            if ($appointment) {
+                $diagnosis = $appointment->diagnosis;
+                $data['appointment_data'] = [
+                    'status' => 'declined',
+                    'appointment_uuid' => $appointment->uuid,
+                    'diagnosis_uuid' => $diagnosis?->uuid,
+                    'doctor_id' => $appointment->doctor?->id,
+                    'doctor_uuid' => $appointment->doctor?->uuid,
+                    'doctor_name' => $appointment->doctor ? trim($appointment->doctor->first_name.' '.$appointment->doctor->last_name) : null,
+                    'diagnosis' => $diagnosis ? [
+                        'label' => $diagnosis->label,
+                        'confidence' => $diagnosis->confidence,
+                        'image_path' => $diagnosis->image_path,
+                        'patient_name' => $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient',
+                        'patient_age' => $diagnosis->patient_age,
+                        'date' => $diagnosis->created_at->format('M d, Y'),
+                    ] : null,
                 ];
             }
         }
