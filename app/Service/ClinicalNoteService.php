@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Events\AppointmentUpdated;
 use App\Models\Appointment;
 use App\Models\Diagnosis;
 use App\Models\User;
@@ -65,19 +66,40 @@ class ClinicalNoteService
             }
         }
 
-        // Auto-create or find a completed appointment for this interaction
-        $appointment = Appointment::firstOrCreate(
-            [
-                'doctor_id' => $user->id,
-                'patient_id' => $patientId,
+        // Auto-complete existing active appointment if present, or create a completed record
+        $activeAppointment = Appointment::where('doctor_id', $user->id)
+            ->where('patient_id', $patientId)
+            ->whereIn('status', ['pending', 'scheduled', 'reschedule_proposed', 'reschedule_requested'])
+            ->orderByDesc('created_at')
+            ->first();
+
+        if ($activeAppointment) {
+            $activeAppointment->update([
                 'status' => 'completed',
                 'diagnosis_id' => $diagnosis->id,
-            ],
-            [
-                'uuid' => (string) Str::uuid(),
-                'scheduled_at' => now(),
-            ]
-        );
+            ]);
+            $appointment = $activeAppointment;
+            $appointment->loadMissing(['doctor', 'patient']);
+            broadcast(new AppointmentUpdated(
+                $appointment->patient?->uuid,
+                $appointment->doctor?->uuid,
+                'completed',
+                $appointment->uuid
+            ));
+        } else {
+            $appointment = Appointment::firstOrCreate(
+                [
+                    'doctor_id' => $user->id,
+                    'patient_id' => $patientId,
+                    'status' => 'completed',
+                    'diagnosis_id' => $diagnosis->id,
+                ],
+                [
+                    'uuid' => (string) Str::uuid(),
+                    'scheduled_at' => now(),
+                ]
+            );
+        }
 
         $validated['appointment_id'] = $appointment->id;
         $validated['doctor_id'] = $appointment->doctor_id;
