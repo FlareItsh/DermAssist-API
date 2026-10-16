@@ -60,6 +60,9 @@ class DiagnosisService
             }
         }
 
+        $isDoctor = ! empty($data['doctor_uuid']) || ($data['user'] && $data['user']->role && $data['user']->role->slug === 'doctor');
+        $initialStatus = $isDoctor ? 'completed' : 'draft';
+
         // 3. Create record
         $diagnosis = $this->diagnosisRepository->create([
             'user_uuid' => $userUuid,
@@ -69,7 +72,7 @@ class DiagnosisService
             'label' => $aiResult['label'],
             'confidence' => $aiResult['confidence'],
             'probabilities' => $aiResult['all_probabilities'],
-            'status' => 'completed',
+            'status' => $initialStatus,
             'patient_consented_dataset' => $patientConsented,
             'out_of_scope_category' => $aiResult['out_of_scope_category'] ?? null,
             'is_out_of_scope' => ! empty($aiResult['out_of_scope_category']),

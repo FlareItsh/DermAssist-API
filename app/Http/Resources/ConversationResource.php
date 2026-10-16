@@ -15,9 +15,16 @@ class ConversationResource extends JsonResource
             'id' => $this->uuid,
             'doctor' => $this->relationLoaded('doctor') && $this->doctor ? [
                 'id' => $this->doctor->uuid,
+                'user_id' => $this->doctor->id,
+                'uuid' => $this->doctor->uuid,
+                'first_name' => $this->doctor->first_name,
+                'last_name' => $this->doctor->last_name,
                 'name' => trim($this->doctor->first_name.' '.$this->doctor->last_name),
                 'avatar' => $this->doctor->avatar_url,
                 'avatar_path' => $this->doctor->avatar_path,
+                'affiliation' => $this->doctor->affiliation,
+                'city' => $this->doctor->city,
+                'province' => $this->doctor->province,
             ] : null,
             'patient' => $this->relationLoaded('patient') && $this->patient ? [
                 'id' => $this->patient->uuid,

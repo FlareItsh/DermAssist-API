@@ -16,10 +16,10 @@ class ClinicalReportPdfService
      */
     public function generatePdf(string $uuid, User $user): Response
     {
-        $diagnosis = Diagnosis::with(['patient', 'doctor', 'clinicalNote.doctor', 'user'])
-            ->where('uuid', $uuid)
-            ->orWhere('id', $uuid)
-            ->firstOrFail();
+        $query = Diagnosis::with(['patient', 'doctor', 'clinicalNote.doctor', 'user']);
+        $diagnosis = is_numeric($uuid)
+            ? $query->where('id', $uuid)->firstOrFail()
+            : $query->where('uuid', $uuid)->firstOrFail();
 
         // 1. Authorization check
         $this->authorizeExport($diagnosis, $user);
