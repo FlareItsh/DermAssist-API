@@ -537,6 +537,37 @@ class UserService
             unset($payload['contactNumber'], $payload['phone']);
         }
 
+        // Validate and sanitize email if provided (e.g. doctor-registered patient setting their personal email)
+        if (array_key_exists('email', $payload) && ! empty($payload['email'])) {
+            $cleanEmail = trim(strtolower((string) $payload['email']));
+            if (! filter_var($cleanEmail, FILTER_VALIDATE_EMAIL)) {
+                throw ValidationException::withMessages([
+                    'email' => ['Please enter a valid email address.'],
+                ]);
+            }
+
+            $emailExists = User::where('email', $cleanEmail)
+                ->where('id', '!=', $user->id)
+                ->exists();
+
+            if ($emailExists) {
+                throw ValidationException::withMessages([
+                    'email' => ['This email address is already in use by another account.'],
+                ]);
+            }
+
+            if ($user->email !== $cleanEmail) {
+                $payload['email'] = $cleanEmail;
+                if ($user->is_doctor_registered || str_starts_with($user->email ?? '', 'walkin.')) {
+                    $payload['email_verified_at'] = now();
+                    $payload['account_status'] = 'active';
+                    $payload['verification_deadline'] = null;
+                }
+            } else {
+                unset($payload['email']);
+            }
+        }
+
         // Strip null/empty values for non-nullable columns so that
         // Laravel's ConvertEmptyStringsToNull middleware doesn't cause
         // integrity constraint violations when a field wasn't submitted.
@@ -635,6 +666,10 @@ class UserService
                 'is_doctor_registered' => true,
                 'registered_by_doctor_id' => $actualDoctorId,
                 'account_status' => 'active',
+                'verification_token' => null,
+                'verification_deadline' => null,
+                'email_verified_at' => $isWalkIn ? null : now(),
+                'must_change_password' => ! $isWalkIn,
                 'avatar_path' => null,
             ];
 

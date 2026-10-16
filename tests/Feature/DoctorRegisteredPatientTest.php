@@ -314,3 +314,71 @@ test('unauthorized doctor cannot update another doctors patient', function () {
 
     $response->assertStatus(403);
 });
+
+test('doctor registered patient has no 48 hour deadline and is email verified', function () {
+    Sanctum::actingAs($this->doctor);
+
+    $response = $this->postJson('/api/doctor/patients', [
+        'firstName' => 'Active',
+        'lastName' => 'Patient',
+        'email' => 'active.patient@example.com',
+        'password' => 'TemporaryPass123!',
+    ]);
+
+    $response->assertStatus(201);
+
+    $created = User::where('email', 'active.patient@example.com')->first();
+    expect($created)->not->toBeNull()
+        ->and($created->account_status)->toBe('active')
+        ->and($created->verification_deadline)->toBeNull()
+        ->and($created->verification_token)->toBeNull()
+        ->and($created->email_verified_at)->not->toBeNull();
+});
+
+test('doctor registered patient can update their email in profile', function () {
+    $patient = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'is_doctor_registered' => true,
+        'registered_by_doctor_id' => $this->doctor->id,
+        'email' => 'walkin.original@clinic.local',
+        'account_status' => 'active',
+        'verification_deadline' => null,
+    ]);
+
+    Sanctum::actingAs($patient);
+
+    $response = $this->putJson("/api/users/{$patient->uuid}", [
+        'email' => 'patient.newemail@example.com',
+    ]);
+
+    $response->assertStatus(200);
+
+    $patient->refresh();
+    expect($patient->email)->toBe('patient.newemail@example.com')
+        ->and($patient->account_status)->toBe('active')
+        ->and($patient->verification_deadline)->toBeNull()
+        ->and($patient->email_verified_at)->not->toBeNull();
+});
+
+test('patient email update rejects duplicate email', function () {
+    User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'email' => 'existing.user@example.com',
+    ]);
+
+    $patient = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'is_doctor_registered' => true,
+        'registered_by_doctor_id' => $this->doctor->id,
+        'email' => 'walkin.dup@clinic.local',
+    ]);
+
+    Sanctum::actingAs($patient);
+
+    $response = $this->putJson("/api/users/{$patient->uuid}", [
+        'email' => 'existing.user@example.com',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['email']);
+});
