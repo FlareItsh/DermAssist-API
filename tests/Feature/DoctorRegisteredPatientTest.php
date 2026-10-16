@@ -297,6 +297,25 @@ test('patient can reset password with token', function () {
         ->and(Hash::check('NewSecretPassword123!', $patient->password))->toBeTrue();
 });
 
+test('reset password rejects weak password failing complexity criteria', function () {
+    $patient = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'email' => 'weak.patient@example.com',
+    ]);
+
+    $token = Password::broker()->createToken($patient);
+
+    $response = $this->postJson('/api/reset-password', [
+        'email' => 'weak.patient@example.com',
+        'token' => $token,
+        'password' => 'simplepassword',
+        'password_confirmation' => 'simplepassword',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['password']);
+});
+
 test('unauthorized doctor cannot update another doctors patient', function () {
     $otherDoctor = User::factory()->create(['role_id' => $this->doctorRole->id]);
     $patient = User::factory()->create([

@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Service\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -45,9 +46,18 @@ class AuthController extends Controller
     public function resetPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => 'required|email',
-            'token' => 'required|string',
-            'password' => 'required|string|min:8|confirmed',
+            'email' => ['required', 'string', 'email:rfc'],
+            'token' => ['required', 'string'],
+            'password' => [
+                'required',
+                'string',
+                Password::min(8)
+                    ->letters()
+                    ->mixedCase()
+                    ->numbers()
+                    ->symbols(),
+                'confirmed',
+            ],
         ]);
 
         return $this->userService->resetPasswordWithToken($validated);
