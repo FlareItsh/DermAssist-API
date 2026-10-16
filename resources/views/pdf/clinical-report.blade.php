@@ -147,16 +147,21 @@
         <tr>
             <td style="vertical-align: top;">
                 <div class="clinic-brand">DermAssist Clinical</div>
-                <div class="clinic-sub">Clinical Dermatological Assessment Report</div>
+                <div class="clinic-sub">{{ $doctorName ? 'Clinical Dermatological Assessment Report' : 'AI Lesion Pre-Assessment Summary' }}</div>
                 <div style="margin-top: 4px;">
-                    <span class="badge">Official Clinical Record</span>
+                    <span class="badge">{{ $doctorName ? 'Official Clinical Record' : 'Patient Self-Assessment' }}</span>
                     <span style="font-size: 9px; color: #6b7280; margin-left: 6px;">Ref: #{{ substr($recordId, 0, 8) }}</span>
                 </div>
             </td>
             <td class="doc-meta" style="vertical-align: top;">
-                <div class="doc-name">{{ $doctorName ? 'Dr. ' . $doctorName : 'Attending Dermatologist' }}</div>
-                @if($doctorAffiliation)
-                    <div>{{ $doctorAffiliation }}</div>
+                @if($doctorName)
+                    <div class="doc-name">Dr. {{ $doctorName }}</div>
+                    @if($doctorAffiliation)
+                        <div>{{ $doctorAffiliation }}</div>
+                    @endif
+                @else
+                    <div class="doc-name" style="color: #6b7280; font-size: 11px;">Patient Self-Scan</div>
+                    <div style="font-size: 9px; color: #9ca3af;">No Prescribing Doctor Assigned</div>
                 @endif
                 <div>Date: {{ $dateFormatted }}</div>
             </td>
@@ -296,6 +301,7 @@
     @endif
 
     <!-- Doctor Signature & Stamp -->
+    @if($doctorName)
     <table class="sig-table">
         <tr>
             <td style="width: 55%; vertical-align: bottom;">
@@ -306,11 +312,23 @@
             </td>
             <td style="width: 45%; text-align: center; vertical-align: bottom;">
                 <div style="border-bottom: 1px solid #111827; width: 180px; margin: 0 auto 4px auto; height: 35px;"></div>
-                <div style="font-size: 11px; font-weight: bold; color: #111827;">{{ $doctorName ? 'Dr. ' . $doctorName : 'Attending Dermatologist' }}</div>
+                <div style="font-size: 11px; font-weight: bold; color: #111827;">Dr. {{ $doctorName }}</div>
                 <div style="font-size: 9px; color: #4b5563;">Licensed Medical Professional</div>
             </td>
         </tr>
     </table>
+    @else
+    <table class="sig-table">
+        <tr>
+            <td style="width: 100%; text-align: center; vertical-align: bottom; padding: 10px 0;">
+                <div style="font-size: 8px; color: #6b7280; border-top: 1px dashed #d1d5db; padding-top: 6px;">
+                    Digital Pre-Assessment Record Generated via DermAssist AI Engine &bull; Record Hash: {{ hash('sha256', $recordId . 'patient-summary') }}<br>
+                    This assistive summary is provided for clinical triage and consultation preparation. Not an official signed medical prescription.
+                </div>
+            </td>
+        </tr>
+    </table>
+    @endif
 
     <!-- Disclaimer -->
     <div class="disclaimer">

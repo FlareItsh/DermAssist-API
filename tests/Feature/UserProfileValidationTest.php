@@ -3,6 +3,7 @@
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
@@ -231,4 +232,98 @@ test('profile update validates and saves contact_number correctly', function () 
     $resValid->assertJsonPath('phone', '+63 917 123 4567');
 
     expect($user->fresh()->contact_number)->toBe('+63 917 123 4567');
+});
+
+test('profile password update rejects weak passwords lacking complexity', function () {
+    $patientRole = Role::where('slug', 'patient')->first();
+    $user = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'password' => bcrypt('OldPassword123!'),
+    ]);
+
+    Sanctum::actingAs($user);
+
+    // Too short (< 8 chars)
+    $resShort = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'Pass1!',
+        'new_password_confirmation' => 'Pass1!',
+    ]);
+    $resShort->assertStatus(422);
+    $resShort->assertJsonValidationErrors(['new_password']);
+
+    // Missing uppercase
+    $resNoUpper = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'password123!',
+        'new_password_confirmation' => 'password123!',
+    ]);
+    $resNoUpper->assertStatus(422);
+    $resNoUpper->assertJsonValidationErrors(['new_password']);
+
+    // Missing number
+    $resNoNumber = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'Password!',
+        'new_password_confirmation' => 'Password!',
+    ]);
+    $resNoNumber->assertStatus(422);
+    $resNoNumber->assertJsonValidationErrors(['new_password']);
+
+    // Missing symbol
+    $resNoSymbol = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'Password123',
+        'new_password_confirmation' => 'Password123',
+    ]);
+    $resNoSymbol->assertStatus(422);
+    $resNoSymbol->assertJsonValidationErrors(['new_password']);
+});
+
+test('profile password update rejects mismatched confirmation and wrong current password', function () {
+    $patientRole = Role::where('slug', 'patient')->first();
+    $user = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'password' => bcrypt('OldPassword123!'),
+    ]);
+
+    Sanctum::actingAs($user);
+
+    // Mismatched confirmation
+    $resMismatch = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'NewStrongPass123!',
+        'new_password_confirmation' => 'DifferentPass123!',
+    ]);
+    $resMismatch->assertStatus(422);
+    $resMismatch->assertJsonValidationErrors(['new_password']);
+
+    // Wrong current password
+    $resWrongCurrent = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'WrongCurrentPass!',
+        'new_password' => 'NewStrongPass123!',
+        'new_password_confirmation' => 'NewStrongPass123!',
+    ]);
+    $resWrongCurrent->assertStatus(422);
+    $resWrongCurrent->assertJsonValidationErrors(['current_password']);
+});
+
+test('profile password update succeeds with strong password matching all criteria', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $user = User::factory()->create([
+        'role_id' => $doctorRole->id,
+        'password' => bcrypt('OldPassword123!'),
+    ]);
+
+    Sanctum::actingAs($user);
+
+    $res = $this->putJson("/api/users/{$user->uuid}", [
+        'current_password' => 'OldPassword123!',
+        'new_password' => 'SecureNewPass2026@',
+        'new_password_confirmation' => 'SecureNewPass2026@',
+    ]);
+
+    $res->assertStatus(200);
+
+    expect(Hash::check('SecureNewPass2026@', $user->fresh()->password))->toBeTrue();
 });

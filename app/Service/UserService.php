@@ -21,7 +21,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class UserService
@@ -324,22 +326,37 @@ class UserService
         unset($payload['avatar']);
 
         // Handle secure password update if requested
-        if (! empty($payload['new_password'])) {
-            if (empty($payload['current_password']) || ! Hash::check($payload['current_password'], $user->password)) {
+        if (! empty($payload['new_password']) || ! empty($payload['current_password']) || ! empty($payload['new_password_confirmation'])) {
+            $validator = Validator::make($payload, [
+                'current_password' => ['required', 'string'],
+                'new_password' => [
+                    'required',
+                    'string',
+                    Password::min(8)
+                        ->letters()
+                        ->mixedCase()
+                        ->numbers()
+                        ->symbols(),
+                    'confirmed',
+                ],
+                'new_password_confirmation' => ['required', 'string'],
+            ], [
+                'current_password.required' => 'Please enter your current password.',
+                'new_password.required' => 'New password is required.',
+                'new_password.confirmed' => 'The new password confirmation does not match.',
+                'new_password_confirmation.required' => 'Please confirm your new password.',
+            ]);
+
+            if ($validator->fails()) {
+                throw new ValidationException($validator);
+            }
+
+            if (! Hash::check($payload['current_password'], $user->password)) {
                 throw ValidationException::withMessages([
                     'current_password' => ['The current password provided is incorrect.'],
                 ]);
             }
-            if (strlen($payload['new_password']) < 8) {
-                throw ValidationException::withMessages([
-                    'new_password' => ['The new password must be at least 8 characters long.'],
-                ]);
-            }
-            if (isset($payload['new_password_confirmation']) && $payload['new_password'] !== $payload['new_password_confirmation']) {
-                throw ValidationException::withMessages([
-                    'new_password_confirmation' => ['The new password confirmation does not match.'],
-                ]);
-            }
+
             $payload['password'] = $payload['new_password'];
             unset($payload['current_password'], $payload['new_password'], $payload['new_password_confirmation']);
 

@@ -13,6 +13,7 @@ class RecordRepository
                 $q->where('patient_uuid', $userUuid)
                     ->orWhere('user_uuid', $userUuid);
             })
+            ->where('status', 'completed')
             ->orderBy('created_at', 'desc')
             ->get();
     }

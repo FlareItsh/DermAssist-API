@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Models\Diagnosis;
+use Illuminate\Support\Facades\Storage;
 
 class DiagnosisRepository
 {
@@ -37,6 +38,10 @@ class DiagnosisRepository
     public function delete(string $uuid)
     {
         $model = $this->findByUuid($uuid);
+
+        if ($model->image_path && Storage::disk('public')->exists($model->image_path)) {
+            Storage::disk('public')->delete($model->image_path);
+        }
 
         return $model->delete();
     }
