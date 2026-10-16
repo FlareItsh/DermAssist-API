@@ -13,6 +13,7 @@ class ConversationResource extends JsonResource
 
         return [
             'id' => $this->uuid,
+            'uuid' => $this->uuid,
             'doctor' => $this->relationLoaded('doctor') && $this->doctor ? [
                 'id' => $this->doctor->uuid,
                 'user_id' => $this->doctor->id,
