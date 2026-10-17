@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'must_change_password', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -42,6 +42,7 @@ class User extends Authenticatable
             'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'must_change_password' => 'boolean',
             'consent_dataset' => 'boolean',
             'terms_accepted_at' => 'datetime',
             'cookies_accepted_at' => 'datetime',

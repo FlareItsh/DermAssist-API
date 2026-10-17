@@ -36,6 +36,32 @@ class DoctorPatientController extends Controller
         );
     }
 
+    public function update(Request $request, string $uuid)
+    {
+        return $this->userService->updateDoctorPatient(
+            $uuid,
+            $request->all(),
+            $request->user()
+        );
+    }
+
+    public function sendResetLink(Request $request, string $uuid)
+    {
+        return $this->userService->sendPatientResetLink(
+            $uuid,
+            $request->user()
+        );
+    }
+
+    public function issueTemporaryPassword(Request $request, string $uuid)
+    {
+        return $this->userService->issuePatientTemporaryPassword(
+            $uuid,
+            $request->all(),
+            $request->user()
+        );
+    }
+
     public function enable(string $uuid)
     {
         return $this->userService->setAccountStatus($uuid, 'active');
