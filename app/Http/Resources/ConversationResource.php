@@ -29,6 +29,8 @@ class ConversationResource extends JsonResource
             ] : null,
             'patient' => $this->relationLoaded('patient') && $this->patient ? [
                 'id' => $this->patient->uuid,
+                'user_id' => $this->patient->id,
+                'uuid' => $this->patient->uuid,
                 'name' => trim($this->patient->first_name.' '.$this->patient->last_name),
                 'avatar' => $this->patient->avatar_url,
                 'avatar_path' => $this->patient->avatar_path,

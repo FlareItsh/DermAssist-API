@@ -76,6 +76,18 @@ class AppointmentController extends Controller
 
     public function scheduleForPatient(Request $request): JsonResponse
     {
+        if ($request->filled('patient_uuid')) {
+            $patient = User::where('uuid', $request->input('patient_uuid'))->first();
+            if ($patient) {
+                $request->merge(['patient_id' => $patient->id]);
+            }
+        } elseif ($request->filled('patient_id') && ! is_numeric($request->input('patient_id'))) {
+            $patient = User::where('uuid', $request->input('patient_id'))->first();
+            if ($patient) {
+                $request->merge(['patient_id' => $patient->id]);
+            }
+        }
+
         $validated = $request->validate([
             'patient_id' => 'required|integer|exists:users,id',
             'scheduled_at' => 'required|date|after_or_equal:today',
