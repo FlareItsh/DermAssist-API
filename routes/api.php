@@ -41,6 +41,7 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
         Route::post('/login', 'login')->name('login');
         Route::post('/register', 'register');
         Route::post('/verify-account', 'verifyAccount');
+        Route::post('/forgot-password', 'forgotPassword')->middleware('throttle:5,1');
         Route::post('/reset-password', 'resetPassword');
     });
 

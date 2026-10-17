@@ -43,6 +43,15 @@ class AuthController extends Controller
         return response()->json($result, 200);
     }
 
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email:rfc'],
+        ]);
+
+        return $this->userService->sendForgotPasswordLink($validated['email']);
+    }
+
     public function resetPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([

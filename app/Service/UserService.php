@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Console\Commands\ProcessScheduledAccountActions;
 use App\Http\Resources\UserResource;
 use App\Mail\PatientResetPasswordMail;
+use App\Mail\ResetPasswordMail;
 use App\Mail\VerifyAccountMail;
 use App\Models\Appointment;
 use App\Models\BlockedDevice;
@@ -924,6 +925,47 @@ class UserService
             'message' => 'Temporary password issued successfully. The patient will be required to choose a new private password upon next login.',
             'temporary_password' => $tempPassword,
             'must_change_password' => true,
+        ], 200);
+    }
+
+    public function sendForgotPasswordLink(string $email)
+    {
+        $normalizedEmail = strtolower(trim($email));
+        $user = User::whereRaw('LOWER(email) = ?', [$normalizedEmail])->first();
+
+        if (! $user) {
+            return response()->json([
+                'message' => "If an account is associated with {$normalizedEmail}, a password reset link has been dispatched.",
+            ], 200);
+        }
+
+        $isWalkIn = str_starts_with($user->email ?? '', 'walkin.') && str_ends_with($user->email ?? '', '@clinic.local');
+        if ($isWalkIn || empty($user->email)) {
+            return response()->json([
+                'message' => 'This account does not have a registered external email address. Please contact your attending clinic.',
+            ], 422);
+        }
+
+        if ($user->account_status === 'disabled') {
+            return response()->json([
+                'message' => 'This account is currently disabled. Please contact clinic administration or support.',
+            ], 403);
+        }
+
+        $token = PasswordBroker::broker()->createToken($user);
+
+        try {
+            Mail::to($user->email)->send(new ResetPasswordMail($user, $token));
+        } catch (\Throwable $e) {
+            Log::error("Failed to send password reset email to {$user->email}: ".$e->getMessage());
+
+            return response()->json([
+                'message' => 'Could not dispatch password reset email at this time. Please try again shortly.',
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => "A secure password reset link has been dispatched to {$user->email}.",
         ], 200);
     }
 
