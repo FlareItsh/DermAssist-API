@@ -67,6 +67,8 @@ class AdminModelTrainingController extends Controller
             'expansion_disease' => 'nullable|string|max:50',
             'selected_image_uuids' => 'nullable|array',
             'selected_image_uuids.*' => 'string',
+            'training_mode' => 'nullable|string|in:quick,full',
+            'fresh_start' => 'nullable|boolean',
         ]);
 
         return $this->trainingService->startTraining($validated);

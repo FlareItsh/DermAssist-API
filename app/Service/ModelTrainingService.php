@@ -491,13 +491,18 @@ class ModelTrainingService
     /**
      * Trigger background retraining of the AI model.
      *
-     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float, expansion_disease?: string, selected_image_uuids?: array<string>}  $options
+     * @param  array{architecture?: string, epochs?: int, sync_dataset?: bool, learning_rate?: float, expansion_disease?: string, selected_image_uuids?: array<string>, training_mode?: string, fresh_start?: bool}  $options
      */
     public function startTraining(array $options): JsonResponse
     {
+        $activeImageFiles = null;
+
         // If specific candidate diagnoses were selected for retraining, promote them to local dataset storage first
         if (! empty($options['selected_image_uuids']) && is_array($options['selected_image_uuids'])) {
-            $diagnoses = Diagnosis::whereIn('uuid', $options['selected_image_uuids'])->get();
+            $selectedUuids = $options['selected_image_uuids'];
+            $diagnoses = Diagnosis::whereIn('uuid', $selectedUuids)->get();
+            $filenames = [];
+
             foreach ($diagnoses as $diag) {
                 if (empty($diag->image_path) || ! Storage::disk($this->disk)->exists($diag->image_path)) {
                     continue;
@@ -506,7 +511,8 @@ class ModelTrainingService
                 if (! in_array($catSlug, ['acne', 'eczema', 'herpes'])) {
                     continue;
                 }
-                $targetPath = $this->datasetDir.'/'.$catSlug.'/'.basename($diag->image_path);
+                $basename = basename($diag->image_path);
+                $targetPath = $this->datasetDir.'/'.$catSlug.'/'.$basename;
                 if (! Storage::disk($this->disk)->exists($targetPath)) {
                     Storage::disk($this->disk)->copy($diag->image_path, $targetPath);
                 }
@@ -514,7 +520,30 @@ class ModelTrainingService
                     'contributed_to_dataset' => true,
                     'contributed_at' => now(),
                 ]);
+                $filenames[] = 'webapp_'.$basename;
             }
+
+            // Also map any dataset gallery files whose md5(file) or filename matches selected UUIDs
+            $remainingUuids = array_diff($selectedUuids, $diagnoses->pluck('uuid')->all());
+            if (! empty($remainingUuids)) {
+                $categories = ['acne', 'eczema', 'herpes'];
+                foreach ($categories as $catSlug) {
+                    $catDir = $this->datasetDir.'/'.$catSlug;
+                    if (! Storage::disk($this->disk)->exists($catDir)) {
+                        continue;
+                    }
+                    $files = Storage::disk($this->disk)->files($catDir);
+                    foreach ($files as $file) {
+                        $fname = basename($file);
+                        $fileMd5 = md5($file);
+                        if (in_array($fileMd5, $remainingUuids) || in_array($fname, $remainingUuids)) {
+                            $filenames[] = 'webapp_'.$fname;
+                        }
+                    }
+                }
+            }
+
+            $activeImageFiles = array_values(array_unique($filenames));
         }
 
         if (! empty($options['expansion_disease'])) {
@@ -539,14 +568,22 @@ class ModelTrainingService
 
         $shouldSync = (bool) ($options['sync_dataset'] ?? false);
 
+        $payload = [
+            'architecture' => $options['architecture'] ?? 'ensemble',
+            'epochs' => (int) ($options['epochs'] ?? 5),
+            'sync_dataset' => $shouldSync,
+            'learning_rate' => $options['learning_rate'] ?? null,
+            'expansion_disease' => $options['expansion_disease'] ?? null,
+            'training_mode' => $options['training_mode'] ?? 'quick',
+            'fresh_start' => (bool) ($options['fresh_start'] ?? false),
+        ];
+
+        if ($activeImageFiles !== null) {
+            $payload['active_image_files'] = $activeImageFiles;
+        }
+
         try {
-            $response = Http::timeout(10)->post($this->aiUrl.'/train/start', [
-                'architecture' => $options['architecture'] ?? 'ensemble',
-                'epochs' => (int) ($options['epochs'] ?? 5),
-                'sync_dataset' => $shouldSync,
-                'learning_rate' => $options['learning_rate'] ?? null,
-                'expansion_disease' => $options['expansion_disease'] ?? null,
-            ]);
+            $response = Http::timeout(10)->post($this->aiUrl.'/train/start', $payload);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $e) {

@@ -285,6 +285,12 @@ test('admin can retrain with selected candidate image uuids', function () {
 
     $response->assertStatus(200);
 
+    // Assert that active_image_files was forwarded to the AI algorithm service
+    Http::assertSent(function ($request) {
+        return isset($request['active_image_files'])
+            && in_array('webapp_scan_to_train.jpg', $request['active_image_files']);
+    });
+
     // Assert that the diagnosis was promoted to local dataset storage
     expect(Storage::disk('public')->exists('dataset/eczema/scan_to_train.jpg'))->toBeTrue();
     expect($diag->fresh()->contributed_to_dataset)->toBeTrue();
