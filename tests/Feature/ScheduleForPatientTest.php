@@ -76,3 +76,53 @@ it('validates required fields when scheduling for a patient', function () {
     $response->assertUnprocessable();
     $response->assertJsonValidationErrors(['patient_id', 'scheduled_at', 'location', 'purpose']);
 });
+
+it('resolves patient correctly when uuid is passed in patient_id or patient_uuid', function () {
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $patientRole = Role::where('slug', 'patient')->first();
+
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id]);
+    $patient = User::factory()->create(['role_id' => $patientRole->id]);
+
+    $targetDate = now()->addDays(3);
+    $scheduledAt = $targetDate->copy()->setTime(14, 0, 0)->format('Y-m-d H:i:s');
+
+    DoctorAvailability::create([
+        'doctor_id' => $doctor->id,
+        'available_date' => $targetDate->toDateString(),
+        'start_time' => '08:00:00',
+        'end_time' => '17:00:00',
+        'is_available' => true,
+    ]);
+
+    // Test case 1: UUID passed as string in patient_id
+    $response1 = $this->actingAs($doctor)->postJson('/api/appointments/schedule-for-patient', [
+        'patient_id' => $patient->uuid,
+        'scheduled_at' => $scheduledAt,
+        'location' => 'Clinic Room 101',
+        'purpose' => 'Consultation with UUID in patient_id',
+    ]);
+
+    $response1->assertOk();
+    $this->assertDatabaseHas('appointments', [
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+        'purpose' => 'Consultation with UUID in patient_id',
+    ]);
+
+    // Test case 2: UUID passed in patient_uuid
+    $scheduledAt2 = $targetDate->copy()->setTime(15, 0, 0)->format('Y-m-d H:i:s');
+    $response2 = $this->actingAs($doctor)->postJson('/api/appointments/schedule-for-patient', [
+        'patient_uuid' => $patient->uuid,
+        'scheduled_at' => $scheduledAt2,
+        'location' => 'Clinic Room 102',
+        'purpose' => 'Consultation with patient_uuid',
+    ]);
+
+    $response2->assertOk();
+    $this->assertDatabaseHas('appointments', [
+        'doctor_id' => $doctor->id,
+        'patient_id' => $patient->id,
+        'purpose' => 'Consultation with patient_uuid',
+    ]);
+});
