@@ -52,7 +52,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "@php artisan dev"
+            "@php artisan dev --host=0.0.0.0"
         ],
         "test": [
             "@php artisan config:clear --ansi",
