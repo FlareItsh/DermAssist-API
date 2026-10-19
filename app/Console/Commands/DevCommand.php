@@ -12,7 +12,7 @@ class DevCommand extends Command
      * @var string
      */
     protected $signature = 'dev
-        {--host=127.0.0.1 : The host address to serve the application on}
+        {--host=0.0.0.0 : The host address to serve the application on}
         {--port=8000 : The port to serve the application on}
         {--no-server : Do not run the PHP development server}
         {--no-queue : Do not run the queue worker}
