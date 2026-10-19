@@ -114,6 +114,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'destroy']);
     Route::delete('/out-of-scope-dataset/bulk', [OutOfScopeDatasetController::class, 'destroyBulk']);
     Route::get('/out-of-scope-dataset/download', [OutOfScopeDatasetController::class, 'download']);
+    Route::post('/out-of-scope-dataset/transfer', [OutOfScopeDatasetController::class, 'transfer']);
     Route::post('/out-of-scope-dataset/save-diagnosis', [OutOfScopeDatasetController::class, 'saveFromDiagnosis']);
 
     // Appointments Extra Routes

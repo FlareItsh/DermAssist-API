@@ -62,7 +62,11 @@ class ModelTrainingService
         // 2. Gather Out-of-Scope Research Dataset Candidates
         $oosCounts = [];
         $totalOos = 0;
-        $oosCategories = ['psoriasis', 'ringworm', 'vitiligo', 'melanoma', 'hives', 'warts', 'lupus', 'rosacea'];
+        $defaultOosCategories = ['psoriasis', 'ringworm', 'vitiligo', 'melanoma', 'hives', 'warts', 'lupus', 'rosacea'];
+        $existingOosDirs = Storage::disk($this->disk)->exists('out_of_scope_dataset')
+            ? array_map('basename', Storage::disk($this->disk)->directories('out_of_scope_dataset'))
+            : [];
+        $oosCategories = array_unique(array_merge($defaultOosCategories, $existingOosDirs));
         foreach ($oosCategories as $oosCat) {
             $oosDir = 'out_of_scope_dataset/'.$oosCat;
             if (Storage::disk($this->disk)->exists($oosDir)) {
