@@ -457,3 +457,136 @@ test('admin can selectively sync specific diagnosis scans by uuid', function () 
     expect(Storage::disk('public')->exists('dataset/eczema/unselected_scan.jpg'))->toBeFalse();
     expect($unselected->fresh()->contributed_to_dataset)->toBeFalse();
 });
+
+test('admin can transfer image category to another category', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('dataset/acne/wrong_scan.jpg', 'image-bytes');
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.88,
+        'probabilities' => ['Acne' => 0.88, 'Eczema' => 0.08, 'Herpes' => 0.04],
+        'image_path' => 'diagnoses/wrong_scan.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => true,
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/training-images/recategorize', [
+        'uuid' => $diag->uuid,
+        'target_category' => 'eczema',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'transferred_count' => 1,
+            'target_category' => 'eczema',
+        ]);
+
+    expect($diag->fresh()->label)->toBe('Eczema');
+    expect(Storage::disk('public')->exists('dataset/acne/wrong_scan.jpg'))->toBeFalse();
+    expect(Storage::disk('public')->exists('dataset/eczema/wrong_scan.jpg'))->toBeTrue();
+});
+
+test('admin can bulk transfer image categories', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('dataset/acne/scan_1.jpg', 'img1');
+    Storage::disk('public')->put('dataset/herpes/scan_2.jpg', 'img2');
+
+    $diag1 = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.80,
+        'probabilities' => ['Acne' => 0.80, 'Eczema' => 0.15, 'Herpes' => 0.05],
+        'image_path' => 'diagnoses/scan_1.jpg',
+        'status' => 'completed',
+    ]);
+    $diag2 = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Herpes',
+        'confidence' => 0.85,
+        'probabilities' => ['Acne' => 0.05, 'Eczema' => 0.10, 'Herpes' => 0.85],
+        'image_path' => 'diagnoses/scan_2.jpg',
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/training-images/recategorize', [
+        'uuids' => [$diag1->uuid, $diag2->uuid],
+        'target_category' => 'eczema',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'transferred_count' => 2,
+            'target_category' => 'eczema',
+        ]);
+
+    expect($diag1->fresh()->label)->toBe('Eczema');
+    expect($diag2->fresh()->label)->toBe('Eczema');
+    expect(Storage::disk('public')->exists('dataset/eczema/scan_1.jpg'))->toBeTrue();
+    expect(Storage::disk('public')->exists('dataset/eczema/scan_2.jpg'))->toBeTrue();
+});
+
+test('admin cannot transfer image to invalid category', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.90,
+        'probabilities' => ['Acne' => 0.90, 'Eczema' => 0.05, 'Herpes' => 0.05],
+        'image_path' => 'diagnoses/scan_1.jpg',
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/training-images/recategorize', [
+        'uuid' => $diag->uuid,
+        'target_category' => 'non_existent_category',
+    ]);
+
+    $response->assertStatus(422);
+});
+
+test('admin can transfer image category using storage url or filename', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('dataset/acne/cold_sore.jpg', 'herpes-data');
+
+    $diag = Diagnosis::create([
+        'uuid' => (string) Str::uuid(),
+        'label' => 'Acne',
+        'confidence' => 0.95,
+        'probabilities' => ['Acne' => 0.95, 'Eczema' => 0.03, 'Herpes' => 0.02],
+        'image_path' => 'diagnoses/cold_sore.jpg',
+        'status' => 'completed',
+        'patient_consented_dataset' => true,
+        'contributed_to_dataset' => true,
+    ]);
+
+    $url = Storage::disk('public')->url('diagnoses/cold_sore.jpg');
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/training-images/recategorize', [
+        'uuids' => [$url],
+        'target_category' => 'herpes',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'transferred_count' => 1,
+            'target_category' => 'herpes',
+        ]);
+
+    expect($diag->fresh()->label)->toBe('Herpes');
+    expect(Storage::disk('public')->exists('dataset/acne/cold_sore.jpg'))->toBeFalse();
+    expect(Storage::disk('public')->exists('dataset/herpes/cold_sore.jpg'))->toBeTrue();
+});

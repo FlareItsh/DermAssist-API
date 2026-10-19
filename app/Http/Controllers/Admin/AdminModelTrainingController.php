@@ -28,6 +28,34 @@ class AdminModelTrainingController extends Controller
     }
 
     /**
+     * Reassign/transfer candidate or dataset training images to another category.
+     */
+    public function recategorizeImages(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'uuid' => 'nullable|string',
+            'uuids' => 'nullable|array',
+            'uuids.*' => 'string',
+            'target_category' => 'required|string|in:acne,eczema,herpes',
+        ]);
+
+        $uuids = [];
+        if (! empty($validated['uuid'])) {
+            $uuids[] = $validated['uuid'];
+        }
+        if (! empty($validated['uuids'])) {
+            $uuids = array_merge($uuids, $validated['uuids']);
+        }
+        $uuids = array_unique(array_filter($uuids));
+
+        if (empty($uuids)) {
+            return response()->json(['message' => 'No image UUIDs provided for transfer.'], 422);
+        }
+
+        return $this->trainingService->recategorizeTrainingImages($uuids, $validated['target_category']);
+    }
+
+    /**
      * Delete candidate or dataset training images permanently.
      */
     public function deleteTrainingImages(Request $request): JsonResponse

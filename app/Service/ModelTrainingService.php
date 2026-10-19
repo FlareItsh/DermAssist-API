@@ -303,6 +303,165 @@ class ModelTrainingService
     }
 
     /**
+     * Reassign/transfer candidate scans or dataset gallery images to another category,
+     * updating consultation records, dataset storage, and algorithm raw directories.
+     *
+     * @param  array<string>  $uuids
+     */
+    public function recategorizeTrainingImages(array $uuids, string $targetCategory): JsonResponse
+    {
+        $targetSlug = strtolower(trim($targetCategory));
+        $allowedCategories = ['acne', 'eczema', 'herpes'];
+
+        if (! in_array($targetSlug, $allowedCategories)) {
+            return response()->json(['message' => "Invalid target category '{$targetCategory}'."], 422);
+        }
+
+        $targetTitle = ucfirst($targetSlug);
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+        $transferredCount = 0;
+        $movedFilenames = [];
+
+        $basenames = array_unique(array_filter(array_map(function ($id) {
+            $parsed = parse_url($id, PHP_URL_PATH) ?? $id;
+
+            return basename($parsed);
+        }, $uuids)));
+
+        // 1. Check for Diagnoses matching UUIDs, exact image_path, or filename
+        $diagnoses = Diagnosis::query()
+            ->where(function ($q) use ($uuids, $basenames) {
+                $q->whereIn('uuid', $uuids)
+                    ->orWhereIn('image_path', $uuids);
+                foreach ($basenames as $bn) {
+                    $q->orWhere('image_path', 'like', "%{$bn}");
+                }
+            })
+            ->get();
+
+        foreach ($diagnoses as $diag) {
+            $currentSlug = strtolower(trim($diag->label));
+            if ($currentSlug === $targetSlug) {
+                continue;
+            }
+
+            $currentTitle = ucfirst($currentSlug);
+            $filename = basename($diag->image_path);
+            $movedFilenames[$filename] = true;
+
+            // Relocate file in Laravel dataset directory if copied/contributed there
+            $oldDatasetPath = $this->datasetDir.'/'.$currentSlug.'/'.$filename;
+            $newDatasetPath = $this->datasetDir.'/'.$targetSlug.'/'.$filename;
+
+            if (Storage::disk($this->disk)->exists($oldDatasetPath)) {
+                $newDir = $this->datasetDir.'/'.$targetSlug;
+                if (! Storage::disk($this->disk)->exists($newDir)) {
+                    Storage::disk($this->disk)->makeDirectory($newDir);
+                }
+                Storage::disk($this->disk)->move($oldDatasetPath, $newDatasetPath);
+            }
+
+            // Relocate file in PyTorch Algorithms data/raw directory if synced there
+            if ($hasAlgorithmsRaw) {
+                $oldRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$currentTitle;
+                $newRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$targetTitle;
+                if (! is_dir($newRawCatPath)) {
+                    @mkdir($newRawCatPath, 0755, true);
+                }
+
+                $oldWebappFile = $oldRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+                $newWebappFile = $newRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+                if (file_exists($oldWebappFile)) {
+                    @rename($oldWebappFile, $newWebappFile);
+                }
+
+                $oldDirectFile = $oldRawCatPath.DIRECTORY_SEPARATOR.$filename;
+                $newDirectFile = $newRawCatPath.DIRECTORY_SEPARATOR.$filename;
+                if (file_exists($oldDirectFile)) {
+                    @rename($oldDirectFile, $newDirectFile);
+                }
+            }
+
+            // Update diagnosis record label
+            $diag->update([
+                'label' => $targetTitle,
+            ]);
+
+            $transferredCount++;
+        }
+
+        // 2. Also check for dataset gallery files matching md5, filename, path, or URL
+        $remainingUuids = array_diff($uuids, $diagnoses->pluck('uuid')->all());
+        if (! empty($remainingUuids) || ! empty($basenames)) {
+            foreach ($allowedCategories as $catSlug) {
+                if ($catSlug === $targetSlug) {
+                    continue;
+                }
+
+                $catDir = $this->datasetDir.'/'.$catSlug;
+                $catTitle = ucfirst($catSlug);
+                if (! Storage::disk($this->disk)->exists($catDir)) {
+                    continue;
+                }
+
+                $files = Storage::disk($this->disk)->files($catDir);
+                foreach ($files as $file) {
+                    $fname = basename($file);
+                    $fileMd5 = md5($file);
+
+                    if (isset($movedFilenames[$fname])) {
+                        continue;
+                    }
+
+                    if (
+                        in_array($fileMd5, $remainingUuids) ||
+                        in_array($fname, $remainingUuids) ||
+                        in_array($fname, $basenames) ||
+                        in_array($file, $remainingUuids)
+                    ) {
+                        $movedFilenames[$fname] = true;
+                        $newDatasetPath = $this->datasetDir.'/'.$targetSlug.'/'.$fname;
+                        $newDir = $this->datasetDir.'/'.$targetSlug;
+                        if (! Storage::disk($this->disk)->exists($newDir)) {
+                            Storage::disk($this->disk)->makeDirectory($newDir);
+                        }
+                        Storage::disk($this->disk)->move($file, $newDatasetPath);
+
+                        if ($hasAlgorithmsRaw) {
+                            $oldRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$catTitle;
+                            $newRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$targetTitle;
+                            if (! is_dir($newRawCatPath)) {
+                                @mkdir($newRawCatPath, 0755, true);
+                            }
+
+                            $oldWebappFile = $oldRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$fname;
+                            $newWebappFile = $newRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$fname;
+                            if (file_exists($oldWebappFile)) {
+                                @rename($oldWebappFile, $newWebappFile);
+                            }
+
+                            $oldDirectFile = $oldRawCatPath.DIRECTORY_SEPARATOR.$fname;
+                            $newDirectFile = $newRawCatPath.DIRECTORY_SEPARATOR.$fname;
+                            if (file_exists($oldDirectFile)) {
+                                @rename($oldDirectFile, $newDirectFile);
+                            }
+                        }
+
+                        $transferredCount++;
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => "Successfully transferred {$transferredCount} image(s) to {$targetTitle}.",
+            'transferred_count' => $transferredCount,
+            'target_category' => $targetSlug,
+        ]);
+    }
+
+    /**
      * Completely delete candidate scans or dataset gallery images from disk,
      * consultation records, and the algorithm raw directory.
      *
