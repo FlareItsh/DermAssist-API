@@ -335,3 +335,55 @@ test('appeal lifecycle actions broadcast ScanAppealUpdated to admin.moderation',
         return $event->action === 'rejected';
     });
 });
+
+test('patient records endpoint returns is_appealed flag and appeal details when diagnosis has been appealed', function () {
+    $patientRole = Role::firstOrCreate(['slug' => 'patient'], ['name' => 'Patient']);
+    $patient = User::factory()->create(['role_id' => $patientRole->id]);
+    $doctor = User::factory()->create();
+
+    $appealedDiagnosis = Diagnosis::create([
+        'user_uuid' => $doctor->uuid,
+        'doctor_uuid' => $doctor->uuid,
+        'patient_uuid' => $patient->uuid,
+        'image_path' => 'diagnoses/appealed_scan.jpg',
+        'label' => 'Herpes',
+        'confidence' => 0.85,
+        'probabilities' => ['Acne' => 0.85, 'Herpes' => 0.10, 'Eczema' => 0.05],
+        'status' => 'completed',
+    ]);
+
+    Appeal::create([
+        'user_id' => $doctor->id,
+        'diagnosis_id' => $appealedDiagnosis->id,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Herpes',
+        'status' => 'pending',
+    ]);
+
+    $unappealedDiagnosis = Diagnosis::create([
+        'user_uuid' => $doctor->uuid,
+        'doctor_uuid' => $doctor->uuid,
+        'patient_uuid' => $patient->uuid,
+        'image_path' => 'diagnoses/normal_scan.jpg',
+        'label' => 'Acne',
+        'confidence' => 0.90,
+        'probabilities' => ['Acne' => 0.90, 'Herpes' => 0.05, 'Eczema' => 0.05],
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($patient)->getJson('/api/records');
+
+    $response->assertStatus(200);
+
+    $records = collect($response->json());
+    $appealedRecord = $records->firstWhere('uuid', $appealedDiagnosis->uuid);
+    $unappealedRecord = $records->firstWhere('uuid', $unappealedDiagnosis->uuid);
+
+    expect($appealedRecord)->not->toBeNull()
+        ->and($appealedRecord['is_appealed'])->toBeTrue()
+        ->and($appealedRecord['appeal'])->not->toBeNull()
+        ->and($appealedRecord['appeal']['suggested_label'])->toBe('Herpes')
+        ->and($unappealedRecord)->not->toBeNull()
+        ->and($unappealedRecord['is_appealed'])->toBeFalse()
+        ->and($unappealedRecord['appeal'])->toBeNull();
+});

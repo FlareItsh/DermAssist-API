@@ -39,6 +39,7 @@ class RecordResource extends JsonResource
             'patient' => $this->patient ?? $this->user,
             'doctor' => $this->doctor ?? ($this->clinicalNote ? $this->clinicalNote->doctor : null),
             'clinical_note' => $this->clinicalNote,
+            'is_appealed' => (bool) ($this->relationLoaded('appeal') ? $this->appeal : $this->appeal()->exists()),
             'appeal' => $this->whenLoaded('appeal', function () {
                 return $this->appeal ? new AppealResource($this->appeal) : null;
             }),
