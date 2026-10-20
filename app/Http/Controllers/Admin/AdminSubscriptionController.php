@@ -20,6 +20,14 @@ class AdminSubscriptionController extends Controller
     }
 
     /**
+     * Get comprehensive admin dashboard statistics.
+     */
+    public function dashboardStats(): JsonResponse
+    {
+        return $this->subscriptionAdminService->getAdminDashboardStats();
+    }
+
+    /**
      * Get list of all subscriptions with filtering options.
      */
     public function index(Request $request): JsonResponse

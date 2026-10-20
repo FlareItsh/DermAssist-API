@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Models\PaymentInvoice;
 use App\Models\Subscription;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -92,5 +93,72 @@ class SubscriptionRepository
             ->when($tier, fn ($q) => $q->whereHas('plan', fn ($p) => $p->where('tier_type', $tier)))
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
+    }
+
+    public function getProfitsMetrics(): array
+    {
+        $totalRevenue = (float) PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])->sum('final_amount');
+
+        $activeSubscribersCount = Subscription::where('status', 'active')->distinct('user_id')->count('user_id');
+        $totalSubscribedUsers = Subscription::distinct('user_id')->count('user_id');
+
+        // Renewals: Users who have multiple paid/approved invoices or auto-renewals
+        $renewedUsersByInvoice = PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])
+            ->select('user_id')
+            ->groupBy('user_id')
+            ->havingRaw('count(*) > 1')
+            ->get()
+            ->count();
+
+        $renewedUsersByAutoRenew = PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])
+            ->where(function ($q) {
+                $q->where('payment_method', 'Auto-Renew')
+                    ->orWhere('transaction_reference', 'like', 'RENEWAL-%');
+            })
+            ->distinct('user_id')
+            ->count('user_id');
+
+        $renewedUsersCount = max($renewedUsersByInvoice, $renewedUsersByAutoRenew);
+
+        $renewalRate = $totalSubscribedUsers > 0
+            ? round(($renewedUsersCount / $totalSubscribedUsers) * 100, 1)
+            : 0.0;
+
+        $recentInvoices = PaymentInvoice::with(['user', 'subscription.plan'])
+            ->whereIn('payment_status', ['paid', 'approved'])
+            ->orderBy('created_at', 'desc')
+            ->take(8)
+            ->get()
+            ->map(function ($inv) {
+                return [
+                    'id' => $inv->id,
+                    'uuid' => $inv->uuid,
+                    'amount' => (float) $inv->final_amount,
+                    'payment_method' => $inv->payment_method,
+                    'transaction_reference' => $inv->transaction_reference,
+                    'is_renewal' => $inv->payment_method === 'Auto-Renew' || str_starts_with($inv->transaction_reference ?? '', 'RENEWAL-'),
+                    'paid_at' => $inv->paid_at ?? $inv->created_at,
+                    'user' => $inv->user ? [
+                        'id' => $inv->user->id,
+                        'name' => trim(($inv->user->first_name ?? '').' '.($inv->user->last_name ?? '')) ?: 'User #'.$inv->user->id,
+                        'email' => $inv->user->email,
+                    ] : null,
+                    'plan' => $inv->subscription?->plan ? [
+                        'id' => $inv->subscription->plan->id,
+                        'name' => $inv->subscription->plan->name,
+                        'tier_type' => $inv->subscription->plan->tier_type,
+                        'billing_cycle' => $inv->subscription->billing_cycle,
+                    ] : null,
+                ];
+            });
+
+        return [
+            'total_revenue' => $totalRevenue,
+            'active_subscribers_count' => $activeSubscribersCount,
+            'total_subscribed_users' => $totalSubscribedUsers,
+            'renewed_users_count' => $renewedUsersCount,
+            'renewal_rate_percentage' => $renewalRate,
+            'recent_invoices' => $recentInvoices,
+        ];
     }
 }
