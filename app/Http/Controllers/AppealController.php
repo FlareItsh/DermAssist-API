@@ -15,11 +15,19 @@ class AppealController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $status = $request->query('status', 'pending');
+        $status = $request->query('status', 'all');
+        $diagnosisUuid = $request->query('diagnosis_uuid');
+        $userUuid = $request->query('user_uuid');
 
-        $appeals = $status === 'all'
-            ? $this->appealService->listAppeals()
-            : $this->appealService->listAppeals($status);
+        if ($request->user() && $request->user()->role?->slug === 'doctor' && ! $userUuid) {
+            $userUuid = $request->user()->uuid;
+        }
+
+        $appeals = $this->appealService->listAppeals(
+            $status === 'all' ? null : $status,
+            $diagnosisUuid,
+            $userUuid
+        );
 
         return response()->json([
             'data' => $appeals,
@@ -62,6 +70,23 @@ class AppealController extends Controller
 
         return response()->json([
             'message' => 'Appeal resolved and verified scan ingested for AI retraining.',
+            'data' => $appeal,
+        ]);
+    }
+
+    /**
+     * Reject an appeal: marks as rejected with moderation notes without retraining ingestion.
+     */
+    public function reject(Request $request, string $uuid): JsonResponse
+    {
+        $validated = $request->validate([
+            'resolution_notes' => 'nullable|string',
+        ]);
+
+        $appeal = $this->appealService->rejectAppeal($uuid, $validated);
+
+        return response()->json([
+            'message' => 'Appeal rejected.',
             'data' => $appeal,
         ]);
     }

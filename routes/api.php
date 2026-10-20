@@ -90,6 +90,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
     Route::patch('/appeals/{uuid}/resolve', [AppealController::class, 'resolve']);
+    Route::patch('/appeals/{uuid}/reject', [AppealController::class, 'reject']);
     Route::patch('/appeals/{uuid}/restore', [AppealController::class, 'restore']);
     Route::apiResource('appeals', AppealController::class)->only(['index', 'store']);
     Route::apiResource('candidate-diseases', CandidateDiseaseController::class)->only(['store', 'destroy']);

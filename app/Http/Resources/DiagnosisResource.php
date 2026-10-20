@@ -40,6 +40,17 @@ class DiagnosisResource extends JsonResource
             'doctor_availability' => $this->resource->doctor_availability ?? null,
             'is_inconclusive' => $this->resource->is_inconclusive ?? ($this->label === 'Inconclusive' || $this->label === 'None'),
             'clinical_feedback' => $this->resource->clinical_feedback ?? null,
+            'appeal' => $this->appeal ? [
+                'id' => $this->appeal->id,
+                'uuid' => $this->appeal->uuid,
+                'status' => $this->appeal->status,
+                'diagnosis_label' => $this->appeal->diagnosis_label,
+                'suggested_label' => $this->appeal->suggested_label,
+                'description' => $this->appeal->description,
+                'resolution_notes' => $this->appeal->resolution_notes,
+                'resolved_at' => $this->appeal->resolved_at,
+                'created_at' => $this->appeal->created_at,
+            ] : null,
         ];
     }
 }

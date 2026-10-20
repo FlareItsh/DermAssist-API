@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Events\NotificationCountUpdated;
 use App\Http\Resources\AppealResource;
 use App\Models\CandidateDisease;
 use App\Models\Diagnosis;
@@ -22,9 +23,9 @@ class AppealService
         return AppealResource::collection($collection);
     }
 
-    public function listAppeals(?string $status = null)
+    public function listAppeals(?string $status = null, ?string $diagnosisUuid = null, ?string $userUuid = null)
     {
-        $appeals = $this->appealRepository->getWithRelations($status);
+        $appeals = $this->appealRepository->getWithRelations($status, $diagnosisUuid, $userUuid);
 
         return AppealResource::collection($appeals);
     }
@@ -119,7 +120,41 @@ class AppealService
             );
         }
 
-        return new AppealResource($appeal->fresh()->load(['user', 'diagnosis.patient']));
+        $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
+
+        if ($fresh->user?->uuid) {
+            broadcast(new NotificationCountUpdated($fresh->user->uuid, [
+                'type' => 'appeal_resolved',
+                'appeal_uuid' => $fresh->uuid,
+            ]));
+        }
+
+        return new AppealResource($fresh);
+    }
+
+    /**
+     * Reject an appeal: marks as rejected with moderation notes without retraining ingestion.
+     */
+    public function rejectAppeal(string $uuid, array $options = [])
+    {
+        $appeal = $this->appealRepository->findByUuid($uuid);
+
+        $appeal->update([
+            'status' => 'rejected',
+            'resolved_at' => now(),
+            'resolution_notes' => $options['resolution_notes'] ?? null,
+        ]);
+
+        $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
+
+        if ($fresh->user?->uuid) {
+            broadcast(new NotificationCountUpdated($fresh->user->uuid, [
+                'type' => 'appeal_rejected',
+                'appeal_uuid' => $fresh->uuid,
+            ]));
+        }
+
+        return new AppealResource($fresh);
     }
 
     /**
@@ -134,7 +169,16 @@ class AppealService
             'resolved_at' => null,
         ]);
 
-        return new AppealResource($appeal->fresh()->load(['user', 'diagnosis.patient']));
+        $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
+
+        if ($fresh->user?->uuid) {
+            broadcast(new NotificationCountUpdated($fresh->user->uuid, [
+                'type' => 'appeal_restored',
+                'appeal_uuid' => $fresh->uuid,
+            ]));
+        }
+
+        return new AppealResource($fresh);
     }
 
     public function getAppeal(string $uuid)

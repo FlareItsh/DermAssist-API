@@ -174,3 +174,95 @@ test('admin can restore a resolved appeal to pending', function () {
     expect($appeal->status)->toBe('pending')
         ->and($appeal->resolved_at)->toBeNull();
 });
+
+test('admin can reject an appeal with rejection notes', function () {
+    $admin = User::factory()->create();
+    $doctor = User::factory()->create();
+
+    $appeal = Appeal::create([
+        'user_id' => $doctor->id,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Herpes',
+        'status' => 'pending',
+    ]);
+
+    $response = $this->actingAs($admin)->patchJson("/api/appeals/{$appeal->uuid}/reject", [
+        'resolution_notes' => 'Image resolution too low to definitively establish HSV vesicle patterns.',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('data.status', 'rejected')
+        ->assertJsonPath('data.resolution_notes', 'Image resolution too low to definitively establish HSV vesicle patterns.');
+
+    $appeal->refresh();
+    expect($appeal->status)->toBe('rejected')
+        ->and($appeal->resolved_at)->not->toBeNull()
+        ->and($appeal->resolution_notes)->toBe('Image resolution too low to definitively establish HSV vesicle patterns.');
+});
+
+test('appeals list filters by rejected status', function () {
+    $doctor = User::factory()->create();
+
+    $pending = Appeal::create([
+        'user_id' => $doctor->id,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Herpes',
+        'status' => 'pending',
+    ]);
+
+    $rejected = Appeal::create([
+        'user_id' => $doctor->id,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Eczema',
+        'status' => 'rejected',
+        'resolved_at' => now(),
+        'resolution_notes' => 'Clinical description conflicts with visual scan.',
+    ]);
+
+    $response = $this->actingAs($doctor)->getJson('/api/appeals?status=rejected');
+
+    $response->assertStatus(200);
+    $uuids = collect($response->json('data'))->pluck('uuid')->all();
+    expect($uuids)->toContain($rejected->uuid)
+        ->and($uuids)->not->toContain($pending->uuid);
+});
+
+test('doctor can submit a re-appeal after previous appeal was rejected', function () {
+    $doctor = User::factory()->create();
+    $diagnosis = Diagnosis::create([
+        'user_uuid' => $doctor->uuid,
+        'doctor_uuid' => $doctor->uuid,
+        'image_path' => 'diagnoses/test_reappeal.jpg',
+        'label' => 'Acne',
+        'confidence' => 0.80,
+        'probabilities' => ['Acne' => 0.80],
+        'status' => 'completed',
+    ]);
+
+    // First appeal rejected
+    $firstAppeal = Appeal::create([
+        'user_id' => $doctor->id,
+        'diagnosis_id' => $diagnosis->id,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Herpes',
+        'description' => 'First attempt',
+        'status' => 'rejected',
+        'resolved_at' => now(),
+        'resolution_notes' => 'Please provide more details on vesicle groupings.',
+    ]);
+
+    // Doctor submits second appeal (re-appeal)
+    $response = $this->actingAs($doctor)->postJson('/api/appeals', [
+        'user_uuid' => $doctor->uuid,
+        'diagnosis_uuid' => $diagnosis->uuid,
+        'diagnosis_label' => 'Herpes',
+        'suggested_label' => 'Herpes Simplex',
+        'description' => 'Close-up analysis shows umbilicated vesicles with erythematous base.',
+    ]);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('data.suggested_label', 'Herpes Simplex');
+
+    expect(Appeal::where('diagnosis_id', $diagnosis->id)->count())->toBe(2);
+});

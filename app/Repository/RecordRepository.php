@@ -20,7 +20,7 @@ class RecordRepository
 
     public function getRecordsForDoctor(int $doctorId, string $doctorUuid, ?string $patientUuid = null)
     {
-        $query = Diagnosis::with(['clinicalNote.patient', 'patient', 'user'])
+        $query = Diagnosis::with(['clinicalNote.patient', 'patient', 'user', 'appeal'])
             ->where(function ($q) use ($doctorId, $doctorUuid) {
                 $q->whereHas('clinicalNote', function ($query) use ($doctorId) {
                     $query->where('doctor_id', $doctorId);
