@@ -16,8 +16,14 @@ class DatasetService
 
     private string $datasetDir = 'dataset';
 
-    public function listDatasets(?string $category = null, ?int $page = null, ?int $perPage = 12, bool $all = false): JsonResponse
-    {
+    public function listDatasets(
+        ?string $category = null,
+        ?int $page = null,
+        ?int $perPage = 12,
+        bool $all = false,
+        ?string $doctorUuid = null,
+        ?int $doctorId = null
+    ): JsonResponse {
         $categoryImages = [];
         $categoryItems = [];
         $seenFilenames = [];
@@ -31,8 +37,8 @@ class DatasetService
 
         $targetCategories = $filterCategory ? [$filterCategory] : $allowedPriorityCategories;
 
-        // 1. Read files from storage/app/public/dataset/{category}
-        if (Storage::disk($this->disk)->exists($this->datasetDir)) {
+        // 1. Read files from storage/app/public/dataset/{category} (Only for global/admin dataset, NOT doctor-scoped)
+        if (! $doctorUuid && Storage::disk($this->disk)->exists($this->datasetDir)) {
             $categories = Storage::disk($this->disk)->directories($this->datasetDir);
             foreach ($categories as $categoryPath) {
                 $categoryName = strtolower(basename($categoryPath));
@@ -58,16 +64,27 @@ class DatasetService
             }
         }
 
-        // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records
-        $diagnoses = Diagnosis::query()
+        // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records (Only finalized/contributed scans)
+        $diagnosisQuery = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where('contributed_to_dataset', true)
             ->where(function ($q) use ($targetCategories) {
                 foreach ($targetCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
                 }
-            })
-            ->latest()
-            ->get();
+            });
+
+        if ($doctorUuid) {
+            $diagnosisQuery->where(function ($q) use ($doctorUuid, $doctorId) {
+                $q->where('doctor_uuid', $doctorUuid)
+                    ->orWhere('user_uuid', $doctorUuid);
+                if ($doctorId) {
+                    $q->orWhereHas('clinicalNote', fn ($sq) => $sq->where('doctor_id', $doctorId));
+                }
+            });
+        }
+
+        $diagnoses = $diagnosisQuery->latest()->get();
 
         foreach ($diagnoses as $diag) {
             $catSlug = strtolower(trim($diag->label));
@@ -122,7 +139,7 @@ class DatasetService
                 }
             }
 
-            if ($total === 0 && $filterCategory === null) {
+            if ($total === 0 && $filterCategory === null && ! $doctorUuid) {
                 continue;
             }
 
@@ -153,10 +170,26 @@ class DatasetService
         return response()->json($result);
     }
 
-    public function addImage(UploadedFile $file, string $category): JsonResponse
+    public function addImage(UploadedFile $file, string $category, ?User $user = null, ?string $doctorUuid = null): JsonResponse
     {
         $categorySlug = Str::slug($category);
         $path = $file->store($this->datasetDir.'/'.$categorySlug, $this->disk);
+
+        $resolvedDocUuid = $doctorUuid ?? ($user && in_array($user->role?->slug, ['doctor', 'secretary']) ? $user->uuid : null);
+        if ($resolvedDocUuid) {
+            Diagnosis::create([
+                'user_uuid' => $user?->uuid ?? $resolvedDocUuid,
+                'doctor_uuid' => $resolvedDocUuid,
+                'image_path' => $path,
+                'label' => ucfirst(strtolower($category)),
+                'confidence' => 1.0,
+                'probabilities' => [ucfirst(strtolower($category)) => 1.0],
+                'status' => 'completed',
+                'patient_consented_dataset' => true,
+                'contributed_to_dataset' => true,
+                'contributed_at' => now(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Image added to dataset',
@@ -169,14 +202,30 @@ class DatasetService
      *
      * @param  array<UploadedFile>  $files
      */
-    public function addImages(array $files, string $category): JsonResponse
+    public function addImages(array $files, string $category, ?User $user = null, ?string $doctorUuid = null): JsonResponse
     {
         $categorySlug = Str::slug($category);
         $urls = [];
+        $resolvedDocUuid = $doctorUuid ?? ($user && in_array($user->role?->slug, ['doctor', 'secretary']) ? $user->uuid : null);
 
         foreach ($files as $file) {
             $path = $file->store($this->datasetDir.'/'.$categorySlug, $this->disk);
             $urls[] = Storage::disk($this->disk)->url($path);
+
+            if ($resolvedDocUuid) {
+                Diagnosis::create([
+                    'user_uuid' => $user?->uuid ?? $resolvedDocUuid,
+                    'doctor_uuid' => $resolvedDocUuid,
+                    'image_path' => $path,
+                    'label' => ucfirst(strtolower($category)),
+                    'confidence' => 1.0,
+                    'probabilities' => [ucfirst(strtolower($category)) => 1.0],
+                    'status' => 'completed',
+                    'patient_consented_dataset' => true,
+                    'contributed_to_dataset' => true,
+                    'contributed_at' => now(),
+                ]);
+            }
         }
 
         return response()->json([
@@ -216,7 +265,7 @@ class DatasetService
         return $relativePath;
     }
 
-    public function removeImage(string $url): JsonResponse
+    public function removeImage(string $url, ?User $user = null, ?string $doctorUuid = null): JsonResponse
     {
         $relativePath = $this->resolveRelativeDatasetPath($url);
 
@@ -227,6 +276,16 @@ class DatasetService
         $filename = basename($relativePath);
         $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
         $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+
+        if ($doctorUuid) {
+            $diag = Diagnosis::where('image_path', $relativePath)
+                ->orWhere('image_path', 'like', "%{$filename}")
+                ->first();
+
+            if (! $diag || ($diag->doctor_uuid !== $doctorUuid && $diag->user_uuid !== $doctorUuid)) {
+                return response()->json(['error' => 'Unauthorized: You can only remove your own clinical scans.'], 403);
+            }
+        }
 
         if (Storage::disk($this->disk)->exists($relativePath)) {
             Storage::disk($this->disk)->delete($relativePath);
@@ -283,7 +342,7 @@ class DatasetService
      *
      * @param  array<string>  $urls
      */
-    public function removeImages(array $urls): JsonResponse
+    public function removeImages(array $urls, ?User $user = null, ?string $doctorUuid = null): JsonResponse
     {
         $deletedCount = 0;
         $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
@@ -296,6 +355,17 @@ class DatasetService
             }
 
             $filename = basename($relativePath);
+
+            if ($doctorUuid) {
+                $diag = Diagnosis::where('image_path', $relativePath)
+                    ->orWhere('image_path', 'like', "%{$filename}")
+                    ->first();
+
+                if (! $diag || ($diag->doctor_uuid !== $doctorUuid && $diag->user_uuid !== $doctorUuid)) {
+                    continue;
+                }
+            }
+
             Storage::disk($this->disk)->delete($relativePath);
 
             $diag = Diagnosis::where('image_path', $relativePath)
@@ -348,15 +418,17 @@ class DatasetService
     {
         $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
 
-        // Verify Patient Consent
+        // Verify Patient Consent or Doctor In-Clinic Contribution
         $isPatientConsented = false;
-        if ($diagnosis->patient_consented_dataset) {
+        if ($diagnosis->contributed_to_dataset || $diagnosis->patient_consented_dataset) {
             $isPatientConsented = true;
         } elseif (! empty($diagnosis->patient_uuid)) {
             $patient = User::where('uuid', $diagnosis->patient_uuid)->first();
-            if ($patient && $patient->consent_dataset) {
+            if ($patient && ($patient->consent_dataset || $patient->is_doctor_registered)) {
                 $isPatientConsented = true;
             }
+        } elseif (! empty($diagnosis->doctor_uuid)) {
+            $isPatientConsented = true;
         }
 
         if (! $isPatientConsented) {
@@ -396,8 +468,12 @@ class DatasetService
         return response()->json(['message' => 'Saved to dataset']);
     }
 
-    public function downloadZip(?string $category = null): JsonResponse|BinaryFileResponse
+    public function downloadZip(?string $category = null, ?string $doctorUuid = null, ?int $doctorId = null): JsonResponse|BinaryFileResponse
     {
+        if ($doctorUuid) {
+            return $this->downloadDoctorScansZip($category, $doctorUuid, $doctorId);
+        }
+
         $zipFileName = $category ? 'dataset_'.Str::slug($category).'.zip' : 'dataset_all.zip';
         $zipPath = storage_path('app/public/'.$zipFileName);
 
@@ -419,19 +495,118 @@ class DatasetService
 
         $baseDir = Storage::disk($this->disk)->path($this->datasetDir);
 
-        if ($category) {
-            $catSlug = Str::slug($category);
-            $cmd = sprintf('cd %s && zip -r %s %s', escapeshellarg($baseDir), escapeshellarg($zipPath), escapeshellarg($catSlug));
+        if (PHP_OS_FAMILY === 'Windows') {
+            $targetPath = $category ? $baseDir.DIRECTORY_SEPARATOR.Str::slug($category) : $baseDir;
+            $cmd = sprintf(
+                'powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path %s\* -DestinationPath %s -Force"',
+                escapeshellarg($targetPath),
+                escapeshellarg($zipPath)
+            );
         } else {
-            $cmd = sprintf('cd %s && zip -r %s .', escapeshellarg($baseDir), escapeshellarg($zipPath));
+            if ($category) {
+                $catSlug = Str::slug($category);
+                $cmd = sprintf('cd %s && zip -r %s %s', escapeshellarg($baseDir), escapeshellarg($zipPath), escapeshellarg($catSlug));
+            } else {
+                $cmd = sprintf('cd %s && zip -r %s .', escapeshellarg($baseDir), escapeshellarg($zipPath));
+            }
         }
 
         exec($cmd, $output, $returnVar);
 
-        if ($returnVar !== 0) {
+        if ($returnVar !== 0 || ! file_exists($zipPath)) {
             return response()->json(['error' => 'Could not create zip file'], 500);
         }
 
         return response()->download($zipPath)->deleteFileAfterSend(true);
+    }
+
+    private function downloadDoctorScansZip(?string $category, string $doctorUuid, ?int $doctorId = null): JsonResponse|BinaryFileResponse
+    {
+        $catFilter = $category ? strtolower(trim($category)) : null;
+        $query = Diagnosis::query()
+            ->whereNotNull('image_path')
+            ->where('contributed_to_dataset', true)
+            ->where(function ($q) use ($doctorUuid, $doctorId) {
+                $q->where('doctor_uuid', $doctorUuid)
+                    ->orWhere('user_uuid', $doctorUuid);
+                if ($doctorId) {
+                    $q->orWhereHas('clinicalNote', fn ($sq) => $sq->where('doctor_id', $doctorId));
+                }
+            });
+
+        if ($catFilter) {
+            $query->whereRaw('LOWER(label) = ?', [$catFilter]);
+        }
+
+        $diagnoses = $query->get();
+
+        $existingFiles = [];
+        foreach ($diagnoses as $diag) {
+            if ($diag->image_path && Storage::disk($this->disk)->exists($diag->image_path)) {
+                $cat = strtolower(trim($diag->label ?: 'uncategorized'));
+                $existingFiles[] = [
+                    'source_path' => Storage::disk($this->disk)->path($diag->image_path),
+                    'zip_path' => $catFilter ? basename($diag->image_path) : $cat.'/'.basename($diag->image_path),
+                ];
+            }
+        }
+
+        if (empty($existingFiles)) {
+            return response()->json(['error' => 'No images found to download'], 404);
+        }
+
+        $zipFileName = 'doctor_scans_'.($catFilter ? Str::slug($catFilter).'_' : '').Str::random(8).'.zip';
+        $zipFullPath = storage_path('app/public/'.$zipFileName);
+
+        $tempDir = storage_path('app/temp_zip_'.Str::random(12));
+        mkdir($tempDir, 0755, true);
+
+        try {
+            foreach ($existingFiles as $item) {
+                $dest = $tempDir.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $item['zip_path']);
+                $destDir = dirname($dest);
+                if (! is_dir($destDir)) {
+                    mkdir($destDir, 0755, true);
+                }
+                copy($item['source_path'], $dest);
+            }
+
+            if (PHP_OS_FAMILY === 'Windows') {
+                $cmd = sprintf(
+                    'powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path %s\* -DestinationPath %s -Force"',
+                    escapeshellarg($tempDir),
+                    escapeshellarg($zipFullPath)
+                );
+            } else {
+                $cmd = sprintf(
+                    'cd %s && zip -r %s .',
+                    escapeshellarg($tempDir),
+                    escapeshellarg($zipFullPath)
+                );
+            }
+
+            exec($cmd, $output, $returnVar);
+
+            if ($returnVar !== 0 || ! file_exists($zipFullPath)) {
+                return response()->json(['error' => 'Could not create zip file'], 500);
+            }
+
+            return response()->download($zipFullPath)->deleteFileAfterSend(true);
+        } finally {
+            $this->deleteDirectoryRecursive($tempDir);
+        }
+    }
+
+    private function deleteDirectoryRecursive(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $items = array_diff(scandir($dir), ['.', '..']);
+        foreach ($items as $item) {
+            $path = $dir.DIRECTORY_SEPARATOR.$item;
+            is_dir($path) ? $this->deleteDirectoryRecursive($path) : @unlink($path);
+        }
+        @rmdir($dir);
     }
 }

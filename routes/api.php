@@ -158,6 +158,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
     // Admin Subscription Management Routes
     Route::prefix('admin')->group(function () {
+        Route::get('/dashboard-stats', [AdminSubscriptionController::class, 'dashboardStats']);
         Route::get('/subscriptions/dashboard', [AdminSubscriptionController::class, 'dashboard']);
         Route::get('/subscriptions', [AdminSubscriptionController::class, 'index']);
 

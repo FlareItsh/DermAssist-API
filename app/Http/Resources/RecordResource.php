@@ -33,7 +33,10 @@ class RecordResource extends JsonResource
             'probabilities' => $this->probabilities,
             'image_path' => $this->image_path,
             'created_at' => $this->created_at,
-            'patient' => $this->patient,
+            'status' => $this->status,
+            'patient_uuid' => $this->patient_uuid ?? $this->user_uuid,
+            'doctor_uuid' => $this->doctor_uuid,
+            'patient' => $this->patient ?? $this->user,
             'doctor' => $this->doctor ?? ($this->clinicalNote ? $this->clinicalNote->doctor : null),
             'clinical_note' => $this->clinicalNote,
         ];

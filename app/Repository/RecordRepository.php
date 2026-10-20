@@ -18,17 +18,24 @@ class RecordRepository
             ->get();
     }
 
-    public function getRecordsForDoctor(int $doctorId, string $doctorUuid)
+    public function getRecordsForDoctor(int $doctorId, string $doctorUuid, ?string $patientUuid = null)
     {
-        return Diagnosis::with(['clinicalNote.patient', 'patient'])
+        $query = Diagnosis::with(['clinicalNote.patient', 'patient', 'user'])
             ->where(function ($q) use ($doctorId, $doctorUuid) {
                 $q->whereHas('clinicalNote', function ($query) use ($doctorId) {
                     $query->where('doctor_id', $doctorId);
                 })
                     ->orWhere('doctor_uuid', $doctorUuid);
-            })
-            ->orderBy('created_at', 'desc')
-            ->get();
+            });
+
+        if ($patientUuid) {
+            $query->where(function ($q) use ($patientUuid) {
+                $q->where('patient_uuid', $patientUuid)
+                    ->orWhere('user_uuid', $patientUuid);
+            });
+        }
+
+        return $query->orderBy('created_at', 'desc')->get();
     }
 
     public function getAllRecords()

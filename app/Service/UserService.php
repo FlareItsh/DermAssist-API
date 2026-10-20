@@ -644,24 +644,78 @@ class UserService
                 ? trim((string) $payload['email'])
                 : 'walkin.'.(string) Str::uuid().'@clinic.local';
 
+            // 1. Check if patient already exists by valid UUID
+            if (! empty($payload['uuid']) && $payload['uuid'] !== 'pending_new_patient' && $payload['uuid'] !== 'walk_in_guest') {
+                $existingByUuid = User::where('uuid', $payload['uuid'])->first();
+                if ($existingByUuid) {
+                    if (! $existingByUuid->registered_by_doctor_id) {
+                        $existingByUuid->update([
+                            'is_doctor_registered' => true,
+                            'registered_by_doctor_id' => $actualDoctorId,
+                        ]);
+                    }
+                    $existingByUuid->load('role');
+
+                    Conversation::firstOrCreate([
+                        'doctor_id' => $actualDoctorId,
+                        'patient_id' => $existingByUuid->id,
+                    ]);
+
+                    return response()->json([
+                        'user' => new UserResource($existingByUuid),
+                        'message' => 'Existing patient record linked.',
+                    ], 200);
+                }
+            }
+
+            // 2. Check if patient already exists by email (for non-walkins)
+            if (! $isWalkIn && ! empty($payload['email'])) {
+                $existingByEmail = User::where('email', $email)->first();
+                if ($existingByEmail) {
+                    if (! $existingByEmail->registered_by_doctor_id) {
+                        $existingByEmail->update([
+                            'is_doctor_registered' => true,
+                            'registered_by_doctor_id' => $actualDoctorId,
+                        ]);
+                    }
+                    $existingByEmail->load('role');
+
+                    Conversation::firstOrCreate([
+                        'doctor_id' => $actualDoctorId,
+                        'patient_id' => $existingByEmail->id,
+                    ]);
+
+                    return response()->json([
+                        'user' => new UserResource($existingByEmail),
+                        'message' => 'Existing patient record linked.',
+                    ], 200);
+                }
+            }
+
             $password = ! empty($payload['password'])
                 ? $payload['password']
                 : Str::random(32);
 
+            $firstName = ! empty($payload['firstName']) ? trim((string) $payload['firstName']) : (! empty($payload['first_name']) ? trim((string) $payload['first_name']) : '');
+            $lastName = ! empty($payload['lastName']) ? trim((string) $payload['lastName']) : (! empty($payload['last_name']) ? trim((string) $payload['last_name']) : '');
+            $middleName = ! empty($payload['middleName']) ? trim((string) $payload['middleName']) : (! empty($payload['middle_name']) ? trim((string) $payload['middle_name']) : null);
+            $dob = ! empty($payload['date_of_birth']) ? $payload['date_of_birth'] : null;
+            $ageVal = ! empty($payload['age']) ? (int) $payload['age'] : null;
+
             $userData = [
-                'first_name' => $payload['firstName'],
-                'middle_name' => $payload['middleName'] ?? null,
-                'last_name' => $payload['lastName'],
+                'first_name' => $firstName,
+                'middle_name' => $middleName,
+                'last_name' => $lastName,
                 'email' => $email,
                 'password' => $password,
-                'date_of_birth' => $payload['date_of_birth'] ?? null,
-                'gender' => $payload['gender'] ?? null,
+                'date_of_birth' => $dob,
+                'gender' => ! empty($payload['gender']) ? $payload['gender'] : null,
                 'contact_number' => ! empty($payload['contact_number']) ? trim((string) $payload['contact_number']) : (! empty($payload['phone']) ? trim((string) $payload['phone']) : null),
-                'age' => $payload['age'] ?? null,
-                'street' => $payload['street'] ?? null,
-                'barangay' => $payload['barangay'] ?? null,
-                'city' => $payload['city'] ?? null,
-                'province' => $payload['province'] ?? null,
+                'age' => $ageVal,
+                'street' => ! empty($payload['street']) ? $payload['street'] : null,
+                'barangay' => ! empty($payload['barangay']) ? $payload['barangay'] : null,
+                'city' => ! empty($payload['city']) ? $payload['city'] : null,
+                'province' => ! empty($payload['province']) ? $payload['province'] : null,
                 'role_id' => $role->id,
                 'uuid' => (string) Str::uuid(),
                 'is_doctor_registered' => true,
@@ -712,7 +766,7 @@ class UserService
         ProcessScheduledAccountActions::processDueActions();
 
         $doctor = $this->userRepository->findByUuid($doctorUuid);
-        $collection = $this->userRepository->paginateDoctorPatients($doctor->id, $perPage);
+        $collection = $this->userRepository->paginateDoctorPatients($doctor->id, $perPage, $doctorUuid);
 
         return UserResource::collection($collection);
     }
