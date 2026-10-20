@@ -401,3 +401,41 @@ test('patient email update rejects duplicate email', function () {
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['email']);
 });
+
+test('assigning or registering an existing patient does not create duplicate accounts', function () {
+    Sanctum::actingAs($this->doctor);
+
+    $existing = User::factory()->create([
+        'role_id' => $this->patientRole->id,
+        'first_name' => 'Existing',
+        'last_name' => 'Patient',
+        'email' => 'existing.patient@example.com',
+        'is_doctor_registered' => true,
+        'registered_by_doctor_id' => $this->doctor->id,
+    ]);
+
+    $initialUserCount = User::count();
+
+    // Re-register with the same email
+    $response = $this->postJson('/api/doctor/patients', [
+        'firstName' => 'Existing',
+        'lastName' => 'Patient',
+        'email' => 'existing.patient@example.com',
+        'password' => 'newpassword123',
+    ]);
+
+    $response->assertStatus(200);
+    expect(User::count())->toBe($initialUserCount)
+        ->and($response->json('user.uuid'))->toBe($existing->uuid);
+
+    // Re-register with existing UUID
+    $uuidResponse = $this->postJson('/api/doctor/patients', [
+        'uuid' => $existing->uuid,
+        'firstName' => 'Existing',
+        'lastName' => 'Patient',
+    ]);
+
+    $uuidResponse->assertStatus(200);
+    expect(User::count())->toBe($initialUserCount)
+        ->and($uuidResponse->json('user.uuid'))->toBe($existing->uuid);
+});

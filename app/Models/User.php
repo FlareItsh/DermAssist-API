@@ -44,6 +44,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_change_password' => 'boolean',
             'consent_dataset' => 'boolean',
+            'is_doctor_registered' => 'boolean',
             'terms_accepted_at' => 'datetime',
             'cookies_accepted_at' => 'datetime',
             'verification_deadline' => 'datetime',

@@ -108,9 +108,17 @@ class UserRepository
             ->get();
     }
 
-    public function paginateDoctorPatients(int $doctorId, int $perPage = 15)
+    public function paginateDoctorPatients(int $doctorId, int $perPage = 15, ?string $doctorUuid = null)
     {
-        return User::where('registered_by_doctor_id', $doctorId)
+        return User::where(function ($q) use ($doctorId, $doctorUuid) {
+            $q->where('registered_by_doctor_id', $doctorId);
+            if ($doctorUuid) {
+                $q->orWhere(function ($sq) use ($doctorUuid) {
+                    $sq->where('is_doctor_registered', true)
+                        ->whereHas('diagnoses', fn ($dq) => $dq->where('doctor_uuid', $doctorUuid)->orWhere('user_uuid', $doctorUuid));
+                });
+            }
+        })
             ->where(function ($query) {
                 $query->whereNull('account_action')
                     ->orWhere('account_action', '!=', 'delete')

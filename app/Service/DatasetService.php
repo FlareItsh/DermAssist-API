@@ -64,9 +64,10 @@ class DatasetService
             }
         }
 
-        // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records
+        // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records (Only finalized/contributed scans)
         $diagnosisQuery = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where('contributed_to_dataset', true)
             ->where(function ($q) use ($targetCategories) {
                 foreach ($targetCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
@@ -417,15 +418,17 @@ class DatasetService
     {
         $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
 
-        // Verify Patient Consent
+        // Verify Patient Consent or Doctor In-Clinic Contribution
         $isPatientConsented = false;
-        if ($diagnosis->patient_consented_dataset) {
+        if ($diagnosis->contributed_to_dataset || $diagnosis->patient_consented_dataset) {
             $isPatientConsented = true;
         } elseif (! empty($diagnosis->patient_uuid)) {
             $patient = User::where('uuid', $diagnosis->patient_uuid)->first();
-            if ($patient && $patient->consent_dataset) {
+            if ($patient && ($patient->consent_dataset || $patient->is_doctor_registered)) {
                 $isPatientConsented = true;
             }
+        } elseif (! empty($diagnosis->doctor_uuid)) {
+            $isPatientConsented = true;
         }
 
         if (! $isPatientConsented) {
@@ -522,6 +525,7 @@ class DatasetService
         $catFilter = $category ? strtolower(trim($category)) : null;
         $query = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where('contributed_to_dataset', true)
             ->where(function ($q) use ($doctorUuid, $doctorId) {
                 $q->where('doctor_uuid', $doctorUuid)
                     ->orWhere('user_uuid', $doctorUuid);
