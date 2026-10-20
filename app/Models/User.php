@@ -44,6 +44,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_change_password' => 'boolean',
             'consent_dataset' => 'boolean',
+            'is_doctor_registered' => 'boolean',
             'terms_accepted_at' => 'datetime',
             'cookies_accepted_at' => 'datetime',
             'verification_deadline' => 'datetime',
@@ -196,6 +197,16 @@ class User extends Authenticatable
     public function diagnoses(): HasMany
     {
         return $this->hasMany(Diagnosis::class, 'user_uuid', 'uuid');
+    }
+
+    /**
+     * Get the diagnoses where the user is the patient.
+     *
+     * @return HasMany<Diagnosis, $this>
+     */
+    public function patientDiagnoses(): HasMany
+    {
+        return $this->hasMany(Diagnosis::class, 'patient_uuid', 'uuid');
     }
 
     /**

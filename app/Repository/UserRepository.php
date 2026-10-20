@@ -103,20 +103,31 @@ class UserRepository
                     ->orWhere('account_action', '!=', 'delete')
                     ->orWhere('account_action_scheduled_at', '>', now());
             })
-            ->withCount('diagnoses')
+            ->withCount(['diagnoses', 'patientDiagnoses'])
             ->latest()
             ->get();
     }
 
-    public function paginateDoctorPatients(int $doctorId, int $perPage = 15)
+    public function paginateDoctorPatients(int $doctorId, int $perPage = 15, ?string $doctorUuid = null)
     {
-        return User::where('registered_by_doctor_id', $doctorId)
+        return User::where(function ($q) use ($doctorId, $doctorUuid) {
+            $q->where('registered_by_doctor_id', $doctorId);
+            if ($doctorUuid) {
+                $q->orWhere(function ($sq) use ($doctorUuid) {
+                    $sq->where('is_doctor_registered', true)
+                        ->where(function ($dq) use ($doctorUuid) {
+                            $dq->whereHas('diagnoses', fn ($sub) => $sub->where('doctor_uuid', $doctorUuid)->orWhere('user_uuid', $doctorUuid))
+                                ->orWhereHas('patientDiagnoses', fn ($sub) => $sub->where('doctor_uuid', $doctorUuid));
+                        });
+                });
+            }
+        })
             ->where(function ($query) {
                 $query->whereNull('account_action')
                     ->orWhere('account_action', '!=', 'delete')
                     ->orWhere('account_action_scheduled_at', '>', now());
             })
-            ->withCount('diagnoses')
+            ->withCount(['diagnoses', 'patientDiagnoses'])
             ->latest()
             ->paginate($perPage);
     }

@@ -16,7 +16,7 @@ class RecordController extends Controller
 
     public function index(Request $request)
     {
-        return $this->recordService->listRecords($request->user());
+        return $this->recordService->listRecords($request->user(), $request->input('patient_uuid'));
     }
 
     public function exportPdf(Request $request, string $uuid): Response

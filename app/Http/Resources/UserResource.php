@@ -41,7 +41,7 @@ class UserResource extends JsonResource
             'role' => $this->role->slug,
             'doctor_uuid' => $this->doctor?->uuid,
             'avatar_path' => $this->avatar_path,
-            'total_scans' => $this->diagnoses_count ?? 0,
+            'total_scans' => ($this->diagnoses_count ?? 0) + ($this->patient_diagnoses_count ?? 0),
             'doctor_verification' => $this->latestDoctorVerification ? new VerificationResource($this->latestDoctorVerification) : null,
             'can_be_recommended' => $this->role?->slug === 'doctor' ? $this->canBeRecommended() : false,
             'is_doctor_registered' => (bool) $this->is_doctor_registered,
