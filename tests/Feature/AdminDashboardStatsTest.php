@@ -78,6 +78,8 @@ test('admin can retrieve comprehensive dashboard statistics', function () {
             'data' => [
                 'subscription_profits' => [
                     'total_revenue',
+                    'growth_rate',
+                    'revenue_trend',
                     'active_subscribers_count',
                     'total_subscribed_users',
                     'renewed_users_count',

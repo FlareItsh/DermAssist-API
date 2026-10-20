@@ -152,8 +152,35 @@ class SubscriptionRepository
                 ];
             });
 
+        $revenueTrend = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $monthDate = now()->subMonths($i);
+            $start = $monthDate->copy()->startOfMonth();
+            $end = $monthDate->copy()->endOfMonth();
+
+            $monthRevenue = (float) PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])
+                ->whereBetween('created_at', [$start, $end])
+                ->sum('final_amount');
+
+            $revenueTrend[] = [
+                'label' => $monthDate->format('M'),
+                'amount' => $monthRevenue,
+            ];
+        }
+
+        $currentMonthRev = $revenueTrend[5]['amount'] ?? 0.0;
+        $prevMonthRev = $revenueTrend[4]['amount'] ?? 0.0;
+        $growthRate = 0.0;
+        if ($prevMonthRev > 0) {
+            $growthRate = round((($currentMonthRev - $prevMonthRev) / $prevMonthRev) * 100, 1);
+        } elseif ($currentMonthRev > 0) {
+            $growthRate = 100.0;
+        }
+
         return [
             'total_revenue' => $totalRevenue,
+            'growth_rate' => $growthRate,
+            'revenue_trend' => $revenueTrend,
             'active_subscribers_count' => $activeSubscribersCount,
             'total_subscribed_users' => $totalSubscribedUsers,
             'renewed_users_count' => $renewedUsersCount,
