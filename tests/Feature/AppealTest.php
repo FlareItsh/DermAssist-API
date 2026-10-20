@@ -1,9 +1,11 @@
 <?php
 
+use App\Events\ScanAppealUpdated;
 use App\Models\Appeal;
 use App\Models\Diagnosis;
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -265,4 +267,71 @@ test('doctor can submit a re-appeal after previous appeal was rejected', functio
         ->assertJsonPath('data.suggested_label', 'Herpes Simplex');
 
     expect(Appeal::where('diagnosis_id', $diagnosis->id)->count())->toBe(2);
+});
+
+test('appeal lifecycle actions broadcast ScanAppealUpdated to admin.moderation', function () {
+    Event::fake([ScanAppealUpdated::class]);
+
+    $adminRole = Role::where('slug', 'admin')->first();
+    $admin = User::factory()->create(['role_id' => $adminRole->id]);
+    $doctor = User::factory()->create();
+
+    $diagnosis = Diagnosis::create([
+        'user_uuid' => $doctor->uuid,
+        'doctor_uuid' => $doctor->uuid,
+        'image_path' => 'diagnoses/test_ws.jpg',
+        'label' => 'Acne',
+        'confidence' => 0.85,
+        'probabilities' => ['Acne' => 0.85],
+        'status' => 'completed',
+    ]);
+
+    // 1. Submit appeal
+    $response = $this->actingAs($doctor)->postJson('/api/appeals', [
+        'user_uuid' => $doctor->uuid,
+        'diagnosis_uuid' => $diagnosis->uuid,
+        'diagnosis_label' => 'Acne',
+        'suggested_label' => 'Herpes',
+        'description' => 'Disputed label',
+    ]);
+    $response->assertStatus(201);
+    $appealUuid = $response->json('data.uuid');
+
+    Event::assertDispatched(ScanAppealUpdated::class, function ($event) use ($doctor) {
+        $channels = collect($event->broadcastOn())->map->name;
+
+        return $event->action === 'submitted'
+            && $channels->contains('private-admin.moderation')
+            && $channels->contains('private-user.'.$doctor->uuid);
+    });
+
+    // 2. Resolve appeal
+    $this->actingAs($admin)->patchJson("/api/appeals/{$appealUuid}/resolve", [
+        'update_dataset' => false,
+    ])->assertStatus(200);
+
+    Event::assertDispatched(ScanAppealUpdated::class, function ($event) use ($doctor) {
+        $channels = collect($event->broadcastOn())->map->name;
+
+        return $event->action === 'resolved'
+            && $channels->contains('private-admin.moderation')
+            && $channels->contains('private-user.'.$doctor->uuid);
+    });
+
+    // 3. Restore appeal
+    $this->actingAs($admin)->patchJson("/api/appeals/{$appealUuid}/restore")
+        ->assertStatus(200);
+
+    Event::assertDispatched(ScanAppealUpdated::class, function ($event) {
+        return $event->action === 'restored';
+    });
+
+    // 4. Reject appeal
+    $this->actingAs($admin)->patchJson("/api/appeals/{$appealUuid}/reject", [
+        'resolution_notes' => 'Rejected test',
+    ])->assertStatus(200);
+
+    Event::assertDispatched(ScanAppealUpdated::class, function ($event) {
+        return $event->action === 'rejected';
+    });
 });

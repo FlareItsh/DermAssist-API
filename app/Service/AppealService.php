@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Events\NotificationCountUpdated;
+use App\Events\ScanAppealUpdated;
 use App\Http\Resources\AppealResource;
 use App\Models\CandidateDisease;
 use App\Models\Diagnosis;
@@ -96,7 +97,11 @@ class AppealService
             'status' => 'pending',
         ]);
 
-        return new AppealResource($appeal->load(['user', 'diagnosis.patient']));
+        $loaded = $appeal->load(['user', 'diagnosis.patient']);
+
+        broadcast(new ScanAppealUpdated($loaded, 'submitted', $user->uuid));
+
+        return new AppealResource($loaded);
     }
 
     /**
@@ -121,6 +126,8 @@ class AppealService
         }
 
         $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
+
+        broadcast(new ScanAppealUpdated($fresh, 'resolved', $fresh->user?->uuid));
 
         if ($fresh->user?->uuid) {
             broadcast(new NotificationCountUpdated($fresh->user->uuid, [
@@ -147,6 +154,8 @@ class AppealService
 
         $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
 
+        broadcast(new ScanAppealUpdated($fresh, 'rejected', $fresh->user?->uuid));
+
         if ($fresh->user?->uuid) {
             broadcast(new NotificationCountUpdated($fresh->user->uuid, [
                 'type' => 'appeal_rejected',
@@ -170,6 +179,8 @@ class AppealService
         ]);
 
         $fresh = $appeal->fresh()->load(['user', 'diagnosis.patient']);
+
+        broadcast(new ScanAppealUpdated($fresh, 'restored', $fresh->user?->uuid));
 
         if ($fresh->user?->uuid) {
             broadcast(new NotificationCountUpdated($fresh->user->uuid, [
