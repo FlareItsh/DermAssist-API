@@ -103,7 +103,7 @@ class UserRepository
                     ->orWhere('account_action', '!=', 'delete')
                     ->orWhere('account_action_scheduled_at', '>', now());
             })
-            ->withCount('diagnoses')
+            ->withCount(['diagnoses', 'patientDiagnoses'])
             ->latest()
             ->get();
     }
@@ -115,7 +115,10 @@ class UserRepository
             if ($doctorUuid) {
                 $q->orWhere(function ($sq) use ($doctorUuid) {
                     $sq->where('is_doctor_registered', true)
-                        ->whereHas('diagnoses', fn ($dq) => $dq->where('doctor_uuid', $doctorUuid)->orWhere('user_uuid', $doctorUuid));
+                        ->where(function ($dq) use ($doctorUuid) {
+                            $dq->whereHas('diagnoses', fn ($sub) => $sub->where('doctor_uuid', $doctorUuid)->orWhere('user_uuid', $doctorUuid))
+                                ->orWhereHas('patientDiagnoses', fn ($sub) => $sub->where('doctor_uuid', $doctorUuid));
+                        });
                 });
             }
         })
@@ -124,7 +127,7 @@ class UserRepository
                     ->orWhere('account_action', '!=', 'delete')
                     ->orWhere('account_action_scheduled_at', '>', now());
             })
-            ->withCount('diagnoses')
+            ->withCount(['diagnoses', 'patientDiagnoses'])
             ->latest()
             ->paginate($perPage);
     }

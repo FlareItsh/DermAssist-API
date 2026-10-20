@@ -200,6 +200,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the diagnoses where the user is the patient.
+     *
+     * @return HasMany<Diagnosis, $this>
+     */
+    public function patientDiagnoses(): HasMany
+    {
+        return $this->hasMany(Diagnosis::class, 'patient_uuid', 'uuid');
+    }
+
+    /**
      * Get the active subscription associated with the user.
      */
     public function subscription(): HasOne

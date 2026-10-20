@@ -14,15 +14,15 @@ class RecordService
         $this->recordRepository = $recordRepository;
     }
 
-    public function listRecords($user)
+    public function listRecords($user, ?string $patientUuid = null)
     {
         if ($user->role->slug === 'patient') {
             $diagnoses = $this->recordRepository->getRecordsForPatient($user->uuid);
         } elseif ($user->role->slug === 'doctor') {
-            $diagnoses = $this->recordRepository->getRecordsForDoctor($user->id, $user->uuid);
+            $diagnoses = $this->recordRepository->getRecordsForDoctor($user->id, $user->uuid, $patientUuid);
         } elseif ($user->role->slug === 'secretary' && $user->doctor_id) {
             $doctor = $user->doctor;
-            $diagnoses = $this->recordRepository->getRecordsForDoctor($user->doctor_id, $doctor ? $doctor->uuid : null);
+            $diagnoses = $this->recordRepository->getRecordsForDoctor($user->doctor_id, $doctor ? $doctor->uuid : null, $patientUuid);
         } else {
             $diagnoses = $this->recordRepository->getAllRecords();
         }
