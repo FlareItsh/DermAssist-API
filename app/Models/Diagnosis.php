@@ -65,4 +65,14 @@ class Diagnosis extends Model
     {
         return $this->hasOne(ClinicalNote::class);
     }
+
+    public function appeals()
+    {
+        return $this->hasMany(Appeal::class);
+    }
+
+    public function appeal()
+    {
+        return $this->hasOne(Appeal::class)->latestOfMany();
+    }
 }
