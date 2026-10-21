@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Repository\PaymentInvoiceRepository;
 use App\Repository\SubscriptionRepository;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SubscriptionAdminService
 {
@@ -32,9 +33,13 @@ class SubscriptionAdminService
         ]);
     }
 
-    public function getAdminDashboardStats(): JsonResponse
+    public function getAdminDashboardStats(?Request $request = null): JsonResponse
     {
-        $subscriptionMetrics = $this->subscriptionRepository->getProfitsMetrics();
+        $date = $request?->query('date');
+        $startDate = $request?->query('start_date');
+        $endDate = $request?->query('end_date');
+
+        $subscriptionMetrics = $this->subscriptionRepository->getProfitsMetrics($date, $startDate, $endDate);
 
         $thirtyDaysAgo = now()->subDays(30);
 
