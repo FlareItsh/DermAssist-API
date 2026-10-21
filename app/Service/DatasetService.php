@@ -29,13 +29,20 @@ class DatasetService
         $seenFilenames = [];
 
         $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
-        $filterCategory = $category ? strtolower(trim($category)) : null;
+        $allowedDoctorCategories = ['acne', 'eczema', 'herpes', 'out_of_scope'];
+        $allowedCategories = $doctorUuid ? $allowedDoctorCategories : $allowedPriorityCategories;
 
-        if ($filterCategory && ! in_array($filterCategory, $allowedPriorityCategories)) {
+        $rawFilter = $category ? strtolower(trim(str_replace([' ', '-'], '_', $category))) : null;
+        if ($rawFilter === 'outofscope') {
+            $rawFilter = 'out_of_scope';
+        }
+        $filterCategory = $rawFilter;
+
+        if ($filterCategory && ! in_array($filterCategory, $allowedCategories)) {
             return response()->json([]);
         }
 
-        $targetCategories = $filterCategory ? [$filterCategory] : $allowedPriorityCategories;
+        $targetCategories = $filterCategory ? [$filterCategory] : $allowedCategories;
 
         // 1. Read files from storage/app/public/dataset/{category} (Only for global/admin dataset, NOT doctor-scoped)
         if (! $doctorUuid && Storage::disk($this->disk)->exists($this->datasetDir)) {
@@ -67,11 +74,10 @@ class DatasetService
         // 2. Seamlessly aggregate webapp consultation scans from Diagnosis records (Only finalized/contributed scans)
         $diagnosisQuery = Diagnosis::query()
             ->whereNotNull('image_path')
-            ->where('contributed_to_dataset', true)
-            ->where(function ($q) use ($targetCategories) {
-                foreach ($targetCategories as $cat) {
-                    $q->orWhereRaw('LOWER(label) = ?', [$cat]);
-                }
+            ->where(function ($q) {
+                $q->where('contributed_to_dataset', true)
+                    ->orWhere('out_of_scope_contributed', true)
+                    ->orWhere('is_out_of_scope', true);
             });
 
         if ($doctorUuid) {
@@ -87,7 +93,14 @@ class DatasetService
         $diagnoses = $diagnosisQuery->latest()->get();
 
         foreach ($diagnoses as $diag) {
-            $catSlug = strtolower(trim($diag->label));
+            $rawLabel = strtolower(trim($diag->label ?? ''));
+            $isOos = (bool) $diag->is_out_of_scope
+                || (bool) $diag->out_of_scope_contributed
+                || ! empty($diag->out_of_scope_category)
+                || in_array($rawLabel, ['outofscope', 'out_of_scope', 'inconclusive']);
+
+            $catSlug = $isOos ? 'out_of_scope' : $rawLabel;
+
             if (empty($catSlug) || ! in_array($catSlug, $targetCategories)) {
                 continue;
             }
@@ -101,7 +114,9 @@ class DatasetService
                 $seenFilenames[$filename] = true;
                 $url = Storage::disk($this->disk)->url($diag->image_path);
                 $isSynced = (bool) $diag->contributed_to_dataset
-                    || Storage::disk($this->disk)->exists($this->datasetDir.'/'.$catSlug.'/'.$filename);
+                    || (bool) $diag->out_of_scope_contributed
+                    || Storage::disk($this->disk)->exists($this->datasetDir.'/'.$catSlug.'/'.$filename)
+                    || Storage::disk($this->disk)->exists('out_of_scope_dataset/'.$catSlug.'/'.$filename);
 
                 $categoryImages[$catSlug][] = $url;
                 $categoryItems[$catSlug][] = [

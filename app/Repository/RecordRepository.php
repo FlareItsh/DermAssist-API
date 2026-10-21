@@ -25,7 +25,8 @@ class RecordRepository
                 $q->whereHas('clinicalNote', function ($query) use ($doctorId) {
                     $query->where('doctor_id', $doctorId);
                 })
-                    ->orWhere('doctor_uuid', $doctorUuid);
+                    ->orWhere('doctor_uuid', $doctorUuid)
+                    ->orWhere('user_uuid', $doctorUuid);
             });
 
         if ($patientUuid) {

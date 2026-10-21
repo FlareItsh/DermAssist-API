@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Models\PaymentInvoice;
 use App\Models\Subscription;
+use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -95,7 +96,7 @@ class SubscriptionRepository
             ->paginate($perPage);
     }
 
-    public function getProfitsMetrics(): array
+    public function getProfitsMetrics(?string $filterDate = null, ?string $startDate = null, ?string $endDate = null): array
     {
         $totalRevenue = (float) PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])->sum('final_amount');
 
@@ -164,7 +165,56 @@ class SubscriptionRepository
 
             $revenueTrend[] = [
                 'label' => $monthDate->format('M'),
+                'full_date' => $monthDate->format('F Y'),
                 'amount' => $monthRevenue,
+            ];
+        }
+
+        // Daily revenue aggregation for 7d, 14d, and 30d
+        $thirtyDaysAgoStart = now()->subDays(30)->startOfDay();
+        $invoicesLast30d = PaymentInvoice::whereIn('payment_status', ['paid', 'approved'])
+            ->where('created_at', '>=', $thirtyDaysAgoStart)
+            ->get(['final_amount', 'created_at']);
+
+        $dailyTotals = [];
+        foreach ($invoicesLast30d as $inv) {
+            $dateKey = $inv->created_at->format('Y-m-d');
+            $dailyTotals[$dateKey] = ($dailyTotals[$dateKey] ?? 0.0) + (float) $inv->final_amount;
+        }
+
+        $daily7d = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $day = now()->subDays($i);
+            $key = $day->format('Y-m-d');
+            $daily7d[] = [
+                'date' => $key,
+                'label' => $day->format('D'),
+                'full_date' => $day->format('l, M j, Y'),
+                'amount' => (float) ($dailyTotals[$key] ?? 0.0),
+            ];
+        }
+
+        $daily14d = [];
+        for ($i = 13; $i >= 0; $i--) {
+            $day = now()->subDays($i);
+            $key = $day->format('Y-m-d');
+            $daily14d[] = [
+                'date' => $key,
+                'label' => $day->format('M j'),
+                'full_date' => $day->format('l, M j, Y'),
+                'amount' => (float) ($dailyTotals[$key] ?? 0.0),
+            ];
+        }
+
+        $daily30d = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $day = now()->subDays($i);
+            $key = $day->format('Y-m-d');
+            $daily30d[] = [
+                'date' => $key,
+                'label' => $day->format('j'),
+                'full_date' => $day->format('l, M j, Y'),
+                'amount' => (float) ($dailyTotals[$key] ?? 0.0),
             ];
         }
 
@@ -177,15 +227,72 @@ class SubscriptionRepository
             $growthRate = 100.0;
         }
 
+        $filteredMetrics = null;
+        if ($filterDate || ($startDate && $endDate)) {
+            $filteredQuery = PaymentInvoice::whereIn('payment_status', ['paid', 'approved']);
+            if ($filterDate) {
+                $filteredQuery->whereDate('created_at', $filterDate);
+            } elseif ($startDate && $endDate) {
+                $filteredQuery->whereBetween('created_at', [
+                    Carbon::parse($startDate)->startOfDay(),
+                    Carbon::parse($endDate)->endOfDay(),
+                ]);
+            }
+
+            $filteredRevenue = (float) (clone $filteredQuery)->sum('final_amount');
+            $filteredInvoices = (clone $filteredQuery)
+                ->with(['user', 'subscription.plan'])
+                ->orderBy('created_at', 'desc')
+                ->take(50)
+                ->get()
+                ->map(function ($inv) {
+                    return [
+                        'id' => $inv->id,
+                        'uuid' => $inv->uuid,
+                        'amount' => (float) $inv->final_amount,
+                        'payment_method' => $inv->payment_method,
+                        'transaction_reference' => $inv->transaction_reference,
+                        'is_renewal' => $inv->payment_method === 'Auto-Renew' || str_starts_with($inv->transaction_reference ?? '', 'RENEWAL-'),
+                        'paid_at' => $inv->paid_at ?? $inv->created_at,
+                        'user' => $inv->user ? [
+                            'id' => $inv->user->id,
+                            'name' => trim(($inv->user->first_name ?? '').' '.($inv->user->last_name ?? '')) ?: 'User #'.$inv->user->id,
+                            'email' => $inv->user->email,
+                        ] : null,
+                        'plan' => $inv->subscription?->plan ? [
+                            'id' => $inv->subscription->plan->id,
+                            'name' => $inv->subscription->plan->name,
+                            'tier_type' => $inv->subscription->plan->tier_type,
+                            'billing_cycle' => $inv->subscription->billing_cycle,
+                        ] : null,
+                    ];
+                });
+
+            $filteredMetrics = [
+                'date' => $filterDate,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'amount' => $filteredRevenue,
+                'invoices_count' => $filteredInvoices->count(),
+                'invoices' => $filteredInvoices,
+            ];
+        }
+
         return [
             'total_revenue' => $totalRevenue,
             'growth_rate' => $growthRate,
             'revenue_trend' => $revenueTrend,
+            'revenue_trend_7d' => $daily7d,
+            'revenue_trend_14d' => $daily14d,
+            'revenue_trend_30d' => $daily30d,
+            'revenue_trend_6m' => $revenueTrend,
+            'daily_totals' => $dailyTotals,
             'active_subscribers_count' => $activeSubscribersCount,
             'total_subscribed_users' => $totalSubscribedUsers,
             'renewed_users_count' => $renewedUsersCount,
             'renewal_rate_percentage' => $renewalRate,
             'recent_invoices' => $recentInvoices,
+            'filtered_metrics' => $filteredMetrics,
         ];
     }
 }

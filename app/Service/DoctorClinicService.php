@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Models\Clinic;
+use App\Models\DoctorAvailability;
 use App\Models\User;
 use App\Repository\ClinicRepository;
 use Illuminate\Database\Eloquent\Collection;
@@ -62,7 +63,15 @@ class DoctorClinicService
             abort(403, 'Unauthorized to modify this clinic.');
         }
 
-        return $this->clinicRepository->update($clinic, $data);
+        $clinic = $this->clinicRepository->update($clinic, $data);
+
+        if (isset($data['name'])) {
+            DoctorAvailability::where('clinic_id', $clinic->id)
+                ->where('is_available', true)
+                ->update(['location_name' => $data['name']]);
+        }
+
+        return $clinic;
     }
 
     /**

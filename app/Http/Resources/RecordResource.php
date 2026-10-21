@@ -19,8 +19,19 @@ class RecordResource extends JsonResource
             ? 'Doctor\'s Diagnosis'
             : 'AI Scan Result';
 
-        if ($this->label && $this->label !== 'None') {
-            $title .= ': '.$this->label;
+        if ($this->is_out_of_scope || ! empty($this->out_of_scope_category) || strtolower($this->label) === 'outofscope') {
+            $possible = $this->clinicalNote?->final_diagnosis
+                ?: ($this->out_of_scope_category ? ucfirst($this->out_of_scope_category) : null);
+
+            $displayLabel = $possible
+                ? "Out of Scope (Possible {$possible})"
+                : 'Out of Scope';
+        } else {
+            $displayLabel = $this->clinicalNote?->final_diagnosis ?: $this->label;
+        }
+
+        if ($displayLabel && $displayLabel !== 'None') {
+            $title .= ': '.$displayLabel;
         }
 
         return [
@@ -28,7 +39,10 @@ class RecordResource extends JsonResource
             'uuid' => $this->uuid,
             'type' => $type,
             'title' => $title,
-            'label' => $this->label,
+            'label' => $displayLabel,
+            'raw_label' => $this->label,
+            'is_out_of_scope' => (bool) $this->is_out_of_scope,
+            'out_of_scope_category' => $this->out_of_scope_category,
             'confidence' => $this->confidence,
             'probabilities' => $this->probabilities,
             'image_path' => $this->image_path,
