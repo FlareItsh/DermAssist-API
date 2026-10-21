@@ -63,7 +63,31 @@ class UserSeeder extends Seeder
             ]
         );
 
-        // Additional Hardcoded Patients
+        // 3. Default Doctor Account (SUBSCRIBED DOCTOR)
+        $mainDoctor = User::firstOrCreate(
+            ['email' => 'doctor@dermassist.com'],
+            [
+                'first_name' => 'Allan',
+                'last_name' => 'Smith',
+                'password' => Hash::make('password'),
+                'role_id' => $doctorRole->id,
+                'prc_number' => 'PRC-0012345',
+                'affiliation' => 'Davao Medical School Foundation Hospital',
+                'contact_number' => '+63 918 345 6789',
+                'date_of_birth' => '1981-06-30',
+                'age' => 45,
+                'gender' => 'Male',
+                'street' => 'E. Quirino Avenue',
+                'barangay' => 'Poblacion',
+                'city' => 'Davao City',
+                'province' => 'Davao del Sur',
+                'country' => 'Philippines',
+                'latitude' => 7.0731,
+                'longitude' => 125.6128,
+            ]
+        );
+
+        // Additional Hardcoded Patients (Registered under Main Doctor)
         $hardcodedPatients = [
             [
                 'email' => 'maria.santos@example.com',
@@ -103,6 +127,8 @@ class UserSeeder extends Seeder
                 array_merge($pat, [
                     'password' => Hash::make('password'),
                     'role_id' => $patientRole->id,
+                    'registered_by_doctor_id' => $mainDoctor->id,
+                    'is_doctor_registered' => true,
                     'province' => 'Davao del Sur',
                     'country' => 'Philippines',
                     'latitude' => 7.0700,
@@ -110,30 +136,6 @@ class UserSeeder extends Seeder
                 ])
             );
         }
-
-        // 3. Default Doctor Account (SUBSCRIBED DOCTOR)
-        $mainDoctor = User::firstOrCreate(
-            ['email' => 'doctor@dermassist.com'],
-            [
-                'first_name' => 'Allan',
-                'last_name' => 'Smith',
-                'password' => Hash::make('password'),
-                'role_id' => $doctorRole->id,
-                'prc_number' => 'PRC-0012345',
-                'affiliation' => 'Davao Medical School Foundation Hospital',
-                'contact_number' => '+63 918 345 6789',
-                'date_of_birth' => '1981-06-30',
-                'age' => 45,
-                'gender' => 'Male',
-                'street' => 'E. Quirino Avenue',
-                'barangay' => 'Poblacion',
-                'city' => 'Davao City',
-                'province' => 'Davao del Sur',
-                'country' => 'Philippines',
-                'latitude' => 7.0731,
-                'longitude' => 125.6128,
-            ]
-        );
 
         // 4. Additional Hardcoded Doctors (UNSUBSCRIBED / VARIOUS STATUSES)
         $doctorProfiles = [

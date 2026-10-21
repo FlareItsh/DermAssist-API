@@ -22,9 +22,9 @@ class AdminSubscriptionController extends Controller
     /**
      * Get comprehensive admin dashboard statistics.
      */
-    public function dashboardStats(): JsonResponse
+    public function dashboardStats(Request $request): JsonResponse
     {
-        return $this->subscriptionAdminService->getAdminDashboardStats();
+        return $this->subscriptionAdminService->getAdminDashboardStats($request);
     }
 
     /**
