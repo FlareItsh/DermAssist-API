@@ -3,15 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\AppointmentRescheduleProposal;
 use App\Models\User;
+use App\Service\AppointmentRescheduleService;
 use App\Service\AppointmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class AppointmentController extends Controller
 {
-    public function __construct(public AppointmentService $appointmentService) {}
+    public function __construct(
+        public AppointmentService $appointmentService,
+        public AppointmentRescheduleService $rescheduleService
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -37,27 +43,46 @@ class AppointmentController extends Controller
             'doctor_id' => 'required|exists:users,id',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
             'message' => 'nullable|string',
+            'purpose' => 'nullable|string|max:500',
+            'location' => 'nullable|string|max:255',
+            'source' => 'nullable|string|in:direct,scan,walk_in',
+            'idempotency_key' => 'nullable|string|max:255',
             'scheduled_at' => 'nullable|date|after_or_equal:today',
             'scheduled_end_at' => 'nullable|date|after:scheduled_at',
         ]);
 
-        $result = $this->appointmentService->createAppointment(
-            $request->user(),
-            $validated
-        );
+        try {
+            $result = $this->appointmentService->createAppointment(
+                $request->user(),
+                $validated
+            );
 
-        return response()->json($result);
+            return response()->json($result, 200);
+        } catch (HttpException $e) {
+            // Translate slot conflicts into standard 409 Conflict
+            if ($e->getStatusCode() === 422 && str_contains($e->getMessage(), 'already has an appointment')) {
+                abort(409, 'SLOT_UNAVAILABLE: '.$e->getMessage());
+            }
+            throw $e;
+        }
     }
 
     public function show(Appointment $appointment): Appointment
     {
-        return $appointment->load(['doctor', 'patient', 'diagnosis']);
+        return $appointment->load([
+            'doctor',
+            'patient',
+            'diagnosis',
+            'acceptedBy',
+            'activeRescheduleProposal',
+            'events',
+        ]);
     }
 
     public function update(Request $request, Appointment $appointment): JsonResponse
     {
         $validated = $request->validate([
-            'status' => 'sometimes|string|in:pending,accepted,declined,scheduled,completed,reschedule_proposed,reschedule_requested',
+            'status' => 'sometimes|string|in:pending,confirmed,accepted,declined,rejected,scheduled,checked_in,in_consultation,completed,cancelled,no_show,reschedule_proposed,reschedule_requested',
             'scheduled_at' => 'nullable|date|after_or_equal:today',
             'scheduled_end_at' => 'nullable|date|after:scheduled_at',
             'location' => 'nullable|string',
@@ -72,6 +97,77 @@ class AppointmentController extends Controller
         );
 
         return response()->json($updatedAppointment);
+    }
+
+    public function accept(Request $request, Appointment $appointment): JsonResponse
+    {
+        $result = $this->appointmentService->acceptAppointment($appointment, $request->user());
+
+        return response()->json($result);
+    }
+
+    public function reject(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $result = $this->appointmentService->rejectAppointment(
+            $appointment,
+            $request->user(),
+            $validated['reason'] ?? null
+        );
+
+        return response()->json($result);
+    }
+
+    public function decline(Request $request, Appointment $appointment): JsonResponse
+    {
+        return $this->reject($request, $appointment);
+    }
+
+    public function cancel(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $result = $this->appointmentService->cancelAppointment(
+            $appointment,
+            $request->user(),
+            $validated['reason'] ?? null
+        );
+
+        return response()->json($result);
+    }
+
+    public function checkIn(Request $request, Appointment $appointment): JsonResponse
+    {
+        $result = $this->appointmentService->checkInAppointment($appointment, $request->user());
+
+        return response()->json($result);
+    }
+
+    public function markNoShow(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $result = $this->appointmentService->markNoShow(
+            $appointment,
+            $request->user(),
+            $validated['reason'] ?? 'patient_not_present'
+        );
+
+        return response()->json($result);
+    }
+
+    public function events(Appointment $appointment): JsonResponse
+    {
+        $events = $appointment->events()->with('actor')->get();
+
+        return response()->json($events);
     }
 
     public function scheduleForPatient(Request $request): JsonResponse
@@ -113,12 +209,13 @@ class AppointmentController extends Controller
             'scheduled_at' => 'required|date|after_or_equal:today',
             'scheduled_end_at' => 'nullable|date|after:scheduled_at',
             'location' => 'required|string',
+            'reason' => 'nullable|string',
         ]);
 
-        $result = $this->appointmentService->proposeReschedule(
+        $result = $this->rescheduleService->proposeReschedule(
             $appointment,
-            $validated,
-            $request->user()
+            $request->user(),
+            $validated
         );
 
         return response()->json($result);
@@ -126,11 +223,71 @@ class AppointmentController extends Controller
 
     public function acceptReschedule(Request $request, Appointment $appointment): JsonResponse
     {
+        // If there's an active proposal, accept it via rescheduleService
+        $proposal = $appointment->activeRescheduleProposal;
+        if ($proposal) {
+            $result = $this->rescheduleService->acceptRescheduleProposal($appointment, $proposal, $request->user());
+            if (! empty($result['conflict'])) {
+                return response()->json(['message' => $result['message']], 409);
+            }
+
+            return response()->json($result);
+        }
+
+        // Otherwise handle legacy patient requested reschedule date/time
         $result = $this->appointmentService->acceptReschedule(
             $appointment,
             [],
             $request->user()
         );
+
+        return response()->json($result);
+    }
+
+    public function createRescheduleProposal(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'scheduled_at' => 'required|date|after_or_equal:today',
+            'scheduled_end_at' => 'nullable|date|after:scheduled_at',
+            'location' => 'nullable|string',
+            'reason' => 'nullable|string',
+            'expires_at' => 'nullable|date|after:now',
+        ]);
+
+        $result = $this->rescheduleService->proposeReschedule($appointment, $request->user(), $validated);
+
+        return response()->json($result, 201);
+    }
+
+    public function acceptRescheduleProposal(Request $request, Appointment $appointment, AppointmentRescheduleProposal $proposal): JsonResponse
+    {
+        $result = $this->rescheduleService->acceptRescheduleProposal($appointment, $proposal, $request->user());
+        if (! empty($result['conflict'])) {
+            return response()->json(['message' => $result['message']], 409);
+        }
+
+        return response()->json($result);
+    }
+
+    public function declineRescheduleProposal(Request $request, Appointment $appointment, AppointmentRescheduleProposal $proposal): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string',
+        ]);
+
+        $result = $this->rescheduleService->declineRescheduleProposal(
+            $appointment,
+            $proposal,
+            $request->user(),
+            $validated['reason'] ?? null
+        );
+
+        return response()->json($result);
+    }
+
+    public function withdrawRescheduleProposal(Request $request, Appointment $appointment, AppointmentRescheduleProposal $proposal): JsonResponse
+    {
+        $result = $this->rescheduleService->withdrawRescheduleProposal($appointment, $proposal, $request->user());
 
         return response()->json($result);
     }

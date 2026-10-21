@@ -127,9 +127,18 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::post('/appointments/schedule-for-patient', [AppointmentController::class, 'scheduleForPatient']);
     Route::get('/appointments/{appointment}', [AppointmentController::class, 'show']);
     Route::post('/appointments/{appointment}/accept', [AppointmentController::class, 'accept']);
+    Route::post('/appointments/{appointment}/reject', [AppointmentController::class, 'reject']);
     Route::post('/appointments/{appointment}/decline', [AppointmentController::class, 'decline']);
+    Route::post('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+    Route::post('/appointments/{appointment}/check-in', [AppointmentController::class, 'checkIn']);
+    Route::post('/appointments/{appointment}/mark-no-show', [AppointmentController::class, 'markNoShow']);
+    Route::get('/appointments/{appointment}/events', [AppointmentController::class, 'events']);
     Route::post('/appointments/{appointment}/propose-reschedule', [AppointmentController::class, 'proposeReschedule']);
     Route::post('/appointments/{appointment}/accept-reschedule', [AppointmentController::class, 'acceptReschedule']);
+    Route::post('/appointments/{appointment}/reschedule-proposals', [AppointmentController::class, 'createRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/accept', [AppointmentController::class, 'acceptRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/decline', [AppointmentController::class, 'declineRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/withdraw', [AppointmentController::class, 'withdrawRescheduleProposal']);
 
     // Clinical Notes
     Route::get('/appointments/{uuid}/clinical-note', [ClinicalNoteController::class, 'show']);
