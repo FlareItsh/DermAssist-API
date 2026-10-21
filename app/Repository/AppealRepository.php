@@ -13,7 +13,30 @@ class AppealRepository
 
     public function getPendingWithUser()
     {
-        return Appeal::with('user')->where('status', 'pending')->latest()->get();
+        return Appeal::with(['user', 'diagnosis.patient'])->where('status', 'pending')->latest()->get();
+    }
+
+    public function getWithRelations(?string $status = null, ?string $diagnosisUuid = null, ?string $userUuid = null)
+    {
+        $query = Appeal::with(['user', 'diagnosis.patient']);
+
+        if ($status && in_array(strtolower($status), ['pending', 'resolved', 'rejected'])) {
+            $query->where('status', strtolower($status));
+        }
+
+        if ($diagnosisUuid) {
+            $query->whereHas('diagnosis', function ($q) use ($diagnosisUuid) {
+                $q->where('uuid', $diagnosisUuid);
+            });
+        }
+
+        if ($userUuid) {
+            $query->whereHas('user', function ($q) use ($userUuid) {
+                $q->where('uuid', $userUuid);
+            });
+        }
+
+        return $query->latest()->get();
     }
 
     public function create(array $payload)

@@ -85,4 +85,30 @@ class OutOfScopeDatasetController extends Controller
     {
         return $this->service->downloadZip($request->input('category'));
     }
+
+    public function transfer(Request $request)
+    {
+        $validated = $request->validate([
+            'url' => 'nullable|string',
+            'urls' => 'nullable|array',
+            'urls.*' => 'string',
+            'target_category' => 'required|string|max:50',
+            'is_standard' => 'nullable|boolean',
+        ]);
+
+        $urls = [];
+        if (! empty($validated['url'])) {
+            $urls[] = $validated['url'];
+        }
+        if (! empty($validated['urls'])) {
+            $urls = array_merge($urls, $validated['urls']);
+        }
+        $urls = array_unique(array_filter($urls));
+
+        if (empty($urls)) {
+            return response()->json(['message' => 'No image URLs provided for transfer.'], 422);
+        }
+
+        return $this->service->transferImages($urls, $validated['target_category'], (bool) ($validated['is_standard'] ?? false));
+    }
 }

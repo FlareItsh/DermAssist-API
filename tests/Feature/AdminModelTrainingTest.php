@@ -590,3 +590,55 @@ test('admin can transfer image category using storage url or filename', function
     expect(Storage::disk('public')->exists('dataset/acne/cold_sore.jpg'))->toBeFalse();
     expect(Storage::disk('public')->exists('dataset/herpes/cold_sore.jpg'))->toBeTrue();
 });
+
+test('admin can transfer out-of-scope images to another research category', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('out_of_scope_dataset/psoriasis/sample_plaque.jpg', 'fake-image-bytes');
+
+    $url = Storage::disk('public')->url('out_of_scope_dataset/psoriasis/sample_plaque.jpg');
+
+    $response = $this->actingAs($admin)->postJson('/api/out-of-scope-dataset/transfer', [
+        'urls' => [$url],
+        'target_category' => 'vitiligo',
+        'is_standard' => false,
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'transferred_count' => 1,
+            'target_category' => 'vitiligo',
+            'is_standard' => false,
+        ]);
+
+    expect(Storage::disk('public')->exists('out_of_scope_dataset/psoriasis/sample_plaque.jpg'))->toBeFalse();
+    expect(Storage::disk('public')->exists('out_of_scope_dataset/vitiligo/sample_plaque.jpg'))->toBeTrue();
+});
+
+test('admin can transfer out-of-scope images into standard clinical dataset', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Storage::fake('public');
+    Storage::disk('public')->put('out_of_scope_dataset/hives/allergic_wheal.jpg', 'fake-image-bytes');
+
+    $url = Storage::disk('public')->url('out_of_scope_dataset/hives/allergic_wheal.jpg');
+
+    $response = $this->actingAs($admin)->postJson('/api/out-of-scope-dataset/transfer', [
+        'urls' => [$url],
+        'target_category' => 'eczema',
+        'is_standard' => true,
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'transferred_count' => 1,
+            'target_category' => 'eczema',
+            'is_standard' => true,
+        ]);
+
+    expect(Storage::disk('public')->exists('out_of_scope_dataset/hives/allergic_wheal.jpg'))->toBeFalse();
+    expect(Storage::disk('public')->exists('dataset/eczema/allergic_wheal.jpg'))->toBeTrue();
+});

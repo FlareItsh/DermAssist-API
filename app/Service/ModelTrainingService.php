@@ -62,7 +62,11 @@ class ModelTrainingService
         // 2. Gather Out-of-Scope Research Dataset Candidates
         $oosCounts = [];
         $totalOos = 0;
-        $oosCategories = ['psoriasis', 'ringworm', 'vitiligo', 'melanoma', 'hives', 'warts', 'lupus', 'rosacea'];
+        $defaultOosCategories = ['psoriasis', 'ringworm', 'vitiligo', 'melanoma', 'hives', 'warts', 'lupus', 'rosacea'];
+        $existingOosDirs = Storage::disk($this->disk)->exists('out_of_scope_dataset')
+            ? array_map('basename', Storage::disk($this->disk)->directories('out_of_scope_dataset'))
+            : [];
+        $oosCategories = array_unique(array_merge($defaultOosCategories, $existingOosDirs));
         foreach ($oosCategories as $oosCat) {
             $oosDir = 'out_of_scope_dataset/'.$oosCat;
             if (Storage::disk($this->disk)->exists($oosDir)) {
@@ -459,6 +463,85 @@ class ModelTrainingService
             'transferred_count' => $transferredCount,
             'target_category' => $targetSlug,
         ]);
+    }
+
+    /**
+     * Relocate a single verified diagnosis image to its target training dataset category.
+     */
+    public function relocateSingleDiagnosisImage(Diagnosis $diagnosis, string $targetCategory): bool
+    {
+        $rawTarget = trim($targetCategory);
+        $targetSlug = strtolower(str_replace([' ', '-'], '_', $rawTarget));
+        $targetTitle = ucwords(str_replace('_', ' ', $targetSlug));
+        $standardCategories = ['acne', 'eczema', 'herpes'];
+        $isStandard = in_array($targetSlug, $standardCategories);
+
+        $currentRaw = trim($diagnosis->label ?? '');
+        $currentSlug = strtolower(str_replace([' ', '-'], '_', $currentRaw));
+        $currentTitle = ucwords(str_replace('_', ' ', $currentSlug));
+        $currentIsStandard = in_array($currentSlug, $standardCategories);
+
+        $filename = basename($diagnosis->image_path);
+        if (! $filename) {
+            return false;
+        }
+
+        // 1. Move file in dataset directories if present
+        $oldDatasetDir = $currentIsStandard
+            ? $this->datasetDir.'/'.$currentSlug
+            : 'out_of_scope_dataset/'.$currentSlug;
+        $oldDatasetPath = $oldDatasetDir.'/'.$filename;
+
+        $newDatasetDir = $isStandard
+            ? $this->datasetDir.'/'.$targetSlug
+            : 'out_of_scope_dataset/'.$targetSlug;
+        $newDatasetPath = $newDatasetDir.'/'.$filename;
+
+        if (Storage::disk($this->disk)->exists($oldDatasetPath)) {
+            if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
+                Storage::disk($this->disk)->makeDirectory($newDatasetDir);
+            }
+            Storage::disk($this->disk)->move($oldDatasetPath, $newDatasetPath);
+        } elseif (Storage::disk($this->disk)->exists($diagnosis->image_path)) {
+            // If file was not yet in dataset directory, copy it to the new training category
+            if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
+                Storage::disk($this->disk)->makeDirectory($newDatasetDir);
+            }
+            Storage::disk($this->disk)->copy($diagnosis->image_path, $newDatasetPath);
+        }
+
+        // 2. Move file in PyTorch Algorithms data/raw directory if synced
+        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
+        if (file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath)) {
+            $oldRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$currentTitle;
+            $newRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$targetTitle;
+            if (! is_dir($newRawCatPath)) {
+                @mkdir($newRawCatPath, 0755, true);
+            }
+
+            $oldWebappFile = $oldRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+            $newWebappFile = $newRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+            if (file_exists($oldWebappFile)) {
+                @rename($oldWebappFile, $newWebappFile);
+            }
+
+            $oldDirectFile = $oldRawCatPath.DIRECTORY_SEPARATOR.$filename;
+            $newDirectFile = $newRawCatPath.DIRECTORY_SEPARATOR.$filename;
+            if (file_exists($oldDirectFile)) {
+                @rename($oldDirectFile, $newDirectFile);
+            }
+        }
+
+        // 3. Update diagnosis record
+        $diagnosis->update([
+            'label' => $targetTitle,
+            'is_out_of_scope' => ! $isStandard,
+            'out_of_scope_category' => ! $isStandard ? $targetSlug : null,
+            'contributed_to_dataset' => true,
+            'contributed_at' => now(),
+        ]);
+
+        return true;
     }
 
     /**

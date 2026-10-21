@@ -182,6 +182,39 @@ class OutOfScopeDatasetService
     }
 
     /**
+     * Transfer/move multiple images from the out-of-scope dataset to another research disease category or into the standard dataset.
+     *
+     * @param  array<string>  $urls
+     */
+    public function transferImages(array $urls, string $targetCategory, bool $targetIsStandard = false): JsonResponse
+    {
+        $targetCategory = Str::slug(trim($targetCategory));
+        $destDir = $targetIsStandard ? 'dataset/'.$targetCategory : $this->datasetDir.'/'.$targetCategory;
+        Storage::disk($this->disk)->makeDirectory($destDir);
+
+        $transferredCount = 0;
+        foreach ($urls as $url) {
+            $relativePath = $this->resolveRelativePath($url);
+            if ($relativePath && Storage::disk($this->disk)->exists($relativePath)) {
+                $filename = basename($relativePath);
+                $destPath = $destDir.'/'.$filename;
+                // Move file across directories
+                Storage::disk($this->disk)->move($relativePath, $destPath);
+                $transferredCount++;
+            }
+        }
+
+        $destLabel = $targetIsStandard ? ucfirst($targetCategory).' (Standard Dataset)' : ucfirst($targetCategory).' (Research Dataset)';
+
+        return response()->json([
+            'message' => "{$transferredCount} image(s) transferred to {$destLabel} successfully.",
+            'transferred_count' => $transferredCount,
+            'target_category' => $targetCategory,
+            'is_standard' => $targetIsStandard,
+        ]);
+    }
+
+    /**
      * Save an out-of-scope diagnosis scan to the research dataset pool.
      * Requires Dual-Consent (Patient consented + Doctor approved) — identical to the standard dataset flow.
      */

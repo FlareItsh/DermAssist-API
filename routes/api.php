@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\AdminSubscriptionController;
 use App\Http\Controllers\AppealController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CandidateDiseaseController;
 use App\Http\Controllers\ClinicalNoteController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DatasetController;
@@ -59,6 +60,7 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
 });
 
 Route::post('/diagnose', [DiagnosisController::class, 'store']);
+Route::get('/candidate-diseases', [CandidateDiseaseController::class, 'index']);
 
 Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function () {
 
@@ -87,7 +89,11 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
 
     Route::apiResource('conversations', ConversationController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('conversations.messages', MessageController::class)->shallow()->only(['index', 'store', 'update', 'destroy']);
+    Route::patch('/appeals/{uuid}/resolve', [AppealController::class, 'resolve']);
+    Route::patch('/appeals/{uuid}/reject', [AppealController::class, 'reject']);
+    Route::patch('/appeals/{uuid}/restore', [AppealController::class, 'restore']);
     Route::apiResource('appeals', AppealController::class)->only(['index', 'store']);
+    Route::apiResource('candidate-diseases', CandidateDiseaseController::class)->only(['store', 'destroy']);
     Route::apiResource('doctors.availabilities', DoctorAvailabilityController::class)
         ->shallow()
         ->only(['index', 'store', 'update', 'destroy']);
@@ -114,6 +120,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'destroy']);
     Route::delete('/out-of-scope-dataset/bulk', [OutOfScopeDatasetController::class, 'destroyBulk']);
     Route::get('/out-of-scope-dataset/download', [OutOfScopeDatasetController::class, 'download']);
+    Route::post('/out-of-scope-dataset/transfer', [OutOfScopeDatasetController::class, 'transfer']);
     Route::post('/out-of-scope-dataset/save-diagnosis', [OutOfScopeDatasetController::class, 'saveFromDiagnosis']);
 
     // Appointments Extra Routes
