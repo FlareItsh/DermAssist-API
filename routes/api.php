@@ -189,6 +189,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
         Route::get('/model/retrain/status', [AdminModelTrainingController::class, 'status']);
         Route::post('/model/retrain/cancel', [AdminModelTrainingController::class, 'cancel']);
         Route::post('/model/retrain/complete', [AdminModelTrainingController::class, 'markCompleted']);
+        Route::post('/model/retrain/rollback', [AdminModelTrainingController::class, 'rollback']);
         Route::post('/model/dataset/sync', [AdminModelTrainingController::class, 'sync']);
     });
 

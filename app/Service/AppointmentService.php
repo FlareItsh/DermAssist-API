@@ -12,6 +12,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Repository\AppointmentRepository;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AppointmentService
@@ -61,114 +62,116 @@ class AppointmentService
 
     public function createAppointment($user, array $data)
     {
-        $doctor = User::find($data['doctor_id']);
-        if (! $doctor || $doctor->role?->slug !== 'doctor') {
-            abort(404, 'Doctor not found.');
-        }
-
-        if (! empty($data['scheduled_at'])) {
-            $this->checkAppointmentConflict($data['doctor_id'], $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
-        }
-
-        // Strict guard: Doctor-registered patients can only book appointments with their registering doctor
-        if ($user->is_doctor_registered && $user->registered_by_doctor_id && (int) $data['doctor_id'] !== (int) $user->registered_by_doctor_id) {
-            abort(403, 'You are registered under an attending doctor and cannot book appointments with other doctors.');
-        }
-
-        // Verify if doctor can receive new appointments from this patient
-        $isExistingPatient = ($user->is_doctor_registered && $user->registered_by_doctor_id == $doctor->id)
-            || Appointment::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists()
-            || Conversation::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists();
-
-        if (! $isExistingPatient && ! $doctor->canBeRecommended()) {
-            abort(403, 'This doctor is currently not accepting new patient scan referrals. Existing registered patients only.');
-        }
-
-        // Check availability on current time or a requested time
-        $checkDate = isset($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
-        $availabilityCheck = $this->availabilityService->checkDoctorAvailability($data['doctor_id'], $checkDate, $user);
-
-        $activeAppointment = Appointment::where('patient_id', $user->id)
-            ->where('doctor_id', $data['doctor_id'])
-            ->whereIn('status', ['pending', 'scheduled'])
-            ->orderByDesc('created_at')
-            ->first();
-
-        $diagnosisId = null;
-
-        if (isset($data['diagnosis_uuid'])) {
-            $diagnosis = Diagnosis::where('uuid', $data['diagnosis_uuid'])->first();
-            if ($diagnosis) {
-                $diagnosisId = $diagnosis->id;
+        return DB::transaction(function () use ($user, $data) {
+            $doctor = User::find($data['doctor_id']);
+            if (! $doctor || $doctor->role?->slug !== 'doctor') {
+                abort(404, 'Doctor not found.');
             }
-        }
 
-        // Get or Create Conversation
-        $conversation = Conversation::firstOrCreate([
-            'doctor_id' => $data['doctor_id'],
-            'patient_id' => $user->id,
-        ], [
-            'uuid' => (string) Str::uuid(),
-        ]);
+            if (! empty($data['scheduled_at'])) {
+                $this->checkAppointmentConflict($data['doctor_id'], $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
+            }
 
-        if ($activeAppointment) {
-            // If an active appointment exists, just send the diagnosis as a follow-up
-            $tag = 'DIAGNOSIS_ONLY';
-            $appointmentUuid = $activeAppointment->uuid;
-            $responseMessage = 'Additional clinical findings shared.';
-        } else {
-            // Otherwise create a new appointment request
-            $activeAppointment = $this->appointmentRepository->createAppointment([
+            // Strict guard: Doctor-registered patients can only book appointments with their registering doctor
+            if ($user->is_doctor_registered && $user->registered_by_doctor_id && (int) $data['doctor_id'] !== (int) $user->registered_by_doctor_id) {
+                abort(403, 'You are registered under an attending doctor and cannot book appointments with other doctors.');
+            }
+
+            // Verify if doctor can receive new appointments from this patient
+            $isExistingPatient = ($user->is_doctor_registered && $user->registered_by_doctor_id == $doctor->id)
+                || Appointment::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists()
+                || Conversation::where('patient_id', $user->id)->where('doctor_id', $doctor->id)->exists();
+
+            if (! $isExistingPatient && ! $doctor->canBeRecommended()) {
+                abort(403, 'This doctor is currently not accepting new patient scan referrals. Existing registered patients only.');
+            }
+
+            // Check availability on current time or a requested time
+            $checkDate = isset($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
+            $availabilityCheck = $this->availabilityService->checkDoctorAvailability($data['doctor_id'], $checkDate, $user);
+
+            $activeAppointment = Appointment::where('patient_id', $user->id)
+                ->where('doctor_id', $data['doctor_id'])
+                ->whereIn('status', ['pending', 'scheduled'])
+                ->orderByDesc('created_at')
+                ->first();
+
+            $diagnosisId = null;
+
+            if (isset($data['diagnosis_uuid'])) {
+                $diagnosis = Diagnosis::where('uuid', $data['diagnosis_uuid'])->first();
+                if ($diagnosis) {
+                    $diagnosisId = $diagnosis->id;
+                }
+            }
+
+            // Get or Create Conversation
+            $conversation = Conversation::firstOrCreate([
                 'doctor_id' => $data['doctor_id'],
                 'patient_id' => $user->id,
-                'diagnosis_id' => $diagnosisId,
-                'status' => 'pending',
+            ], [
+                'uuid' => (string) Str::uuid(),
             ]);
-            $tag = 'APPOINTMENT_REQUEST';
-            $appointmentUuid = $activeAppointment->uuid;
-            $responseMessage = 'Appointment request sent successfully.';
-        }
 
-        // Create a Message representing this referral
-        $messageContent = $data['message'] ?? '';
-        if ($diagnosisId) {
-            $messageContent .= "\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]";
-        }
+            if ($activeAppointment) {
+                // If an active appointment exists, just send the diagnosis as a follow-up
+                $tag = 'DIAGNOSIS_ONLY';
+                $appointmentUuid = $activeAppointment->uuid;
+                $responseMessage = 'Additional clinical findings shared.';
+            } else {
+                // Otherwise create a new appointment request
+                $activeAppointment = $this->appointmentRepository->createAppointment([
+                    'doctor_id' => $data['doctor_id'],
+                    'patient_id' => $user->id,
+                    'diagnosis_id' => $diagnosisId,
+                    'status' => 'pending',
+                ]);
+                $tag = 'APPOINTMENT_REQUEST';
+                $appointmentUuid = $activeAppointment->uuid;
+                $responseMessage = 'Appointment request sent successfully.';
+            }
 
-        Message::create([
-            'uuid' => (string) Str::uuid(),
-            'conversation_id' => $conversation->id,
-            'sender_id' => $user->id,
-            'message' => $messageContent,
-        ]);
+            // Create a Message representing this referral
+            $messageContent = $data['message'] ?? '';
+            if ($diagnosisId) {
+                $messageContent .= "\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]";
+            }
 
-        $activeAppointment->loadMissing(['doctor', 'patient']);
-        broadcast(new AppointmentUpdated(
-            $activeAppointment->patient?->uuid,
-            $activeAppointment->doctor?->uuid,
-            'created',
-            $activeAppointment->uuid
-        ));
+            Message::create([
+                'uuid' => (string) Str::uuid(),
+                'conversation_id' => $conversation->id,
+                'sender_id' => $user->id,
+                'message' => $messageContent,
+            ]);
 
-        $result = [
-            'message' => $responseMessage,
-            'appointment' => $activeAppointment,
-            'conversation_uuid' => $conversation->uuid,
-        ];
+            $activeAppointment->loadMissing(['doctor', 'patient']);
+            broadcast(new AppointmentUpdated(
+                $activeAppointment->patient?->uuid,
+                $activeAppointment->doctor?->uuid,
+                'created',
+                $activeAppointment->uuid
+            ));
 
-        if (! $availabilityCheck['is_available']) {
-            $result['doctor_availability'] = [
-                'is_available' => false,
-                'next_available' => $availabilityCheck['next_available'],
-                'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
+            $result = [
+                'message' => $responseMessage,
+                'appointment' => $activeAppointment,
+                'conversation_uuid' => $conversation->uuid,
             ];
-        } else {
-            $result['doctor_availability'] = [
-                'is_available' => true,
-            ];
-        }
 
-        return $result;
+            if (! $availabilityCheck['is_available']) {
+                $result['doctor_availability'] = [
+                    'is_available' => false,
+                    'next_available' => $availabilityCheck['next_available'],
+                    'alternatives' => UserResource::collection($availabilityCheck['alternatives']),
+                ];
+            } else {
+                $result['doctor_availability'] = [
+                    'is_available' => true,
+                ];
+            }
+
+            return $result;
+        });
     }
 
     public function checkAppointmentConflict(int $doctorId, $start, $end = null, ?int $excludeId = null): void
@@ -212,11 +215,16 @@ class AppointmentService
         }
 
         // 3. Verify that appointment does not overlap with existing scheduled appointments
-        $existingAppointments = Appointment::where('doctor_id', $doctorId)
+        $conflictQuery = Appointment::where('doctor_id', $doctorId)
             ->whereIn('status', ['scheduled', 'reschedule_proposed', 'reschedule_requested'])
             ->whereNotNull('scheduled_at')
-            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
-            ->get();
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId));
+
+        if (DB::transactionLevel() > 0) {
+            $conflictQuery->lockForUpdate();
+        }
+
+        $existingAppointments = $conflictQuery->get();
 
         foreach ($existingAppointments as $appt) {
             $existingStart = Carbon::parse($appt->scheduled_at);
@@ -380,202 +388,208 @@ class AppointmentService
 
     public function scheduleAppointmentForPatient(User $actor, array $data)
     {
-        $doctorId = null;
-        if ($actor->role->slug === 'doctor') {
-            $doctorId = $actor->id;
-        } elseif ($actor->role->slug === 'secretary' && $actor->doctor_id) {
-            $doctorId = $actor->doctor_id;
-        } else {
-            abort(403, 'Only doctors or their secretaries can schedule appointments for patients.');
-        }
+        return DB::transaction(function () use ($actor, $data) {
+            $doctorId = null;
+            if ($actor->role->slug === 'doctor') {
+                $doctorId = $actor->id;
+            } elseif ($actor->role->slug === 'secretary' && $actor->doctor_id) {
+                $doctorId = $actor->doctor_id;
+            } else {
+                abort(403, 'Only doctors or their secretaries can schedule appointments for patients.');
+            }
 
-        $this->checkAppointmentConflict($doctorId, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
+            $this->checkAppointmentConflict($doctorId, $data['scheduled_at'], $data['scheduled_end_at'] ?? null);
 
-        $conversation = Conversation::firstOrCreate([
-            'doctor_id' => $doctorId,
-            'patient_id' => $data['patient_id'],
-        ], [
-            'uuid' => (string) Str::uuid(),
-        ]);
+            $conversation = Conversation::firstOrCreate([
+                'doctor_id' => $doctorId,
+                'patient_id' => $data['patient_id'],
+            ], [
+                'uuid' => (string) Str::uuid(),
+            ]);
 
-        $appointment = $this->appointmentRepository->createAppointment([
-            'doctor_id' => $doctorId,
-            'patient_id' => $data['patient_id'],
-            'scheduled_at' => $data['scheduled_at'],
-            'scheduled_end_at' => $data['scheduled_end_at'] ?? null,
-            'location' => $data['location'],
-            'purpose' => $data['purpose'],
-            'status' => 'scheduled',
-        ]);
+            $appointment = $this->appointmentRepository->createAppointment([
+                'doctor_id' => $doctorId,
+                'patient_id' => $data['patient_id'],
+                'scheduled_at' => $data['scheduled_at'],
+                'scheduled_end_at' => $data['scheduled_end_at'] ?? null,
+                'location' => $data['location'],
+                'purpose' => $data['purpose'],
+                'status' => 'scheduled',
+            ]);
 
-        $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
-        if ($appointment->scheduled_end_at) {
-            $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
-        }
+            $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+            if ($appointment->scheduled_end_at) {
+                $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+            }
 
-        Message::create([
-            'uuid' => (string) Str::uuid(),
-            'conversation_id' => $conversation->id,
-            'sender_id' => $actor->id,
-            'message' => "A new follow-up appointment has been scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\nPurpose: {$data['purpose']}\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
-        ]);
+            Message::create([
+                'uuid' => (string) Str::uuid(),
+                'conversation_id' => $conversation->id,
+                'sender_id' => $actor->id,
+                'message' => "A new follow-up appointment has been scheduled on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\nPurpose: {$data['purpose']}\n[APPOINTMENT_SCHEDULED:{$appointment->uuid}]",
+            ]);
 
-        $appointment->loadMissing(['doctor', 'patient']);
-        broadcast(new AppointmentUpdated(
-            $appointment->patient?->uuid,
-            $appointment->doctor?->uuid,
-            'scheduled',
-            $appointment->uuid
-        ));
+            $appointment->loadMissing(['doctor', 'patient']);
+            broadcast(new AppointmentUpdated(
+                $appointment->patient?->uuid,
+                $appointment->doctor?->uuid,
+                'scheduled',
+                $appointment->uuid
+            ));
 
-        return [
-            'message' => 'Appointment scheduled successfully.',
-            'appointment' => $appointment,
-            'conversation_uuid' => $conversation->uuid,
-        ];
+            return [
+                'message' => 'Appointment scheduled successfully.',
+                'appointment' => $appointment,
+                'conversation_uuid' => $conversation->uuid,
+            ];
+        });
     }
 
     public function proposeReschedule(Appointment $appointment, array $data, $user)
     {
-        $conversation = Conversation::where([
-            'doctor_id' => $appointment->doctor_id,
-            'patient_id' => $appointment->patient_id,
-        ])->first();
+        return DB::transaction(function () use ($appointment, $data, $user) {
+            $conversation = Conversation::where([
+                'doctor_id' => $appointment->doctor_id,
+                'patient_id' => $appointment->patient_id,
+            ])->first();
 
-        if (! $conversation) {
-            abort(404, 'Conversation not found.');
-        }
+            if (! $conversation) {
+                abort(404, 'Conversation not found.');
+            }
 
-        $this->checkAppointmentConflict(
-            $appointment->doctor_id,
-            $data['scheduled_at'],
-            $data['scheduled_end_at'] ?? null,
-            $appointment->id
-        );
+            $this->checkAppointmentConflict(
+                $appointment->doctor_id,
+                $data['scheduled_at'],
+                $data['scheduled_end_at'] ?? null,
+                $appointment->id
+            );
 
-        $updateData = [
-            'status' => 'reschedule_proposed',
-            'previous_scheduled_at' => $appointment->scheduled_at ?? $appointment->previous_scheduled_at,
-            'previous_scheduled_end_at' => $appointment->scheduled_end_at ?? $appointment->previous_scheduled_end_at,
-            'scheduled_at' => $data['scheduled_at'],
-            'location' => $data['location'],
-            'requested_reschedule_date' => null,
-            'requested_reschedule_time' => null,
-        ];
+            $updateData = [
+                'status' => 'reschedule_proposed',
+                'previous_scheduled_at' => $appointment->scheduled_at ?? $appointment->previous_scheduled_at,
+                'previous_scheduled_end_at' => $appointment->scheduled_end_at ?? $appointment->previous_scheduled_end_at,
+                'scheduled_at' => $data['scheduled_at'],
+                'location' => $data['location'],
+                'requested_reschedule_date' => null,
+                'requested_reschedule_time' => null,
+            ];
 
-        if (array_key_exists('scheduled_end_at', $data)) {
-            $updateData['scheduled_end_at'] = $data['scheduled_end_at'];
-        }
+            if (array_key_exists('scheduled_end_at', $data)) {
+                $updateData['scheduled_end_at'] = $data['scheduled_end_at'];
+            }
 
-        $this->appointmentRepository->updateAppointment($appointment, $updateData);
+            $this->appointmentRepository->updateAppointment($appointment, $updateData);
 
-        $dateStr = Carbon::parse($data['scheduled_at'])->format('Y-m-d H:i:s');
-        $displayDateStr = Carbon::parse($data['scheduled_at'])->format('M d, Y h:i A');
-        if (! empty($data['scheduled_end_at'])) {
-            $displayDateStr .= ' - '.Carbon::parse($data['scheduled_end_at'])->format('h:i A');
-        }
-        $loc = $data['location'];
+            $dateStr = Carbon::parse($data['scheduled_at'])->format('Y-m-d H:i:s');
+            $displayDateStr = Carbon::parse($data['scheduled_at'])->format('M d, Y h:i A');
+            if (! empty($data['scheduled_end_at'])) {
+                $displayDateStr .= ' - '.Carbon::parse($data['scheduled_end_at'])->format('h:i A');
+            }
+            $loc = $data['location'];
 
-        $message = Message::create([
-            'uuid' => (string) Str::uuid(),
-            'conversation_id' => $conversation->id,
-            'sender_id' => $user->id,
-            'message' => "A new schedule has been proposed on <b>{$displayDateStr}</b> at <b>{$loc}</b>.\n[APPOINTMENT_RESCHEDULE_PROPOSED:{$appointment->uuid}:{$dateStr}:{$loc}]",
-        ]);
+            $message = Message::create([
+                'uuid' => (string) Str::uuid(),
+                'conversation_id' => $conversation->id,
+                'sender_id' => $user->id,
+                'message' => "A new schedule has been proposed on <b>{$displayDateStr}</b> at <b>{$loc}</b>.\n[APPOINTMENT_RESCHEDULE_PROPOSED:{$appointment->uuid}:{$dateStr}:{$loc}]",
+            ]);
 
-        $appointment->loadMissing(['doctor', 'patient']);
-        broadcast(new AppointmentUpdated(
-            $appointment->patient?->uuid,
-            $appointment->doctor?->uuid,
-            'reschedule_proposed',
-            $appointment->uuid
-        ));
+            $appointment->loadMissing(['doctor', 'patient']);
+            broadcast(new AppointmentUpdated(
+                $appointment->patient?->uuid,
+                $appointment->doctor?->uuid,
+                'reschedule_proposed',
+                $appointment->uuid
+            ));
 
-        return [
-            'message' => 'Reschedule proposed successfully.',
-            'appointment' => $appointment->refresh(),
-        ];
+            return [
+                'message' => 'Reschedule proposed successfully.',
+                'appointment' => $appointment->refresh(),
+            ];
+        });
     }
 
     public function acceptReschedule(Appointment $appointment, array $data, $user)
     {
-        $conversation = Conversation::where([
-            'doctor_id' => $appointment->doctor_id,
-            'patient_id' => $appointment->patient_id,
-        ])->first();
+        return DB::transaction(function () use ($appointment, $user) {
+            $conversation = Conversation::where([
+                'doctor_id' => $appointment->doctor_id,
+                'patient_id' => $appointment->patient_id,
+            ])->first();
 
-        if (! $conversation) {
-            abort(404, 'Conversation not found.');
-        }
-
-        // If the patient requested a specific date/time, apply it to scheduled_at before confirming.
-        $updates = ['status' => 'scheduled'];
-        $wasRescheduleRequested = $appointment->status === 'reschedule_requested';
-
-        if ($wasRescheduleRequested && $appointment->requested_reschedule_date) {
-            $timeStr = $appointment->requested_reschedule_time ?? '09:00';
-            $dateOnly = Carbon::parse($appointment->requested_reschedule_date)->format('Y-m-d');
-            $newScheduledAt = Carbon::parse("{$dateOnly} {$timeStr}");
-
-            $durationMinutes = 60;
-            $origStart = $appointment->scheduled_at ?? $appointment->previous_scheduled_at;
-            $origEnd = $appointment->scheduled_end_at ?? $appointment->previous_scheduled_end_at;
-            if ($origStart && $origEnd) {
-                $durationMinutes = Carbon::parse($origStart)->diffInMinutes(Carbon::parse($origEnd));
+            if (! $conversation) {
+                abort(404, 'Conversation not found.');
             }
-            $newScheduledEndAt = (clone $newScheduledAt)->addMinutes($durationMinutes);
 
-            $this->checkAppointmentConflict(
-                $appointment->doctor_id,
-                $newScheduledAt,
-                $newScheduledEndAt,
-                $appointment->id
-            );
+            // If the patient requested a specific date/time, apply it to scheduled_at before confirming.
+            $updates = ['status' => 'scheduled'];
+            $wasRescheduleRequested = $appointment->status === 'reschedule_requested';
 
-            $updates['scheduled_at'] = $newScheduledAt;
-            $updates['scheduled_end_at'] = $newScheduledEndAt;
-            $updates['requested_reschedule_date'] = null;
-            $updates['requested_reschedule_time'] = null;
-        } else {
-            $this->checkAppointmentConflict(
-                $appointment->doctor_id,
-                $appointment->scheduled_at,
-                $appointment->scheduled_end_at,
-                $appointment->id
-            );
-        }
+            if ($wasRescheduleRequested && $appointment->requested_reschedule_date) {
+                $timeStr = $appointment->requested_reschedule_time ?? '09:00';
+                $dateOnly = Carbon::parse($appointment->requested_reschedule_date)->format('Y-m-d');
+                $newScheduledAt = Carbon::parse("{$dateOnly} {$timeStr}");
 
-        $this->appointmentRepository->updateAppointment($appointment, $updates);
+                $durationMinutes = 60;
+                $origStart = $appointment->scheduled_at ?? $appointment->previous_scheduled_at;
+                $origEnd = $appointment->scheduled_end_at ?? $appointment->previous_scheduled_end_at;
+                if ($origStart && $origEnd) {
+                    $durationMinutes = Carbon::parse($origStart)->diffInMinutes(Carbon::parse($origEnd));
+                }
+                $newScheduledEndAt = (clone $newScheduledAt)->addMinutes($durationMinutes);
 
-        $appointment->refresh();
-        $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
-        if ($appointment->scheduled_end_at) {
-            $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
-        }
+                $this->checkAppointmentConflict(
+                    $appointment->doctor_id,
+                    $newScheduledAt,
+                    $newScheduledEndAt,
+                    $appointment->id
+                );
 
-        $messageText = $wasRescheduleRequested
-            ? "The reschedule request has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]"
-            : "The proposed schedule has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]";
+                $updates['scheduled_at'] = $newScheduledAt;
+                $updates['scheduled_end_at'] = $newScheduledEndAt;
+                $updates['requested_reschedule_date'] = null;
+                $updates['requested_reschedule_time'] = null;
+            } else {
+                $this->checkAppointmentConflict(
+                    $appointment->doctor_id,
+                    $appointment->scheduled_at,
+                    $appointment->scheduled_end_at,
+                    $appointment->id
+                );
+            }
 
-        Message::create([
-            'uuid' => (string) Str::uuid(),
-            'conversation_id' => $conversation->id,
-            'sender_id' => $user->id,
-            'message' => $messageText,
-        ]);
+            $this->appointmentRepository->updateAppointment($appointment, $updates);
 
-        $appointment->loadMissing(['doctor', 'patient']);
-        broadcast(new AppointmentUpdated(
-            $appointment->patient?->uuid,
-            $appointment->doctor?->uuid,
-            'reschedule_accepted',
-            $appointment->uuid
-        ));
+            $appointment->refresh();
+            $dateStr = Carbon::parse($appointment->scheduled_at)->format('M d, Y h:i A');
+            if ($appointment->scheduled_end_at) {
+                $dateStr .= ' - '.Carbon::parse($appointment->scheduled_end_at)->format('h:i A');
+            }
 
-        return [
-            'message' => 'Reschedule accepted successfully.',
-            'appointment' => $appointment->refresh(),
-        ];
+            $messageText = $wasRescheduleRequested
+                ? "The reschedule request has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]"
+                : "The proposed schedule has been accepted. The appointment is now confirmed on <b>{$dateStr}</b> at <b>{$appointment->location}</b>.\n[APPOINTMENT_RESCHEDULE_ACCEPTED:{$appointment->uuid}]";
+
+            Message::create([
+                'uuid' => (string) Str::uuid(),
+                'conversation_id' => $conversation->id,
+                'sender_id' => $user->id,
+                'message' => $messageText,
+            ]);
+
+            $appointment->loadMissing(['doctor', 'patient']);
+            broadcast(new AppointmentUpdated(
+                $appointment->patient?->uuid,
+                $appointment->doctor?->uuid,
+                'reschedule_accepted',
+                $appointment->uuid
+            ));
+
+            return [
+                'message' => 'Reschedule accepted successfully.',
+                'appointment' => $appointment->refresh(),
+            ];
+        });
     }
 
     public function deleteAppointment(Appointment $appointment)

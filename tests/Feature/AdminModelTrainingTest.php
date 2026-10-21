@@ -642,3 +642,34 @@ test('admin can transfer out-of-scope images into standard clinical dataset', fu
     expect(Storage::disk('public')->exists('out_of_scope_dataset/hives/allergic_wheal.jpg'))->toBeFalse();
     expect(Storage::disk('public')->exists('dataset/eczema/allergic_wheal.jpg'))->toBeTrue();
 });
+
+test('admin can rollback model weights to previous backup checkpoint', function () {
+    $role = Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
+    $admin = User::factory()->create(['role_id' => $role->id]);
+
+    Http::fake([
+        '*/model/rollback' => Http::response([
+            'status' => 'success',
+            'message' => 'Rolled back 3 model checkpoint(s) to previous backups.',
+            'restored' => [
+                'best_model_swin_transformer.pth',
+                'best_model_resnet50.pth',
+                'best_model_efficientnet_v2.pth',
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/api/admin/model/retrain/rollback', [
+        'architecture' => 'ensemble',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('status', 'success')
+        ->assertJsonCount(3, 'restored');
+});
+
+test('unauthenticated user cannot rollback model weights', function () {
+    $response = $this->postJson('/api/admin/model/retrain/rollback');
+
+    $response->assertStatus(401);
+});

@@ -948,4 +948,22 @@ class ModelTrainingService
             'ai_result' => $aiResult,
         ]);
     }
+
+    /**
+     * Roll back active production weights to the previous backup checkpoint.
+     */
+    public function rollbackModel(?string $architecture = 'ensemble'): JsonResponse
+    {
+        try {
+            $response = Http::timeout(10)->post($this->aiUrl.'/model/rollback', [
+                'architecture' => $architecture ?? 'ensemble',
+            ]);
+
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to connect to AI training service during rollback: '.$e->getMessage(),
+            ], 503);
+        }
+    }
 }

@@ -138,4 +138,16 @@ class AdminModelTrainingController extends Controller
     {
         return $this->trainingService->markTrainingCompleted();
     }
+
+    /**
+     * Roll back active model weights to the previous backup checkpoint.
+     */
+    public function rollback(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'architecture' => 'nullable|string',
+        ]);
+
+        return $this->trainingService->rollbackModel($validated['architecture'] ?? 'ensemble');
+    }
 }

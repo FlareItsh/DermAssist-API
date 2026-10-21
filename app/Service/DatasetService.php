@@ -468,6 +468,55 @@ class DatasetService
         return response()->json(['message' => 'Saved to dataset']);
     }
 
+    public function revokePatientDatasetContributions(User $patient): int
+    {
+        $diagnoses = Diagnosis::where(function ($q) use ($patient) {
+            $q->where('patient_uuid', $patient->uuid)
+                ->orWhere('user_uuid', $patient->uuid);
+        })
+            ->where('contributed_to_dataset', true)
+            ->get();
+
+        $prunedCount = 0;
+
+        foreach ($diagnoses as $diagnosis) {
+            if (! empty($diagnosis->image_path)) {
+                $filename = basename($diagnosis->image_path);
+                $category = Str::slug($diagnosis->label);
+
+                // Check standard priority dataset directories
+                $possiblePaths = [
+                    $this->datasetDir.'/'.$category.'/'.$filename,
+                    $this->datasetDir.'/acne/'.$filename,
+                    $this->datasetDir.'/eczema/'.$filename,
+                    $this->datasetDir.'/herpes/'.$filename,
+                ];
+
+                foreach ($possiblePaths as $datasetFilePath) {
+                    if (Storage::disk($this->disk)->exists($datasetFilePath)) {
+                        Storage::disk($this->disk)->delete($datasetFilePath);
+                        $prunedCount++;
+                    }
+                }
+
+                // Check out-of-scope dataset directory
+                $outOfScopePath = 'out_of_scope_dataset/'.$category.'/'.$filename;
+                if (Storage::disk($this->disk)->exists($outOfScopePath)) {
+                    Storage::disk($this->disk)->delete($outOfScopePath);
+                    $prunedCount++;
+                }
+            }
+
+            $diagnosis->update([
+                'contributed_to_dataset' => false,
+                'patient_consented_dataset' => false,
+                'contributed_at' => null,
+            ]);
+        }
+
+        return $prunedCount;
+    }
+
     public function downloadZip(?string $category = null, ?string $doctorUuid = null, ?int $doctorId = null): JsonResponse|BinaryFileResponse
     {
         if ($doctorUuid) {

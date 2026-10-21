@@ -6,6 +6,7 @@ use App\Http\Resources\DiagnosisResource;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Repository\DiagnosisRepository;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -28,12 +29,19 @@ class DiagnosisService
         $image = $data['image'];
         $userUuid = $data['user_uuid'] ?? null;
 
-        // 1. Call AI Server
-        $response = Http::attach(
-            'file',
-            file_get_contents($image->getRealPath()),
-            $image->getClientOriginalName()
-        )->post(config('services.ai.url').'/predict');
+        // 1. Call AI Server with connection and response timeouts
+        try {
+            $response = Http::timeout(12)
+                ->connectTimeout(3)
+                ->attach(
+                    'file',
+                    file_get_contents($image->getRealPath()),
+                    $image->getClientOriginalName()
+                )->post(config('services.ai.url').'/predict');
+        } catch (ConnectionException $e) {
+            Log::error('AI Server Connection Error: '.$e->getMessage());
+            throw new \Exception('The AI analysis service is experiencing high traffic and timed out. Please try again shortly.');
+        }
 
         if ($response->failed()) {
             $body = $response->json();
