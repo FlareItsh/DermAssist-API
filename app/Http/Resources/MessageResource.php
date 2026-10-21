@@ -31,29 +31,40 @@ class MessageResource extends JsonResource
         ];
 
         // Enrich with appointment data if it's a request or diagnosis-only tag
-        if (preg_match('/\[(APPOINTMENT_REQUEST|DIAGNOSIS_ONLY):([a-f0-9-]+):([a-f0-9-]+)\]/', $this->message, $matches)) {
+        if (preg_match('/\[(APPOINTMENT_REQUEST|DIAGNOSIS_ONLY):([a-f0-9-]+)(?::([a-f0-9-]+))?\]/', $this->message, $matches)) {
             $appointmentUuid = $matches[2];
-            $diagnosisUuid = $matches[3];
+            $diagnosisUuid = $matches[3] ?? null;
 
-            $appointment = Appointment::where('uuid', $appointmentUuid)->with(['patient', 'doctor'])->first();
-            $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->first();
+            $appointment = Appointment::where('uuid', $appointmentUuid)->with(['patient', 'doctor', 'diagnosis'])->first();
+            $diagnosis = $diagnosisUuid ? Diagnosis::where('uuid', $diagnosisUuid)->first() : $appointment?->diagnosis;
 
-            if ($appointment && $diagnosis) {
+            if ($appointment) {
+                $patientName = $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient';
                 $data['appointment_data'] = [
                     'status' => $appointment->status,
                     'appointment_uuid' => $appointment->uuid,
-                    'diagnosis_uuid' => $diagnosis->uuid,
+                    'diagnosis_uuid' => $diagnosis?->uuid,
                     'doctor_id' => $appointment->doctor?->id,
                     'doctor_uuid' => $appointment->doctor?->uuid,
                     'doctor_name' => $appointment->doctor ? trim($appointment->doctor->first_name.' '.$appointment->doctor->last_name) : null,
-                    'diagnosis' => [
+                    'scheduled_at' => $appointment->scheduled_at?->toIso8601String(),
+                    'scheduled_end_at' => $appointment->scheduled_end_at?->toIso8601String(),
+                    'scheduled_at_formatted' => $appointment->scheduled_at ? $appointment->scheduled_at->format('M d, Y \a\t g:i A') : null,
+                    'location' => $appointment->location,
+                    'purpose' => $appointment->purpose,
+                    'patient_name' => $patientName,
+                    'patient_uuid' => $appointment->patient?->uuid,
+                    'patient_avatar' => $appointment->patient?->avatar_url,
+                    'patient_age' => $appointment->patient?->age,
+                    'patient_gender' => $appointment->patient?->gender,
+                    'diagnosis' => $diagnosis ? [
                         'label' => $diagnosis->label,
                         'confidence' => $diagnosis->confidence,
                         'image_path' => $diagnosis->image_path,
-                        'patient_name' => $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient',
-                        'patient_age' => $diagnosis->patient_age,
+                        'patient_name' => $patientName,
+                        'patient_age' => $diagnosis->patient_age ?? $appointment->patient?->age,
                         'date' => $diagnosis->created_at->format('M d, Y'),
-                    ],
+                    ] : null,
                 ];
             }
         } elseif (preg_match('/\[APPOINTMENT_DECLINED:([a-f0-9-]+)\]/', $this->message, $matches)) {
@@ -63,6 +74,7 @@ class MessageResource extends JsonResource
 
             if ($appointment) {
                 $diagnosis = $appointment->diagnosis;
+                $patientName = $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient';
                 $data['appointment_data'] = [
                     'status' => 'declined',
                     'appointment_uuid' => $appointment->uuid,
@@ -70,12 +82,18 @@ class MessageResource extends JsonResource
                     'doctor_id' => $appointment->doctor?->id,
                     'doctor_uuid' => $appointment->doctor?->uuid,
                     'doctor_name' => $appointment->doctor ? trim($appointment->doctor->first_name.' '.$appointment->doctor->last_name) : null,
+                    'scheduled_at' => $appointment->scheduled_at?->toIso8601String(),
+                    'scheduled_end_at' => $appointment->scheduled_end_at?->toIso8601String(),
+                    'scheduled_at_formatted' => $appointment->scheduled_at ? $appointment->scheduled_at->format('M d, Y \a\t g:i A') : null,
+                    'location' => $appointment->location,
+                    'purpose' => $appointment->purpose,
+                    'patient_name' => $patientName,
                     'diagnosis' => $diagnosis ? [
                         'label' => $diagnosis->label,
                         'confidence' => $diagnosis->confidence,
                         'image_path' => $diagnosis->image_path,
-                        'patient_name' => $appointment->patient ? trim($appointment->patient->first_name.' '.$appointment->patient->last_name) : 'Patient',
-                        'patient_age' => $diagnosis->patient_age,
+                        'patient_name' => $patientName,
+                        'patient_age' => $diagnosis->patient_age ?? $appointment->patient?->age,
                         'date' => $diagnosis->created_at->format('M d, Y'),
                     ] : null,
                 ];

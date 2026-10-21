@@ -162,12 +162,35 @@ class AppointmentService
                 ]);
             }
 
+            // Format schedule if requested
+            $formattedSchedule = null;
+            if ($activeAppointment->scheduled_at) {
+                $startCarbon = Carbon::parse($activeAppointment->scheduled_at);
+                $formattedSchedule = $startCarbon->format('M d, Y \a\t g:i A');
+                if ($activeAppointment->scheduled_end_at) {
+                    $endCarbon = Carbon::parse($activeAppointment->scheduled_end_at);
+                    $formattedSchedule .= ' - '.$endCarbon->format('g:i A');
+                }
+            }
+
             // Create a Message representing this referral
             $messageContent = $data['message'] ?? '';
             if ($diagnosisId) {
-                $messageContent .= "\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]";
+                if ($formattedSchedule && ! str_contains($messageContent, $formattedSchedule)) {
+                    $scheduleLine = "Requested schedule: {$formattedSchedule}.";
+                    $messageContent = trim(($messageContent ? $messageContent."\n".$scheduleLine : $scheduleLine)."\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]");
+                } else {
+                    $messageContent .= "\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]";
+                }
             } else {
-                $messageContent = trim(($messageContent ?: 'I would like to request an appointment for a clinical consultation.')."\n[{$tag}:{$appointmentUuid}]");
+                $defaultText = $formattedSchedule
+                    ? "I would like to request an appointment for a clinical consultation on {$formattedSchedule}."
+                    : 'I would like to request an appointment for a clinical consultation.';
+                $baseMessage = $messageContent ?: $defaultText;
+                if ($messageContent && $formattedSchedule && ! str_contains($messageContent, $formattedSchedule)) {
+                    $baseMessage .= "\nRequested schedule: {$formattedSchedule}.";
+                }
+                $messageContent = trim($baseMessage."\n[{$tag}:{$appointmentUuid}]");
             }
 
             Message::create([
