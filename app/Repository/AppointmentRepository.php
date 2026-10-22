@@ -8,7 +8,18 @@ class AppointmentRepository
 {
     public function getAppointmentsForUser($user, $doctorId = null, $doctorUuid = null)
     {
-        $query = Appointment::with(['doctor', 'patient', 'diagnosis', 'clinicalNote.diagnosis']);
+        $query = Appointment::with([
+            'doctor',
+            'patient',
+            'diagnosis',
+            'inClinicDiagnosis',
+            'scanExceptionDoctor',
+            'clinicalNote.diagnosis',
+            'activeRescheduleProposal.proposer',
+            'acceptedBy',
+            'cancelledBy',
+            'noShowBy',
+        ]);
 
         if ($doctorId || $doctorUuid) {
             $query->whereHas('doctor', function ($q) use ($doctorId, $doctorUuid) {
@@ -19,7 +30,7 @@ class AppointmentRepository
                     $q->where('uuid', $doctorUuid);
                 }
             });
-            $query->whereIn('status', ['scheduled', 'reschedule_proposed', 'reschedule_requested']);
+            $query->whereIn('status', ['confirmed', 'scheduled', 'checked_in', 'in_consultation', 'reschedule_proposed', 'reschedule_requested']);
         } elseif ($user->role->slug === 'doctor') {
             $query->where('doctor_id', $user->id);
         } elseif ($user->role->slug === 'secretary') {

@@ -28,8 +28,9 @@ it('can diagnose a skin lesion image', function () {
         ], 200),
     ]);
 
-    // 3. Create a fake image file
-    $file = UploadedFile::fake()->image('test-skin-lesion.jpg', 600, 600);
+    // 3. Create a fake image file with valid 1x1 JPEG binary bytes (no GD dependency)
+    $jpegBytes = base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=');
+    $file = UploadedFile::fake()->createWithContent('test-skin-lesion.jpg', $jpegBytes);
 
     // 4. Hit the endpoint
     $response = $this->postJson('/api/diagnose', [
@@ -42,6 +43,6 @@ it('can diagnose a skin lesion image', function () {
     $response->assertJsonPath('label', 'Acne');
 
     // 6. Assert the file was stored locally
-    $diagnosis = Diagnosis::latest()->first();
+    $diagnosis = Diagnosis::where('user_uuid', '123e4567-e89b-12d3-a456-426614174000')->first();
     Storage::disk('public')->assertExists($diagnosis->image_path);
 });

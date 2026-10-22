@@ -72,7 +72,7 @@ class DoctorAvailabilityRepository
         return Appointment::with('patient')
             ->where('doctor_id', $doctorId)
             ->whereDate('scheduled_at', $dateStr)
-            ->whereIn('status', ['scheduled', 'reschedule_proposed'])
+            ->whereIn('status', ['confirmed', 'scheduled', 'checked_in', 'in_consultation'])
             ->where(function ($q) use ($startDt, $endDt) {
                 $q->where('scheduled_at', '<', $endDt)
                     ->whereRaw('COALESCE(scheduled_end_at, DATE_ADD(scheduled_at, INTERVAL 1 HOUR)) > ?', [$startDt]);

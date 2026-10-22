@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'diagnosis_id', 'diagnosis_label', 'suggested_label', 'description', 'status', 'resolved_at', 'resolution_notes'])]
+#[Fillable(['user_id', 'diagnosis_id', 'parent_appeal_id', 'resubmission_count', 'diagnosis_label', 'suggested_label', 'description', 'status', 'reviewer_id', 'resolved_at', 'resolution_notes'])]
 class Appeal extends Model
 {
     use HasUuids;
@@ -21,6 +22,7 @@ class Appeal extends Model
     {
         return [
             'resolved_at' => 'datetime',
+            'resubmission_count' => 'integer',
         ];
     }
 
@@ -41,10 +43,34 @@ class Appeal extends Model
     }
 
     /**
+     * Get the reviewer who resolved or rejected the appeal.
+     */
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
+    /**
      * Get the diagnosis associated with this appeal.
      */
     public function diagnosis(): BelongsTo
     {
         return $this->belongsTo(Diagnosis::class);
+    }
+
+    /**
+     * Get the preceding parent appeal in the resubmission chain.
+     */
+    public function parentAppeal(): BelongsTo
+    {
+        return $this->belongsTo(Appeal::class, 'parent_appeal_id');
+    }
+
+    /**
+     * Get any downstream resubmissions linked to this appeal.
+     */
+    public function childAppeals(): HasMany
+    {
+        return $this->hasMany(Appeal::class, 'parent_appeal_id');
     }
 }

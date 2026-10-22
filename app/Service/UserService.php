@@ -580,7 +580,13 @@ class UserService
         }
 
         if (array_key_exists('consent_dataset', $payload)) {
-            $payload['consent_dataset'] = (bool) $payload['consent_dataset'];
+            $newConsent = (bool) $payload['consent_dataset'];
+            $payload['consent_dataset'] = $newConsent;
+
+            // GDPR / DPA: If user previously consented and is now withdrawing consent, prune contributed files
+            if (! $newConsent && $user->consent_dataset) {
+                app(DatasetService::class)->revokePatientDatasetContributions($user);
+            }
         }
         if (! empty($payload['agree_to_terms']) && ! $user->terms_accepted_at) {
             $payload['terms_accepted_at'] = now();

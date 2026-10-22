@@ -80,6 +80,8 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::post('/admin/block-device', [AuthController::class, 'blockDevice']);
     Route::post('/admin/unblock-device', [AuthController::class, 'unblockDevice']);
 
+    Route::post('/diagnoses/technical-failure', [DiagnosisController::class, 'recordTechnicalFailure']);
+
     Route::apiResources([
         'users' => UserController::class,
         'verifications' => VerificationController::class,
@@ -112,6 +114,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::delete('/dataset/bulk', [DatasetController::class, 'destroyBulk']);
     Route::get('/dataset/download', [DatasetController::class, 'download']);
     Route::post('/dataset/save-diagnosis', [DatasetController::class, 'saveFromDiagnosis']);
+    Route::patch('/dataset/diagnoses/{uuid}/approve', [DatasetController::class, 'adminApproveDiagnosis']);
 
     // Out-of-Scope Research Dataset Routes (mirrors standard dataset routes, separate storage)
     Route::get('/out-of-scope-dataset', [OutOfScopeDatasetController::class, 'index']);
@@ -127,9 +130,20 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::post('/appointments/schedule-for-patient', [AppointmentController::class, 'scheduleForPatient']);
     Route::get('/appointments/{appointment}', [AppointmentController::class, 'show']);
     Route::post('/appointments/{appointment}/accept', [AppointmentController::class, 'accept']);
+    Route::post('/appointments/{appointment}/reject', [AppointmentController::class, 'reject']);
     Route::post('/appointments/{appointment}/decline', [AppointmentController::class, 'decline']);
+    Route::post('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
+    Route::post('/appointments/{appointment}/check-in', [AppointmentController::class, 'checkIn']);
+    Route::post('/appointments/{appointment}/mark-no-show', [AppointmentController::class, 'markNoShow']);
+    Route::get('/appointments/{appointment}/events', [AppointmentController::class, 'events']);
     Route::post('/appointments/{appointment}/propose-reschedule', [AppointmentController::class, 'proposeReschedule']);
     Route::post('/appointments/{appointment}/accept-reschedule', [AppointmentController::class, 'acceptReschedule']);
+    Route::post('/appointments/{appointment}/reschedule-proposals', [AppointmentController::class, 'createRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/accept', [AppointmentController::class, 'acceptRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/decline', [AppointmentController::class, 'declineRescheduleProposal']);
+    Route::post('/appointments/{appointment}/reschedule-proposals/{proposal}/withdraw', [AppointmentController::class, 'withdrawRescheduleProposal']);
+    Route::post('/appointments/{appointment}/attach-in-clinic-scan', [AppointmentController::class, 'attachInClinicScan']);
+    Route::post('/appointments/{appointment}/scan-exception', [AppointmentController::class, 'recordScanException']);
 
     // Clinical Notes
     Route::get('/appointments/{uuid}/clinical-note', [ClinicalNoteController::class, 'show']);
@@ -189,6 +203,7 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
         Route::get('/model/retrain/status', [AdminModelTrainingController::class, 'status']);
         Route::post('/model/retrain/cancel', [AdminModelTrainingController::class, 'cancel']);
         Route::post('/model/retrain/complete', [AdminModelTrainingController::class, 'markCompleted']);
+        Route::post('/model/retrain/rollback', [AdminModelTrainingController::class, 'rollback']);
         Route::post('/model/dataset/sync', [AdminModelTrainingController::class, 'sync']);
     });
 

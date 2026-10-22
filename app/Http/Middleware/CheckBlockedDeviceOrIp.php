@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\BlockedDevice;
 use App\Models\BlockedIp;
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,10 +37,25 @@ class CheckBlockedDeviceOrIp
                 ->exists();
 
             if ($isIpBlocked) {
-                return response()->json([
-                    'message' => 'Access denied: Your network has been restricted due to suspicious activity.',
-                    'is_ip_blocked' => true,
-                ], 403);
+                // If logging into a verified clinical staff account (doctor, secretary, admin),
+                // exempt to prevent clinic-wide shared Wi-Fi collateral lockouts
+                $isStaffLogin = false;
+                if ($request->is('*login')) {
+                    $email = $request->input('email');
+                    if ($email) {
+                        $user = User::where('email', $email)->first();
+                        if ($user && in_array($user->role?->slug, ['doctor', 'secretary', 'admin'], true)) {
+                            $isStaffLogin = true;
+                        }
+                    }
+                }
+
+                if (! $isStaffLogin) {
+                    return response()->json([
+                        'message' => 'Access denied: Your network has been restricted due to suspicious activity.',
+                        'is_ip_blocked' => true,
+                    ], 403);
+                }
             }
         }
 

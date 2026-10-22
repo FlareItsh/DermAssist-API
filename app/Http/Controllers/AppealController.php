@@ -43,6 +43,7 @@ class AppealController extends Controller
         $validated = $request->validate([
             'user_uuid' => 'required|exists:users,uuid',
             'diagnosis_uuid' => 'nullable|string|exists:diagnoses,uuid',
+            'parent_appeal_uuid' => 'nullable|string|exists:appeals,uuid',
             'diagnosis_label' => 'required|string',
             'suggested_label' => 'required|string',
             'description' => 'nullable|string',
@@ -66,7 +67,7 @@ class AppealController extends Controller
             'update_dataset' => 'nullable|boolean',
         ]);
 
-        $appeal = $this->appealService->resolveAppeal($uuid, $validated);
+        $appeal = $this->appealService->resolveAppeal($uuid, $validated, $request->user());
 
         return response()->json([
             'message' => 'Appeal resolved and verified scan ingested for AI retraining.',
@@ -83,7 +84,7 @@ class AppealController extends Controller
             'resolution_notes' => 'nullable|string',
         ]);
 
-        $appeal = $this->appealService->rejectAppeal($uuid, $validated);
+        $appeal = $this->appealService->rejectAppeal($uuid, $validated, $request->user());
 
         return response()->json([
             'message' => 'Appeal rejected.',

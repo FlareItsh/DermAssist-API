@@ -8,7 +8,7 @@ class RecordRepository
 {
     public function getRecordsForPatient(string $userUuid)
     {
-        return Diagnosis::with(['clinicalNote.doctor', 'doctor'])
+        return Diagnosis::with(['clinicalNote.doctor', 'doctor', 'appeal'])
             ->where(function ($q) use ($userUuid) {
                 $q->where('patient_uuid', $userUuid)
                     ->orWhere('user_uuid', $userUuid);
@@ -41,7 +41,7 @@ class RecordRepository
 
     public function getAllRecords()
     {
-        return Diagnosis::with(['clinicalNote.doctor', 'clinicalNote.patient', 'doctor', 'patient'])
+        return Diagnosis::with(['clinicalNote.doctor', 'clinicalNote.patient', 'doctor', 'patient', 'appeal'])
             ->orderBy('created_at', 'desc')
             ->get();
     }
