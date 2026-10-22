@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Http\Resources\DiagnosisResource;
 use App\Http\Resources\UserResource;
+use App\Models\Appointment;
 use App\Models\User;
 use App\Repository\DiagnosisRepository;
 use Illuminate\Http\Client\ConnectionException;
@@ -87,8 +88,23 @@ class DiagnosisService
             'status' => $initialStatus,
             'patient_consented_dataset' => $patientConsented,
             'out_of_scope_category' => $aiResult['out_of_scope_category'] ?? null,
-            'is_out_of_scope' => ! empty($aiResult['out_of_scope_category']),
         ]);
+
+        if (! empty($data['appointment_uuid'])) {
+            $appointment = Appointment::where('uuid', $data['appointment_uuid'])->first();
+            if ($appointment) {
+                $apptUpdate = [];
+                if ($isDoctor || $diagnosis->scan_type !== 'home') {
+                    $apptUpdate['in_clinic_diagnosis_id'] = $diagnosis->id;
+                }
+                if (! $appointment->diagnosis_id) {
+                    $apptUpdate['diagnosis_id'] = $diagnosis->id;
+                }
+                if (! empty($apptUpdate)) {
+                    $appointment->update($apptUpdate);
+                }
+            }
+        }
 
         // Set transient properties directly on the model instance to keep response flat (no additional() wrapper)
         $diagnosis->image_quality = $aiResult['image_quality'] ?? null;

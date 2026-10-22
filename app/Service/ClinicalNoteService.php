@@ -34,10 +34,23 @@ class ClinicalNoteService
         $validated['doctor_id'] = $appointment->doctor_id;
         $validated['patient_id'] = $appointment->patient_id;
 
+        $targetStatus = $validated['status'] ?? null;
+        unset($validated['status']);
+
         if (isset($validated['diagnosis_uuid'])) {
             $diagnosis = Diagnosis::where('uuid', $validated['diagnosis_uuid'])->first();
             if ($diagnosis) {
                 $validated['diagnosis_id'] = $diagnosis->id;
+                $appointmentUpdate = [];
+                if (! $appointment->diagnosis_id) {
+                    $appointmentUpdate['diagnosis_id'] = $diagnosis->id;
+                }
+                if ($diagnosis->scan_type !== 'home' || ! $appointment->in_clinic_diagnosis_id) {
+                    $appointmentUpdate['in_clinic_diagnosis_id'] = $diagnosis->id;
+                }
+                if (! empty($appointmentUpdate)) {
+                    $appointment->update($appointmentUpdate);
+                }
             }
             unset($validated['diagnosis_uuid']);
         }
@@ -45,7 +58,11 @@ class ClinicalNoteService
         if (isset($validated['in_clinic_diagnosis_uuid'])) {
             $inClinicDiagnosis = Diagnosis::where('uuid', $validated['in_clinic_diagnosis_uuid'])->first();
             if ($inClinicDiagnosis) {
-                $appointment->update(['in_clinic_diagnosis_id' => $inClinicDiagnosis->id]);
+                $appointmentUpdate = ['in_clinic_diagnosis_id' => $inClinicDiagnosis->id];
+                if (! $appointment->diagnosis_id) {
+                    $appointmentUpdate['diagnosis_id'] = $inClinicDiagnosis->id;
+                }
+                $appointment->update($appointmentUpdate);
             }
             unset($validated['in_clinic_diagnosis_uuid']);
         }
@@ -64,6 +81,20 @@ class ClinicalNoteService
             ['appointment_id' => $appointment->id],
             $validated
         );
+
+        if ($targetStatus === 'completed') {
+            $appointment->refresh();
+            if ($appointment->hasSatisfiedConsultationScan()) {
+                $appointment->update(['status' => 'completed']);
+                $appointment->loadMissing(['doctor', 'patient']);
+                broadcast(new AppointmentUpdated(
+                    $appointment->patient?->uuid,
+                    $appointment->doctor?->uuid,
+                    'completed',
+                    $appointment->uuid
+                ));
+            }
+        }
 
         return $clinicalNote;
     }
@@ -87,7 +118,7 @@ class ClinicalNoteService
         // Auto-complete existing active appointment if present, or create a completed record
         $activeAppointment = Appointment::where('doctor_id', $user->id)
             ->where('patient_id', $patientId)
-            ->whereIn('status', ['pending', 'scheduled', 'reschedule_proposed', 'reschedule_requested'])
+            ->whereIn('status', ['pending', 'confirmed', 'scheduled', 'checked_in', 'in_consultation', 'reschedule_proposed', 'reschedule_requested'])
             ->orderByDesc('created_at')
             ->first();
 

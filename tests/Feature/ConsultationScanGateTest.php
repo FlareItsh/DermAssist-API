@@ -189,3 +189,38 @@ test('doctor appeal resubmission links parent appeal and increments count', func
     expect($diagnosis->fresh()->label)->toBe('Eczema')
         ->and($diagnosis->fresh()->original_ai_label)->toBe('Acne');
 });
+
+test('saving clinical note with diagnosis_uuid attaches in-clinic diagnosis and allows appointment completion', function () {
+    Sanctum::actingAs($this->doctor);
+
+    $appointment = Appointment::create([
+        'doctor_id' => $this->doctor->id,
+        'patient_id' => $this->patient->id,
+        'scheduled_at' => now()->addDay(),
+        'status' => 'confirmed',
+        'location' => 'Main Clinic',
+    ]);
+
+    $inClinicScan = Diagnosis::create([
+        'user_uuid' => $this->doctor->uuid,
+        'doctor_uuid' => $this->doctor->uuid,
+        'patient_uuid' => $this->patient->uuid,
+        'label' => 'Acne',
+        'confidence' => 0.91,
+        'scan_type' => 'in_clinic',
+        'is_technical_failure' => false,
+        'status' => 'completed',
+    ]);
+
+    // Save clinical note with diagnosis_uuid and status completed
+    $noteResponse = $this->postJson("/api/appointments/{$appointment->uuid}/clinical-note", [
+        'diagnosis_uuid' => $inClinicScan->uuid,
+        'final_diagnosis' => 'Acne Vulgaris',
+        'status' => 'completed',
+    ]);
+
+    $noteResponse->assertStatus(200);
+
+    expect($appointment->fresh()->in_clinic_diagnosis_id)->toBe($inClinicScan->id)
+        ->and($appointment->fresh()->status)->toBe('completed');
+});

@@ -107,6 +107,12 @@ class Appointment extends Model
             return true;
         }
 
+        if ($this->clinicalNote && $this->clinicalNote->diagnosis && ! $this->clinicalNote->diagnosis->is_technical_failure) {
+            if ($this->clinicalNote->diagnosis->scan_type !== 'home') {
+                return true;
+            }
+        }
+
         if (! empty($this->scan_exception_reason) && $this->scan_exception_granted_at) {
             return true;
         }

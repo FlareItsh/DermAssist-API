@@ -28,6 +28,7 @@ class DiagnosisRequest extends FormRequest
             'patient_uuid' => 'nullable|uuid',
             'doctor_uuid' => 'nullable|uuid',
             'doctor_id' => 'nullable|exists:users,id',
+            'appointment_uuid' => 'nullable|uuid',
         ];
     }
 }

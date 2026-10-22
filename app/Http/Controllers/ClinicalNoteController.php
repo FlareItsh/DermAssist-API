@@ -29,6 +29,10 @@ class ClinicalNoteController extends Controller
     {
         $validated = $request->validate([
             'diagnosis_uuid' => 'nullable|exists:diagnoses,uuid',
+            'in_clinic_diagnosis_uuid' => 'nullable|exists:diagnoses,uuid',
+            'scan_exception_reason' => 'nullable|string',
+            'scan_exception_category' => 'nullable|string',
+            'status' => 'nullable|string|in:completed',
             'history_of_present_illness' => 'nullable|string',
             'systemic_symptoms' => 'nullable|string',
             'physical_exam' => 'nullable|string',
