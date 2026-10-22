@@ -6,10 +6,9 @@ class RepositoryPathResolver
 {
     /**
      * Resolves the canonical filesystem path to the Python Algorithms data/raw directory.
-     *
-     * @throws \RuntimeException If the path cannot be verified.
+     * Returns null if running in distributed cloud environments where algorithms is hosted remotely.
      */
-    public static function getAlgorithmsDataRawPath(): string
+    public static function getAlgorithmsDataRawPath(): ?string
     {
         $configured = config('services.ai.data_path') ?: env('ALGORITHMS_DATA_PATH');
         if ($configured && is_dir($configured)) {
@@ -28,10 +27,7 @@ class RepositoryPathResolver
             return realpath($candidateLegacy) ?: $candidateLegacy;
         }
 
-        throw new \RuntimeException(
-            "Cannot resolve Algorithms data/raw directory. Checked configured: '".($configured ?: 'none').
-            "', standard: '{$candidateStandard}', and legacy: '{$candidateLegacy}'. Please set ALGORITHMS_DATA_PATH."
-        );
+        return null;
     }
 
     /**
