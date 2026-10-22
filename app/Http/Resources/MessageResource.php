@@ -64,6 +64,7 @@ class MessageResource extends JsonResource
                         'patient_name' => $patientName,
                         'patient_age' => $diagnosis->patient_age ?? $appointment->patient?->age,
                         'date' => $diagnosis->created_at->format('M d, Y'),
+                        'scan_type' => $diagnosis->scan_type,
                     ] : null,
                 ];
             }
@@ -95,6 +96,7 @@ class MessageResource extends JsonResource
                         'patient_name' => $patientName,
                         'patient_age' => $diagnosis->patient_age ?? $appointment->patient?->age,
                         'date' => $diagnosis->created_at->format('M d, Y'),
+                        'scan_type' => $diagnosis->scan_type,
                     ] : null,
                 ];
             }
@@ -119,6 +121,7 @@ class MessageResource extends JsonResource
                         'patient_name' => $patientName,
                         'patient_age' => $diagnosis->patient_age ?? ($diagnosis->patient?->age ?? 'N/A'),
                         'date' => $diagnosis->created_at->format('M d, Y'),
+                        'scan_type' => $diagnosis->scan_type,
                     ],
                 ];
             }

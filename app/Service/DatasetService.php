@@ -2,8 +2,10 @@
 
 namespace App\Service;
 
+use App\Http\Resources\DiagnosisResource;
 use App\Models\Diagnosis;
 use App\Models\User;
+use App\Support\RepositoryPathResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -429,20 +431,25 @@ class DatasetService
         ]);
     }
 
-    public function saveFromDiagnosis(string $diagnosisUuid): JsonResponse
+    public function saveFromDiagnosis(string $diagnosisUuid, ?User $actor = null): JsonResponse
     {
         $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
 
-        // Verify Patient Consent or Doctor In-Clinic Contribution
+        if ($diagnosis->is_technical_failure) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Technical failure scans cannot be added to the AI retraining dataset.',
+            ], 422);
+        }
+
+        // Gate 1: Strict Patient Consent verification (zero bypasses for doctor registration or doctor uuid)
         $isPatientConsented = false;
-        if ($diagnosis->contributed_to_dataset || $diagnosis->patient_consented_dataset) {
-            $isPatientConsented = true;
-        } elseif (! empty($diagnosis->patient_uuid)) {
+        if (! empty($diagnosis->patient_uuid)) {
             $patient = User::where('uuid', $diagnosis->patient_uuid)->first();
-            if ($patient && ($patient->consent_dataset || $patient->is_doctor_registered)) {
+            if ($patient && $patient->consent_dataset && $diagnosis->patient_consented_dataset) {
                 $isPatientConsented = true;
             }
-        } elseif (! empty($diagnosis->doctor_uuid)) {
+        } elseif ($diagnosis->patient_consented_dataset) {
             $isPatientConsented = true;
         }
 
@@ -463,16 +470,39 @@ class DatasetService
             ], 422);
         }
 
-        $path = $diagnosis->image_path;
+        // Gate 2: Doctor Authorization & Gate 3 Approval
+        $diagnosis->update([
+            'doctor_authorized_dataset' => true,
+            'doctor_authorized_at' => $diagnosis->doctor_authorized_at ?? now(),
+            'admin_approved_dataset' => true,
+            'admin_approved_at' => now(),
+            'admin_approved_by' => $actor?->id,
+        ]);
 
+        // All 3 Gates passed: Ingest physical files
+        $path = $diagnosis->image_path;
         if (! Storage::disk($this->disk)->exists($path)) {
             return response()->json(['error' => 'Image not found'], 404);
         }
 
-        $datasetPath = $this->datasetDir.'/'.$category.'/'.basename($path);
+        $filename = basename($path);
+        $datasetPath = $this->datasetDir.'/'.$category.'/'.$filename;
 
         if (! Storage::disk($this->disk)->exists($datasetPath)) {
             Storage::disk($this->disk)->copy($path, $datasetPath);
+        }
+
+        // Synchronize to algorithms/data/raw
+        $algosRawDir = RepositoryPathResolver::getAlgorithmsDataRawPath();
+        if ($algosRawDir && is_dir($algosRawDir)) {
+            $catDir = $algosRawDir.'/'.ucfirst($category);
+            if (! is_dir($catDir)) {
+                @mkdir($catDir, 0755, true);
+            }
+            $targetAlgoFile = $catDir.'/webapp_'.$filename;
+            if (! file_exists($targetAlgoFile)) {
+                @copy(Storage::disk($this->disk)->path($path), $targetAlgoFile);
+            }
         }
 
         $diagnosis->update([
@@ -480,7 +510,87 @@ class DatasetService
             'contributed_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Saved to dataset']);
+        return response()->json([
+            'message' => 'Saved to dataset',
+            'status' => 'ingested',
+            'contributed' => true,
+        ]);
+    }
+
+    public function adminApproveDiagnosis(string $diagnosisUuid, User $admin): JsonResponse
+    {
+        $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
+
+        if ($diagnosis->is_technical_failure) {
+            return response()->json(['error' => 'Cannot approve a technical failure scan.'], 422);
+        }
+
+        // Check Gate 1: Patient Consent
+        $isPatientConsented = false;
+        if (! empty($diagnosis->patient_uuid)) {
+            $patient = User::where('uuid', $diagnosis->patient_uuid)->first();
+            if ($patient && $patient->consent_dataset && $diagnosis->patient_consented_dataset) {
+                $isPatientConsented = true;
+            }
+        } elseif ($diagnosis->patient_consented_dataset) {
+            $isPatientConsented = true;
+        }
+
+        if (! $isPatientConsented) {
+            return response()->json(['error' => 'Gate 1 Failed: Patient has not consented to dataset contribution.'], 403);
+        }
+
+        // Check Gate 2: Doctor Authorization
+        if (! $diagnosis->doctor_authorized_dataset) {
+            return response()->json(['error' => 'Gate 2 Failed: Doctor has not authorized this scan for dataset contribution.'], 422);
+        }
+
+        $category = Str::slug($diagnosis->label);
+        $allowedPriorityCategories = ['acne', 'eczema', 'herpes'];
+        if (! in_array($category, $allowedPriorityCategories)) {
+            return response()->json(['error' => 'Only priority categories (acne, eczema, herpes) can be ingested.'], 422);
+        }
+
+        $path = $diagnosis->image_path;
+        if (! Storage::disk($this->disk)->exists($path)) {
+            return response()->json(['error' => 'Diagnosis image file not found on disk.'], 404);
+        }
+
+        // Gate 3: Admin Approval stamp
+        $diagnosis->update([
+            'admin_approved_dataset' => true,
+            'admin_approved_at' => now(),
+            'admin_approved_by' => $admin->id,
+        ]);
+
+        $filename = basename($path);
+        $datasetPath = $this->datasetDir.'/'.$category.'/'.$filename;
+        if (! Storage::disk($this->disk)->exists($datasetPath)) {
+            Storage::disk($this->disk)->copy($path, $datasetPath);
+        }
+
+        // Synchronize to algorithms/data/raw
+        $algosRawDir = RepositoryPathResolver::getAlgorithmsDataRawPath();
+        if ($algosRawDir && is_dir($algosRawDir)) {
+            $catDir = $algosRawDir.'/'.ucfirst($category);
+            if (! is_dir($catDir)) {
+                @mkdir($catDir, 0755, true);
+            }
+            $targetAlgoFile = $catDir.'/webapp_'.$filename;
+            if (! file_exists($targetAlgoFile)) {
+                @copy(Storage::disk($this->disk)->path($path), $targetAlgoFile);
+            }
+        }
+
+        $diagnosis->update([
+            'contributed_to_dataset' => true,
+            'contributed_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Diagnosis scan approved by admin and ingested into dataset.',
+            'diagnosis' => new DiagnosisResource($diagnosis),
+        ]);
     }
 
     public function revokePatientDatasetContributions(User $patient): int
@@ -493,6 +603,7 @@ class DatasetService
             ->get();
 
         $prunedCount = 0;
+        $algosRawDir = RepositoryPathResolver::getAlgorithmsDataRawPath();
 
         foreach ($diagnoses as $diagnosis) {
             if (! empty($diagnosis->image_path)) {
@@ -520,11 +631,26 @@ class DatasetService
                     Storage::disk($this->disk)->delete($outOfScopePath);
                     $prunedCount++;
                 }
+
+                // Prune from algorithms/data/raw
+                if ($algosRawDir && is_dir($algosRawDir)) {
+                    foreach (['acne', 'eczema', 'herpes', $category] as $cat) {
+                        $variants = [ucfirst($cat), strtolower($cat), $cat];
+                        foreach (array_unique($variants) as $c) {
+                            $algoFile = $algosRawDir.'/'.$c.'/webapp_'.$filename;
+                            if (file_exists($algoFile)) {
+                                @unlink($algoFile);
+                            }
+                        }
+                    }
+                }
             }
 
             $diagnosis->update([
                 'contributed_to_dataset' => false,
                 'patient_consented_dataset' => false,
+                'doctor_authorized_dataset' => false,
+                'admin_approved_dataset' => false,
                 'contributed_at' => null,
             ]);
         }

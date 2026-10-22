@@ -15,6 +15,11 @@ class Appointment extends Model
         'doctor_id',
         'patient_id',
         'diagnosis_id',
+        'in_clinic_diagnosis_id',
+        'scan_exception_reason',
+        'scan_exception_category',
+        'scan_exception_granted_at',
+        'scan_exception_doctor_id',
         'scheduled_at',
         'scheduled_end_at',
         'previous_scheduled_at',
@@ -49,6 +54,7 @@ class Appointment extends Model
         'no_show_at' => 'datetime',
         'checked_in_at' => 'datetime',
         'consultation_started_at' => 'datetime',
+        'scan_exception_granted_at' => 'datetime',
     ];
 
     protected function serializeDate(\DateTimeInterface $date): string
@@ -79,6 +85,33 @@ class Appointment extends Model
     public function diagnosis()
     {
         return $this->belongsTo(Diagnosis::class, 'diagnosis_id');
+    }
+
+    public function inClinicDiagnosis()
+    {
+        return $this->belongsTo(Diagnosis::class, 'in_clinic_diagnosis_id');
+    }
+
+    public function scanExceptionDoctor()
+    {
+        return $this->belongsTo(User::class, 'scan_exception_doctor_id');
+    }
+
+    /**
+     * Checks if the consultation has satisfied the mandatory in-clinic scan gate
+     * via either a successful in-clinic scan or an authorized documented exception.
+     */
+    public function hasSatisfiedConsultationScan(): bool
+    {
+        if ($this->in_clinic_diagnosis_id && $this->inClinicDiagnosis && ! $this->inClinicDiagnosis->is_technical_failure) {
+            return true;
+        }
+
+        if (! empty($this->scan_exception_reason) && $this->scan_exception_granted_at) {
+            return true;
+        }
+
+        return false;
     }
 
     public function clinicalNote()

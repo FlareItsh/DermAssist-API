@@ -129,6 +129,7 @@ test('admin can resolve an appeal to ingest scan for AI retraining', function ()
         'confidence' => 0.88,
         'probabilities' => ['Herpes' => 0.88, 'Acne' => 0.12],
         'status' => 'completed',
+        'patient_consented_dataset' => true,
     ]);
 
     $appeal = Appeal::create([

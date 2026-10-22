@@ -121,7 +121,17 @@ class DatasetController extends Controller
             'diagnosis_uuid' => 'required|uuid',
         ]);
 
-        return $this->datasetService->saveFromDiagnosis($request->input('diagnosis_uuid'));
+        return $this->datasetService->saveFromDiagnosis($request->input('diagnosis_uuid'), $request->user());
+    }
+
+    public function adminApproveDiagnosis(Request $request, string $uuid): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->role || $user->role->slug !== 'admin') {
+            return response()->json(['error' => 'Unauthorized. Admin access required.'], 403);
+        }
+
+        return $this->datasetService->adminApproveDiagnosis($uuid, $user);
     }
 
     public function download(Request $request)

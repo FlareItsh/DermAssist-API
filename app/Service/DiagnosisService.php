@@ -7,6 +7,7 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Repository\DiagnosisRepository;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -78,6 +79,9 @@ class DiagnosisService
             'doctor_uuid' => $data['doctor_uuid'] ?? null,
             'image_path' => $path,
             'label' => $aiResult['label'],
+            'original_ai_label' => $aiResult['label'],
+            'scan_type' => $isDoctor ? 'in_clinic' : 'home',
+            'is_technical_failure' => false,
             'confidence' => $aiResult['confidence'],
             'probabilities' => $aiResult['all_probabilities'],
             'status' => $initialStatus,
@@ -113,6 +117,34 @@ class DiagnosisService
         $collection = $this->diagnosisRepository->paginate($perPage);
 
         return DiagnosisResource::collection($collection);
+    }
+
+    public function recordTechnicalFailure(array $data)
+    {
+        $path = null;
+        if (! empty($data['image']) && $data['image'] instanceof UploadedFile) {
+            $path = $data['image']->store('diagnoses', 'public');
+        }
+
+        $diagnosis = $this->diagnosisRepository->create([
+            'user_uuid' => $data['user_uuid'] ?? null,
+            'patient_uuid' => $data['patient_uuid'] ?? null,
+            'doctor_uuid' => $data['doctor_uuid'] ?? null,
+            'image_path' => $path,
+            'label' => null,
+            'original_ai_label' => null,
+            'scan_type' => 'in_clinic',
+            'is_technical_failure' => true,
+            'technical_failure_reason' => $data['reason'] ?? 'Camera blur or technical failure during capture.',
+            'confidence' => null,
+            'probabilities' => null,
+            'status' => 'failed',
+            'patient_consented_dataset' => false,
+            'doctor_authorized_dataset' => false,
+            'admin_approved_dataset' => false,
+        ]);
+
+        return new DiagnosisResource($diagnosis);
     }
 
     public function createDiagnosis(array $payload)

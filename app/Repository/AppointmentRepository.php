@@ -12,6 +12,8 @@ class AppointmentRepository
             'doctor',
             'patient',
             'diagnosis',
+            'inClinicDiagnosis',
+            'scanExceptionDoctor',
             'clinicalNote.diagnosis',
             'activeRescheduleProposal.proposer',
             'acceptedBy',

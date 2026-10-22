@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Events\ModelTrainingProgressUpdated;
 use App\Models\Diagnosis;
+use App\Support\RepositoryPathResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -133,12 +134,13 @@ class ModelTrainingService
         $targetCategories = $filterCategory ? [$filterCategory] : $allowedCategories;
 
         // Path to Algorithm's data/raw directory
-        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
-        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+        $algorithmsRawPath = RepositoryPathResolver::getAlgorithmsDataRawPath();
+        $hasAlgorithmsRaw = ! empty($algorithmsRawPath) && file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
 
         // 1. Fetch diagnosis scans
         $query = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where('is_technical_failure', false)
             ->where(function ($q) use ($targetCategories) {
                 foreach ($targetCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
@@ -204,6 +206,9 @@ class ModelTrainingService
                 'label' => ucwords($catSlug),
                 'confidence' => (float) $diag->confidence,
                 'patient_consented' => (bool) $diag->patient_consented_dataset,
+                'doctor_authorized' => (bool) $diag->doctor_authorized_dataset,
+                'admin_approved' => (bool) $diag->admin_approved_dataset,
+                'is_eligible' => $diag->isEligibleForDataset(),
                 'contributed_to_dataset' => (bool) $diag->contributed_to_dataset,
                 'created_at' => $diag->created_at?->toIso8601String(),
                 'is_in_local_storage' => $isInLocalStorage,
@@ -322,8 +327,8 @@ class ModelTrainingService
         }
 
         $targetTitle = ucfirst($targetSlug);
-        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
-        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+        $algorithmsRawPath = RepositoryPathResolver::getAlgorithmsDataRawPath();
+        $hasAlgorithmsRaw = ! empty($algorithmsRawPath) && file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
         $transferredCount = 0;
         $movedFilenames = [];
 
@@ -497,38 +502,53 @@ class ModelTrainingService
             : 'out_of_scope_dataset/'.$targetSlug;
         $newDatasetPath = $newDatasetDir.'/'.$filename;
 
-        if (Storage::disk($this->disk)->exists($oldDatasetPath)) {
-            if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
-                Storage::disk($this->disk)->makeDirectory($newDatasetDir);
-            }
-            Storage::disk($this->disk)->move($oldDatasetPath, $newDatasetPath);
-        } elseif (Storage::disk($this->disk)->exists($diagnosis->image_path)) {
-            // If file was not yet in dataset directory, copy it to the new training category
-            if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
-                Storage::disk($this->disk)->makeDirectory($newDatasetDir);
-            }
-            Storage::disk($this->disk)->copy($diagnosis->image_path, $newDatasetPath);
-        }
+        $isEligible = $diagnosis->isEligibleForDataset();
 
-        // 2. Move file in PyTorch Algorithms data/raw directory if synced
-        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
-        if (file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath)) {
-            $oldRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$currentTitle;
-            $newRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$targetTitle;
-            if (! is_dir($newRawCatPath)) {
-                @mkdir($newRawCatPath, 0755, true);
+        if ($isEligible) {
+            // 1. Move file in dataset directories if present
+            $oldDatasetDir = $currentIsStandard
+                ? $this->datasetDir.'/'.$currentSlug
+                : 'out_of_scope_dataset/'.$currentSlug;
+            $oldDatasetPath = $oldDatasetDir.'/'.$filename;
+
+            $newDatasetDir = $isStandard
+                ? $this->datasetDir.'/'.$targetSlug
+                : 'out_of_scope_dataset/'.$targetSlug;
+            $newDatasetPath = $newDatasetDir.'/'.$filename;
+
+            if (Storage::disk($this->disk)->exists($oldDatasetPath)) {
+                if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
+                    Storage::disk($this->disk)->makeDirectory($newDatasetDir);
+                }
+                Storage::disk($this->disk)->move($oldDatasetPath, $newDatasetPath);
+            } elseif (Storage::disk($this->disk)->exists($diagnosis->image_path)) {
+                // If file was not yet in dataset directory, copy it to the new training category
+                if (! Storage::disk($this->disk)->exists($newDatasetDir)) {
+                    Storage::disk($this->disk)->makeDirectory($newDatasetDir);
+                }
+                Storage::disk($this->disk)->copy($diagnosis->image_path, $newDatasetPath);
             }
 
-            $oldWebappFile = $oldRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
-            $newWebappFile = $newRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
-            if (file_exists($oldWebappFile)) {
-                @rename($oldWebappFile, $newWebappFile);
-            }
+            // 2. Move file in PyTorch Algorithms data/raw directory if synced
+            $algorithmsRawPath = RepositoryPathResolver::getAlgorithmsDataRawPath();
+            if (! empty($algorithmsRawPath) && file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath)) {
+                $oldRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$currentTitle;
+                $newRawCatPath = $algorithmsRawPath.DIRECTORY_SEPARATOR.$targetTitle;
+                if (! is_dir($newRawCatPath)) {
+                    @mkdir($newRawCatPath, 0755, true);
+                }
 
-            $oldDirectFile = $oldRawCatPath.DIRECTORY_SEPARATOR.$filename;
-            $newDirectFile = $newRawCatPath.DIRECTORY_SEPARATOR.$filename;
-            if (file_exists($oldDirectFile)) {
-                @rename($oldDirectFile, $newDirectFile);
+                $oldWebappFile = $oldRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+                $newWebappFile = $newRawCatPath.DIRECTORY_SEPARATOR.'webapp_'.$filename;
+                if (file_exists($oldWebappFile)) {
+                    @rename($oldWebappFile, $newWebappFile);
+                }
+
+                $oldDirectFile = $oldRawCatPath.DIRECTORY_SEPARATOR.$filename;
+                $newDirectFile = $newRawCatPath.DIRECTORY_SEPARATOR.$filename;
+                if (file_exists($oldDirectFile)) {
+                    @rename($oldDirectFile, $newDirectFile);
+                }
             }
         }
 
@@ -537,8 +557,8 @@ class ModelTrainingService
             'label' => $targetTitle,
             'is_out_of_scope' => ! $isStandard,
             'out_of_scope_category' => ! $isStandard ? $targetSlug : null,
-            'contributed_to_dataset' => true,
-            'contributed_at' => now(),
+            'contributed_to_dataset' => $isEligible,
+            'contributed_at' => $isEligible ? now() : null,
         ]);
 
         return true;
@@ -552,8 +572,8 @@ class ModelTrainingService
      */
     public function deleteTrainingImages(array $uuids): JsonResponse
     {
-        $algorithmsRawPath = base_path('../DermAssist-Algorithms/data/raw');
-        $hasAlgorithmsRaw = file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
+        $algorithmsRawPath = RepositoryPathResolver::getAlgorithmsDataRawPath();
+        $hasAlgorithmsRaw = ! empty($algorithmsRawPath) && file_exists($algorithmsRawPath) && is_dir($algorithmsRawPath);
         $deletedCount = 0;
 
         // 1. Check for Diagnoses matching the UUIDs
@@ -891,6 +911,7 @@ class ModelTrainingService
 
         $query = Diagnosis::query()
             ->whereNotNull('image_path')
+            ->where('is_technical_failure', false)
             ->where(function ($q) use ($allowedCategories) {
                 foreach ($allowedCategories as $cat) {
                     $q->orWhereRaw('LOWER(label) = ?', [$cat]);
@@ -909,9 +930,28 @@ class ModelTrainingService
                 continue;
             }
 
+            // Gate 1: Patient Consent verification
+            $patient = $diag->patient;
+            $hasPatientConsent = ! empty($diag->patient_uuid)
+                ? ((bool) $diag->patient_consented_dataset && ($patient ? (bool) $patient->consent_dataset : false))
+                : (bool) $diag->patient_consented_dataset;
+
+            if (! $hasPatientConsent) {
+                continue;
+            }
+
             if (empty($diag->image_path) || ! Storage::disk($this->disk)->exists($diag->image_path)) {
                 continue;
             }
+
+            // Admin sync satisfies Gate 3 and stamps doctor authorization
+            $diag->update([
+                'doctor_authorized_dataset' => true,
+                'doctor_authorized_at' => $diag->doctor_authorized_at ?? now(),
+                'admin_approved_dataset' => true,
+                'admin_approved_at' => now(),
+                'admin_approved_by' => auth()->id(),
+            ]);
 
             $filename = basename($diag->image_path);
             $targetPath = $this->datasetDir.'/'.$catSlug.'/'.$filename;
@@ -919,6 +959,19 @@ class ModelTrainingService
             if (! Storage::disk($this->disk)->exists($targetPath)) {
                 Storage::disk($this->disk)->copy($diag->image_path, $targetPath);
                 $promotedCount++;
+            }
+
+            // Synchronize to algorithms/data/raw
+            $algosRawDir = RepositoryPathResolver::getAlgorithmsDataRawPath();
+            if ($algosRawDir && is_dir($algosRawDir)) {
+                $catDir = $algosRawDir.'/'.ucfirst($catSlug);
+                if (! is_dir($catDir)) {
+                    @mkdir($catDir, 0755, true);
+                }
+                $targetAlgoFile = $catDir.'/webapp_'.$filename;
+                if (! file_exists($targetAlgoFile)) {
+                    @copy(Storage::disk($this->disk)->path($diag->image_path), $targetAlgoFile);
+                }
             }
 
             if (! $diag->contributed_to_dataset) {

@@ -176,11 +176,17 @@ class AppointmentService
             // Create a Message representing this referral
             $messageContent = $data['message'] ?? '';
             if ($diagnosisId) {
-                if ($formattedSchedule && ! str_contains($messageContent, $formattedSchedule)) {
+                $diagUuid = $data['diagnosis_uuid'] ?? $activeAppointment->diagnosis?->uuid;
+                $defaultNote = $formattedSchedule
+                    ? "I would like to request an appointment for a clinical consultation on {$formattedSchedule}."
+                    : 'I would like to request an appointment regarding my recent skin scan.';
+                $baseMessage = $messageContent ?: $defaultNote;
+
+                if ($tag === 'APPOINTMENT_REQUEST' && $formattedSchedule && ! str_contains($baseMessage, $formattedSchedule)) {
                     $scheduleLine = "Requested schedule: {$formattedSchedule}.";
-                    $messageContent = trim(($messageContent ? $messageContent."\n".$scheduleLine : $scheduleLine)."\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]");
+                    $messageContent = trim($baseMessage."\n".$scheduleLine."\n[{$tag}:{$appointmentUuid}:{$diagUuid}]");
                 } else {
-                    $messageContent .= "\n[{$tag}:{$appointmentUuid}:{$data['diagnosis_uuid']}]";
+                    $messageContent = trim(($messageContent ? $messageContent : ($tag === 'APPOINTMENT_REQUEST' ? $defaultNote : 'Additional findings shared.'))."\n[{$tag}:{$appointmentUuid}:{$diagUuid}]");
                 }
             } else {
                 $defaultText = $formattedSchedule
@@ -366,6 +372,12 @@ class AppointmentService
             }
             $data['scheduled_at'] = null;
             $data['scheduled_end_at'] = null;
+        }
+
+        if ($newStatus === 'completed') {
+            if (! $appointment->hasSatisfiedConsultationScan()) {
+                abort(422, 'Cannot complete consultation: Face-to-face consultation requires a verified in-clinic scan or an authorized documented scan exception.');
+            }
         }
 
         $this->appointmentRepository->updateAppointment($appointment, $data);
@@ -1014,5 +1026,68 @@ class AppointmentService
         ));
 
         return $result;
+    }
+
+    public function attachInClinicScan(Appointment $appointment, string $diagnosisUuid, User $user): Appointment
+    {
+        $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
+
+        $appointment->update([
+            'in_clinic_diagnosis_id' => $diagnosis->id,
+        ]);
+
+        $this->recordAppointmentEvent($appointment, $user, 'in_clinic_scan_attached', [
+            'diagnosis_uuid' => $diagnosis->uuid,
+            'label' => $diagnosis->label,
+            'is_technical_failure' => (bool) $diagnosis->is_technical_failure,
+        ]);
+
+        $appointment->loadMissing(['doctor', 'patient', 'inClinicDiagnosis']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            'in_clinic_scan_attached',
+            $appointment->uuid
+        ));
+
+        return $appointment;
+    }
+
+    public function recordScanException(Appointment $appointment, array $data, User $user): Appointment
+    {
+        $isDoctor = $user->id === $appointment->doctor_id;
+        $isSecretary = $user->role->slug === 'secretary' && $user->doctor_id === $appointment->doctor_id;
+        $isAdmin = $user->role->slug === 'admin';
+
+        if (! $isDoctor && ! $isSecretary && ! $isAdmin) {
+            abort(403, 'Only the attending doctor, clinical secretary, or administrator can document a consultation scan exception.');
+        }
+
+        $reason = trim($data['reason'] ?? '');
+        if (strlen($reason) < 10) {
+            abort(422, 'Scan exception reason must be at least 10 characters detailing clinical justification.');
+        }
+
+        $appointment->update([
+            'scan_exception_reason' => $reason,
+            'scan_exception_category' => $data['category'] ?? 'other',
+            'scan_exception_granted_at' => now(),
+            'scan_exception_doctor_id' => $user->id,
+        ]);
+
+        $this->recordAppointmentEvent($appointment, $user, 'scan_exception_recorded', [
+            'category' => $data['category'] ?? 'other',
+            'reason' => $reason,
+        ]);
+
+        $appointment->loadMissing(['doctor', 'patient']);
+        broadcast(new AppointmentUpdated(
+            $appointment->patient?->uuid,
+            $appointment->doctor?->uuid,
+            'scan_exception_recorded',
+            $appointment->uuid
+        ));
+
+        return $appointment;
     }
 }

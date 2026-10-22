@@ -73,6 +73,9 @@ class AppointmentController extends Controller
             'doctor',
             'patient',
             'diagnosis',
+            'inClinicDiagnosis',
+            'scanExceptionDoctor',
+            'clinicalNote.diagnosis',
             'acceptedBy',
             'activeRescheduleProposal',
             'events',
@@ -290,6 +293,37 @@ class AppointmentController extends Controller
         $result = $this->rescheduleService->withdrawRescheduleProposal($appointment, $proposal, $request->user());
 
         return response()->json($result);
+    }
+
+    public function attachInClinicScan(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'diagnosis_uuid' => 'required|string|exists:diagnoses,uuid',
+        ]);
+
+        $updated = $this->appointmentService->attachInClinicScan(
+            $appointment,
+            $validated['diagnosis_uuid'],
+            $request->user()
+        );
+
+        return response()->json($updated);
+    }
+
+    public function recordScanException(Request $request, Appointment $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:1000',
+            'category' => 'nullable|string|in:patient_physical_intolerance,lesion_inaccessible,camera_hardware_failure_unresolvable,patient_declined_examination,other',
+        ]);
+
+        $updated = $this->appointmentService->recordScanException(
+            $appointment,
+            $validated,
+            $request->user()
+        );
+
+        return response()->json($updated);
     }
 
     public function destroy(Appointment $appointment): Response

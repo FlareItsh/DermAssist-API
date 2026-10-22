@@ -64,6 +64,28 @@ class DiagnosisController extends Controller
         }
     }
 
+    public function recordTechnicalFailure(Request $request)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:5|max:1000',
+            'patient_uuid' => 'nullable|string|exists:users,uuid',
+            'image' => 'nullable|image|max:10240',
+        ]);
+
+        $user = $request->user();
+        $userUuid = $user ? $user->uuid : ($request->header('X-User-Uuid') ?? $request->input('user_uuid'));
+
+        $data = [
+            'reason' => $validated['reason'],
+            'image' => $request->file('image'),
+            'user_uuid' => $userUuid,
+            'doctor_uuid' => ($user && $user->role && $user->role->slug === 'doctor') ? $userUuid : null,
+            'patient_uuid' => $validated['patient_uuid'] ?? null,
+        ];
+
+        return $this->diagnosisService->recordTechnicalFailure($data);
+    }
+
     public function update(Request $request, string $uuid)
     {
         return $this->diagnosisService->updateDiagnosis($uuid, $request->all());
