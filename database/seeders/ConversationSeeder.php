@@ -14,8 +14,8 @@ class ConversationSeeder extends Seeder
      */
     public function run(): void
     {
-        $patient = User::where('email', 'patient@dermassist.com')->first();
-        $doctor = User::where('email', 'doctor@dermassist.com')->first();
+        $patient = User::where('email', 'dan@derm.com')->first();
+        $doctor = User::where('email', 'ben@derm.com')->first();
 
         if ($patient && $doctor) {
             $conversation = Conversation::firstOrCreate([
@@ -31,7 +31,7 @@ class ConversationSeeder extends Seeder
                 ],
                 [
                     'sender_id' => $doctor->id,
-                    'message' => 'Hello John. I understand. Could you please describe the rash and if it is itchy or painful?',
+                    'message' => 'Hello Dan. I understand. Could you please describe the rash and if it is itchy or painful?',
                     'created_at' => now()->subMinutes(8),
                 ],
                 [

@@ -15,7 +15,7 @@ class PlanSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Ensure all standard features exist
+        // 1. Ensure standard features exist
         $standardFeatures = [
             [
                 'code' => 'show_in_recommendation',
@@ -59,7 +59,7 @@ class PlanSeeder extends Seeder
             );
         }
 
-        // 2. Define Plans
+        // 2. Define the 4 target plans
         $plans = [
             [
                 'name' => 'Individual Doctor Plan',
@@ -148,9 +148,13 @@ class PlanSeeder extends Seeder
         ];
 
         $allFeatures = Feature::all()->keyBy('code');
+        $seededSlugs = [];
 
         foreach ($plans as $planData) {
             $featuresMap = $planData['features'] ?? [];
+            unset($planData['features']);
+
+            $seededSlugs[] = $planData['slug'];
 
             $plan = Plan::updateOrCreate(
                 ['slug' => $planData['slug']],
@@ -173,5 +177,8 @@ class PlanSeeder extends Seeder
                 );
             }
         }
+
+        // Deactivate any other plans that do not belong to the 4 plans
+        Plan::whereNotIn('slug', $seededSlugs)->update(['is_active' => false]);
     }
 }

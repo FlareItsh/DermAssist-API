@@ -18,9 +18,10 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             PlanSeeder::class,
+            CouponSeeder::class,
             SubscriptionSeeder::class,
-            ConversationSeeder::class,
             DoctorAvailabilitySeeder::class,
+            ConversationSeeder::class,
         ]);
     }
 }
