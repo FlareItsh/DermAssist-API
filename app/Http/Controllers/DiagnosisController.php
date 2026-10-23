@@ -45,13 +45,23 @@ class DiagnosisController extends Controller
             }
             $data['user'] = $user;
 
-            // Enforce scan quota (both regular patients and non-subscribed doctors share the daily quota)
+            // Enforce scan quota and verification gate
             if ($user && ! $this->scanQuotaService->canScan($user)) {
+                $quota = $this->scanQuotaService->getQuota($user);
+                if ($quota['source'] === 'doctor_unverified') {
+                    return response()->json([
+                        'status' => 'error',
+                        'code' => 'DOCTOR_VERIFICATION_REQUIRED',
+                        'message' => $quota['message'] ?? 'Doctor account verification required before using AI scanning.',
+                        'scan_quota' => $quota,
+                    ], 403);
+                }
+
                 return response()->json([
                     'status' => 'error',
                     'code' => 'SCAN_LIMIT_REACHED',
                     'message' => 'Daily scan limit reached. Please wait for the 24-hour countdown to reset or upgrade your subscription plan.',
-                    'scan_quota' => $this->scanQuotaService->getQuota($user),
+                    'scan_quota' => $quota,
                 ], 429);
             }
 
