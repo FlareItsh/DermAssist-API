@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\DiagnosisRequest;
 use App\Models\User;
 use App\Service\DiagnosisService;
+use App\Service\ScanQuotaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,9 +13,12 @@ class DiagnosisController extends Controller
 {
     private DiagnosisService $diagnosisService;
 
-    public function __construct(DiagnosisService $diagnosisService)
+    private ScanQuotaService $scanQuotaService;
+
+    public function __construct(DiagnosisService $diagnosisService, ScanQuotaService $scanQuotaService)
     {
         $this->diagnosisService = $diagnosisService;
+        $this->scanQuotaService = $scanQuotaService;
     }
 
     public function index(Request $request)
@@ -41,14 +45,17 @@ class DiagnosisController extends Controller
             }
             $data['user'] = $user;
 
+            // Enforce scan quota (both regular patients and non-subscribed doctors share the daily quota)
+            if ($user && ! $this->scanQuotaService->canScan($user)) {
+                return response()->json([
+                    'status' => 'error',
+                    'code' => 'SCAN_LIMIT_REACHED',
+                    'message' => 'Daily scan limit reached. Please wait for the 24-hour countdown to reset or upgrade your subscription plan.',
+                    'scan_quota' => $this->scanQuotaService->getQuota($user),
+                ], 429);
+            }
+
             if ($user && $user->role && $user->role->slug === 'doctor') {
-                if (! $user->canExecuteScan()) {
-                    return response()->json([
-                        'status' => 'error',
-                        'code' => 'PLAN_FEATURE_RESTRICTED',
-                        'message' => 'Your current subscription plan does not include Doctor AI Scan Execution.',
-                    ], 403);
-                }
                 $data['doctor_uuid'] = $userUuid;
                 $data['patient_uuid'] = $request->input('patient_uuid');
             } else {

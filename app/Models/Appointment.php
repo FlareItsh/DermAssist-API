@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Service\ScanQuotaService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -68,6 +69,13 @@ class Appointment extends Model
         static::creating(function ($model) {
             if (empty($model->uuid)) {
                 $model->uuid = (string) Str::uuid();
+            }
+        });
+
+        static::saved(function ($model) {
+            if ($model->status === 'completed' && ($model->wasRecentlyCreated || $model->wasChanged('status'))) {
+                $days = app(ScanQuotaService::class)->getAppointmentUnlimitedDays();
+                $model->patient?->grantUnlimitedScans($days);
             }
         });
     }

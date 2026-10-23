@@ -47,6 +47,7 @@ class DiagnosisResource extends JsonResource
             'created_at' => $this->created_at,
             'image_quality' => $this->resource->image_quality ?? null,
             'doctor_availability' => $this->resource->doctor_availability ?? null,
+            'scan_quota' => $this->resource->scan_quota ?? null,
             'is_inconclusive' => $this->resource->is_inconclusive ?? ($this->label === 'Inconclusive' || $this->label === 'None'),
             'clinical_feedback' => $this->resource->clinical_feedback ?? null,
             'appeal' => $this->appeal ? [

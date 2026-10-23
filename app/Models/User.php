@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Service\ScanQuotaService;
 use Carbon\Carbon;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'must_change_password', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at'])]
+#[Fillable(['first_name', 'middle_name', 'last_name', 'email', 'contact_number', 'password', 'must_change_password', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'role_id', 'doctor_id', 'location', 'affiliation', 'date_of_birth', 'age', 'gender', 'prc_number', 'street', 'barangay', 'city', 'province', 'country', 'latitude', 'longitude', 'avatar_path', 'is_doctor_registered', 'registered_by_doctor_id', 'account_status', 'account_action', 'account_action_scheduled_at', 'consent_dataset', 'terms_accepted_at', 'device_token', 'cookies_accepted_at', 'verification_token', 'verification_deadline', 'verification_reminders_sent', 'google_id', 'email_verified_at', 'scan_window_started_at', 'scan_window_count', 'unlimited_scans_until'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 #[Table(keyType: 'int', incrementing: true)]
 class User extends Authenticatable
@@ -51,6 +52,9 @@ class User extends Authenticatable
             'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
+            'scan_window_started_at' => 'datetime',
+            'scan_window_count' => 'integer',
+            'unlimited_scans_until' => 'datetime',
         ];
     }
 
@@ -518,5 +522,42 @@ class User extends Authenticatable
     public function hasConsentedToDataset(): bool
     {
         return (bool) $this->consent_dataset;
+    }
+
+    /**
+     * Grant a 7-day (or specified) grace period of unlimited AI scans.
+     * Ensures an existing longer period is preserved/extended, never shortened.
+     */
+    public function grantUnlimitedScans(?int $days = null): void
+    {
+        $days = $days ?? app(ScanQuotaService::class)->getAppointmentUnlimitedDays();
+        if ($days <= 0) {
+            return;
+        }
+
+        $newUntil = now()->addDays($days);
+
+        if (! $this->unlimited_scans_until || $this->unlimited_scans_until->lt($newUntil)) {
+            $this->update(['unlimited_scans_until' => $newUntil]);
+        }
+    }
+
+    /**
+     * Check if user currently has an active unlimited scans grace period.
+     */
+    public function hasUnlimitedScans(): bool
+    {
+        if ($this->unlimited_scans_until !== null && $this->unlimited_scans_until->isFuture()) {
+            return true;
+        }
+
+        if ($this->is_doctor_registered && $this->created_at) {
+            $docDays = app(ScanQuotaService::class)->getDoctorCreatedUnlimitedDays();
+            if ($docDays > 0 && $this->created_at->copy()->addDays($docDays)->isFuture()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

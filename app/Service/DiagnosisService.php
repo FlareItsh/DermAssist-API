@@ -18,12 +18,16 @@ class DiagnosisService
 
     private DoctorAvailabilityService $doctorAvailabilityService;
 
+    private ScanQuotaService $scanQuotaService;
+
     public function __construct(
         DiagnosisRepository $diagnosisRepository,
-        DoctorAvailabilityService $doctorAvailabilityService
+        DoctorAvailabilityService $doctorAvailabilityService,
+        ScanQuotaService $scanQuotaService
     ) {
         $this->diagnosisRepository = $diagnosisRepository;
         $this->doctorAvailabilityService = $doctorAvailabilityService;
+        $this->scanQuotaService = $scanQuotaService;
     }
 
     public function diagnose(array $data)
@@ -58,6 +62,10 @@ class DiagnosisService
         }
 
         $aiResult = $response->json();
+        $scanQuota = null;
+        if (! empty($data['user']) && $data['user'] instanceof User) {
+            $scanQuota = $this->scanQuotaService->recordScan($data['user']);
+        }
 
         // 2. Save image
         $path = $image->store('diagnoses', 'public');
@@ -110,6 +118,7 @@ class DiagnosisService
         $diagnosis->image_quality = $aiResult['image_quality'] ?? null;
         $diagnosis->is_inconclusive = $aiResult['is_inconclusive'] ?? ($aiResult['label'] === 'Inconclusive');
         $diagnosis->clinical_feedback = $aiResult['clinical_feedback'] ?? null;
+        $diagnosis->scan_quota = $scanQuota;
 
         if (! empty($data['doctor_id'])) {
             $availabilityCheck = $this->doctorAvailabilityService->checkDoctorAvailability(

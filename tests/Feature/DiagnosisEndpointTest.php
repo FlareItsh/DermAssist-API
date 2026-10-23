@@ -1,10 +1,12 @@
 <?php
 
 use App\Models\Diagnosis;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
@@ -32,10 +34,13 @@ it('can diagnose a skin lesion image', function () {
     $jpegBytes = base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=');
     $file = UploadedFile::fake()->createWithContent('test-skin-lesion.jpg', $jpegBytes);
 
+    $user = User::factory()->create(['account_status' => 'active']);
+    Sanctum::actingAs($user);
+
     // 4. Hit the endpoint
     $response = $this->postJson('/api/diagnose', [
         'image' => $file,
-        'user_uuid' => '123e4567-e89b-12d3-a456-426614174000',
+        'user_uuid' => $user->uuid,
     ]);
 
     // 5. Assert the response
@@ -43,6 +48,6 @@ it('can diagnose a skin lesion image', function () {
     $response->assertJsonPath('label', 'Acne');
 
     // 6. Assert the file was stored locally
-    $diagnosis = Diagnosis::where('user_uuid', '123e4567-e89b-12d3-a456-426614174000')->first();
+    $diagnosis = Diagnosis::where('user_uuid', $user->uuid)->first();
     Storage::disk('public')->assertExists($diagnosis->image_path);
 });

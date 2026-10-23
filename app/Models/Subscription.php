@@ -170,6 +170,19 @@ class Subscription extends Model
     }
 
     /**
+     * Get daily scan limit allowed for this subscription.
+     * Returns null if unlimited, or integer limit.
+     */
+    public function getDailyScanLimit(): ?int
+    {
+        if (! empty($this->plan_snapshot) && array_key_exists('daily_scan_limit', $this->plan_snapshot)) {
+            return $this->plan_snapshot['daily_scan_limit'];
+        }
+
+        return $this->plan?->daily_scan_limit;
+    }
+
+    /**
      * Check whether the active plan has received updates since this subscription was created/renewed.
      */
     public function hasPlanUpdate(): bool
@@ -193,6 +206,7 @@ class Subscription extends Model
             if (($snapshot['max_clinics'] ?? null) !== $this->plan->max_clinics ||
                 ($snapshot['max_secretaries'] ?? null) !== $this->plan->max_secretaries ||
                 ($snapshot['max_doctors'] ?? null) !== $this->plan->max_doctors ||
+                (array_key_exists('daily_scan_limit', $snapshot) && $snapshot['daily_scan_limit'] !== $this->plan->daily_scan_limit) ||
                 (float) ($snapshot['price_monthly'] ?? 0) !== (float) $this->plan->price_monthly ||
                 (float) ($snapshot['price_annual'] ?? 0) !== (float) $this->plan->price_annual) {
                 return true;

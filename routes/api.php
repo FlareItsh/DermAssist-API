@@ -27,6 +27,7 @@ use App\Http\Controllers\OutOfScopeDatasetController;
 use App\Http\Controllers\PatchNoteController;
 use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\RecordController;
+use App\Http\Controllers\ScanQuotaController;
 use App\Http\Controllers\TwoFactorController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VerificationController;
@@ -59,10 +60,11 @@ Route::middleware([CheckBlockedDeviceOrIp::class])->group(function () {
     });
 });
 
-Route::post('/diagnose', [DiagnosisController::class, 'store']);
 Route::get('/candidate-diseases', [CandidateDiseaseController::class, 'index']);
 
 Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function () {
+    Route::post('/diagnose', [DiagnosisController::class, 'store']);
+    Route::get('/scan-quota', [ScanQuotaController::class, 'show']);
 
     Route::get('/user', function (Request $request) {
         return new UserResource($request->user()->load('role'));
@@ -205,6 +207,12 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
         Route::post('/model/retrain/complete', [AdminModelTrainingController::class, 'markCompleted']);
         Route::post('/model/retrain/rollback', [AdminModelTrainingController::class, 'rollback']);
         Route::post('/model/dataset/sync', [AdminModelTrainingController::class, 'sync']);
+
+        // System Settings
+        Route::get('/settings/default-scan-quota', [ScanQuotaController::class, 'getDefaultQuota']);
+        Route::post('/settings/default-scan-quota', [ScanQuotaController::class, 'updateDefaultQuota']);
+        Route::get('/settings/care-grace-periods', [ScanQuotaController::class, 'getCareGracePeriods']);
+        Route::post('/settings/care-grace-periods', [ScanQuotaController::class, 'updateCareGracePeriods']);
     });
 
     // Patch Notes (User Notifications / Changelog)
