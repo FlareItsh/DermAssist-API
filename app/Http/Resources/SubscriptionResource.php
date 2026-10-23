@@ -25,6 +25,7 @@ class SubscriptionResource extends JsonResource
             'effective_max_clinics' => $this->getMaxClinics(),
             'effective_max_secretaries' => $this->getMaxSecretaries(),
             'effective_max_doctors' => $this->getMaxDoctors(),
+            'effective_daily_scan_limit' => $this->getDailyScanLimit(),
             'has_plan_update' => $this->hasPlanUpdate(),
             'latest_plan_version' => $this->plan?->version,
             'user' => new UserResource($this->whenLoaded('user')),

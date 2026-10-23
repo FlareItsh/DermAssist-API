@@ -732,6 +732,9 @@ class UserService
                 'email_verified_at' => $isWalkIn ? null : now(),
                 'must_change_password' => ! $isWalkIn,
                 'avatar_path' => null,
+                'unlimited_scans_until' => ($docDays = app(ScanQuotaService::class)->getDoctorCreatedUnlimitedDays()) > 0
+                    ? now()->addDays($docDays)
+                    : null,
             ];
 
             if (! empty($payload['avatar'])) {
