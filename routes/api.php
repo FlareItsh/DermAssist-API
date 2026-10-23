@@ -209,6 +209,8 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
         Route::post('/model/dataset/sync', [AdminModelTrainingController::class, 'sync']);
 
         // System Settings
+        Route::get('/settings/scan-quota-policies', [ScanQuotaController::class, 'getPolicies']);
+        Route::post('/settings/scan-quota-policies', [ScanQuotaController::class, 'updatePolicies']);
         Route::get('/settings/default-scan-quota', [ScanQuotaController::class, 'getDefaultQuota']);
         Route::post('/settings/default-scan-quota', [ScanQuotaController::class, 'updateDefaultQuota']);
         Route::get('/settings/care-grace-periods', [ScanQuotaController::class, 'getCareGracePeriods']);

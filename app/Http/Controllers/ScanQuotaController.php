@@ -29,7 +29,66 @@ class ScanQuotaController extends Controller
     }
 
     /**
-     * Get the system-wide default daily scan quota.
+     * Get all dynamic scan quota and trial policies (Admin only).
+     */
+    public function getPolicies(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->scanQuotaService->getAllPolicies(),
+        ]);
+    }
+
+    /**
+     * Update dynamic scan quota and trial policies (Admin only).
+     */
+    public function updatePolicies(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || $user->role?->slug !== 'admin') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized. Admin access required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'doctor_trial_days' => 'sometimes|integer|min:1|max:365',
+            'doctor_trial_daily_scans' => 'sometimes|integer|min:1|max:1000',
+            'doctor_unsubscribed_daily_scans' => 'sometimes|integer|min:0|max:1000',
+            'patient_default_daily_scans' => 'sometimes|integer|min:1|max:1000',
+            'patient_care_daily_scans' => 'sometimes|integer|min:1|max:1000',
+            'patient_care_duration_days' => 'sometimes|integer|min:1|max:365',
+        ]);
+
+        if (isset($validated['doctor_trial_days'])) {
+            $this->scanQuotaService->setDoctorTrialDays((int) $validated['doctor_trial_days']);
+        }
+        if (isset($validated['doctor_trial_daily_scans'])) {
+            $this->scanQuotaService->setDoctorTrialDailyQuota((int) $validated['doctor_trial_daily_scans']);
+        }
+        if (isset($validated['doctor_unsubscribed_daily_scans'])) {
+            $this->scanQuotaService->setDoctorUnsubscribedDailyQuota((int) $validated['doctor_unsubscribed_daily_scans']);
+        }
+        if (isset($validated['patient_default_daily_scans'])) {
+            $this->scanQuotaService->setPatientDefaultDailyQuota((int) $validated['patient_default_daily_scans']);
+        }
+        if (isset($validated['patient_care_daily_scans'])) {
+            $this->scanQuotaService->setPatientCareDailyQuota((int) $validated['patient_care_daily_scans']);
+        }
+        if (isset($validated['patient_care_duration_days'])) {
+            $this->scanQuotaService->setPatientCareDurationDays((int) $validated['patient_care_duration_days']);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Scan quota and trial policies updated successfully.',
+            'data' => $this->scanQuotaService->getAllPolicies(),
+        ]);
+    }
+
+    /**
+     * Legacy: Get the system-wide default daily scan quota.
      */
     public function getDefaultQuota(): JsonResponse
     {
@@ -42,7 +101,7 @@ class ScanQuotaController extends Controller
     }
 
     /**
-     * Update the system-wide default daily scan quota (Admin only).
+     * Legacy: Update the system-wide default daily scan quota (Admin only).
      */
     public function updateDefaultQuota(Request $request): JsonResponse
     {
@@ -70,7 +129,7 @@ class ScanQuotaController extends Controller
     }
 
     /**
-     * Get dynamic grace periods for doctor appointments and doctor-created accounts.
+     * Legacy: Get dynamic grace periods for doctor appointments and doctor-created accounts.
      */
     public function getCareGracePeriods(): JsonResponse
     {
@@ -84,7 +143,7 @@ class ScanQuotaController extends Controller
     }
 
     /**
-     * Update dynamic grace periods for doctor appointments and doctor-created accounts (Admin only).
+     * Legacy: Update dynamic grace periods for doctor appointments and doctor-created accounts (Admin only).
      */
     public function updateCareGracePeriods(Request $request): JsonResponse
     {

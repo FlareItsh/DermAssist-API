@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             SubscriptionSeeder::class,
             DoctorAvailabilitySeeder::class,
             ConversationSeeder::class,
+            ScanPolicySeeder::class,
         ]);
     }
 }

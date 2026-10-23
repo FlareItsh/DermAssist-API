@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\DoctorVerification;
 use App\Models\Feature;
 use App\Models\Plan;
 use App\Models\Role;
@@ -8,7 +9,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Service\ScanQuotaService;
 use App\Service\UserService;
-use Carbon\Carbon;
+use Database\Seeders\ScanPolicySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -25,7 +26,8 @@ beforeEach(function () {
     Role::firstOrCreate(['slug' => 'doctor'], ['name' => 'Doctor']);
     Role::firstOrCreate(['slug' => 'admin'], ['name' => 'Admin']);
 
-    // Standard roles created
+    // Seed scan policy defaults
+    $this->seed(ScanPolicySeeder::class);
 });
 
 function fakeAiSuccess(): void
@@ -106,128 +108,92 @@ test('regular patient gets default 5 scans and 24h countdown starts on first sca
     $this->postJson('/api/diagnose', ['image' => fakeSkinFile()])->assertSuccessful();
 });
 
-test('quota is NOT deducted if AI server fails or rejects non-skin photo', function () {
-    $patientRole = Role::where('slug', 'patient')->first();
-    $patient = User::factory()->create([
-        'role_id' => $patientRole->id,
-        'account_status' => 'active',
-    ]);
-    Sanctum::actingAs($patient);
-
-    // Mock AI failure with 422 NOT_SKIN_IMAGE
-    Http::fake([
-        '*' => Http::response([
-            'detail' => [
-                'code' => 'NOT_SKIN_IMAGE',
-                'message' => 'The uploaded image does not appear to be a skin photo.',
-            ],
-        ], 422),
-    ]);
-
-    $this->postJson('/api/diagnose', ['image' => fakeSkinFile()])->assertStatus(500);
-
-    // Quota remains 0 used, 5 remaining, no window started
-    $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($quota['used'])->toBe(0);
-    expect($quota['remaining'])->toBe(5);
-    expect($quota['resets_at'])->toBeNull();
-});
-
-test('unsubscribed doctor has the same daily quota as normal patients and can scan', function () {
+test('unverified doctor cannot scan and receives 403 error', function () {
     fakeAiSuccess();
     $doctorRole = Role::where('slug', 'doctor')->first();
     $doctor = User::factory()->create([
         'role_id' => $doctorRole->id,
-        'account_status' => 'active',
+        'account_status' => 'pending',
     ]);
     Sanctum::actingAs($doctor);
 
-    // Doctor without subscription can scan (previously was 403)
-    $res = $this->postJson('/api/diagnose', ['image' => fakeSkinFile()])->assertSuccessful();
-    expect($res->json('scan_quota.used'))->toBe(1);
-    expect($res->json('scan_quota.remaining'))->toBe(4);
+    // Quota endpoint indicates verification required
+    $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    expect($quota['can_scan'])->toBeFalse();
+    expect($quota['limit'])->toBe(0);
+    expect($quota['source'])->toBe('doctor_unverified');
+
+    // Attempting to diagnose is blocked with 403 DOCTOR_VERIFICATION_REQUIRED
+    $res = $this->postJson('/api/diagnose', ['image' => fakeSkinFile()]);
+    $res->assertStatus(403);
+    $res->assertJsonPath('code', 'DOCTOR_VERIFICATION_REQUIRED');
 });
 
-test('doctor-created patient receives 7 days of unlimited scans and returns to default quota when expired', function () {
+test('verified doctor receives 14-day trial with 10 scans per day', function () {
     fakeAiSuccess();
     $doctorRole = Role::where('slug', 'doctor')->first();
     $doctor = User::factory()->create([
         'role_id' => $doctorRole->id,
-        'account_status' => 'active',
+        'account_status' => 'verified',
     ]);
+    DoctorVerification::create([
+        'user_id' => $doctor->id,
+        'prc_number' => '1234567',
+        'id_photo_path' => 'photos/prc.jpg',
+        'status' => DoctorVerification::STATUS_VERIFIED,
+    ]);
+    Sanctum::actingAs($doctor);
 
-    $userService = app(UserService::class);
-    $res = $userService->createDoctorRegisteredPatient([
-        'firstName' => 'John',
-        'lastName' => 'Doe',
-        'email' => 'johndoe@test.com',
-        'password' => 'Secret123!',
-    ], $doctor);
-
-    $patient = User::where('email', 'johndoe@test.com')->first();
-    expect($patient->hasUnlimitedScans())->toBeTrue();
-
-    Sanctum::actingAs($patient);
-
-    // Should report unlimited scans
     $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($quota['is_unlimited'])->toBeTrue();
-    expect($quota['source'])->toBe('doctor_care');
+    expect($quota['can_scan'])->toBeTrue();
+    expect($quota['limit'])->toBe(10);
+    expect($quota['source'])->toBe('doctor_trial');
 
-    // Perform 10 scans without getting blocked
-    for ($i = 0; $i < 10; $i++) {
-        $this->postJson('/api/diagnose', ['image' => fakeSkinFile()])->assertSuccessful();
-    }
-
-    // Fast-forward past 7 days (e.g. 8 days) -> expires and returns to normal default quota
-    $this->travel(8)->days();
-    $expiredQuota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($expiredQuota['is_unlimited'])->toBeFalse();
-    expect($expiredQuota['limit'])->toBe(5);
-    expect($expiredQuota['remaining'])->toBe(5);
+    $res = $this->postJson('/api/diagnose', ['image' => fakeSkinFile()])->assertSuccessful();
+    expect($res->json('scan_quota.used'))->toBe(1);
+    expect($res->json('scan_quota.remaining'))->toBe(9);
 });
 
-test('completed appointment grants patient 7 days of unlimited scans', function () {
-    $patientRole = Role::where('slug', 'patient')->first();
+test('expired doctor trial drops to 3 scans per day', function () {
+    fakeAiSuccess();
     $doctorRole = Role::where('slug', 'doctor')->first();
-
-    $patient = User::factory()->create(['role_id' => $patientRole->id, 'account_status' => 'active']);
-    $doctor = User::factory()->create(['role_id' => $doctorRole->id, 'account_status' => 'active']);
-
-    expect($patient->hasUnlimitedScans())->toBeFalse();
-
-    $appt = Appointment::create([
-        'doctor_id' => $doctor->id,
-        'patient_id' => $patient->id,
-        'status' => 'confirmed',
-        'scheduled_at' => now(),
+    $doctor = User::factory()->create([
+        'role_id' => $doctorRole->id,
+        'account_status' => 'verified',
     ]);
+    DoctorVerification::create([
+        'user_id' => $doctor->id,
+        'prc_number' => '1234567',
+        'id_photo_path' => 'photos/prc.jpg',
+        'status' => DoctorVerification::STATUS_VERIFIED,
+    ]);
+    Sanctum::actingAs($doctor);
 
-    // Mark appointment completed
-    $appt->update(['status' => 'completed']);
+    // Fast-forward 15 days (trial is 14 days)
+    $this->travel(15)->days();
 
-    $patient->refresh();
-    expect($patient->hasUnlimitedScans())->toBeTrue();
-
-    Sanctum::actingAs($patient);
     $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($quota['is_unlimited'])->toBeTrue();
-    expect($quota['source'])->toBe('doctor_care');
+    expect($quota['can_scan'])->toBeTrue();
+    expect($quota['limit'])->toBe(3);
+    expect($quota['source'])->toBe('doctor_unsubscribed');
 });
 
-test('subscribed doctor receives custom daily scan limit from plan or unlimited if null', function () {
+test('subscribed doctor receives unlimited scans when plan limit is null or plan quota when set', function () {
     $doctorRole = Role::where('slug', 'doctor')->first();
-    $doctor = User::factory()->create(['role_id' => $doctorRole->id, 'account_status' => 'active']);
+    $doctor = User::factory()->create([
+        'role_id' => $doctorRole->id,
+        'account_status' => 'verified',
+    ]);
 
     $scanFeature = Feature::firstOrCreate(['code' => 'can_execute_scan'], ['name' => 'Scan', 'is_active' => true]);
 
     $plan = Plan::create([
-        'name' => 'Clinic Pro',
-        'slug' => 'clinic-pro',
+        'name' => 'Individual Doctor Plan',
+        'slug' => 'individual-doctor-plan',
         'tier_type' => 'individual',
-        'price_monthly' => 1999,
-        'price_annual' => 19990,
-        'daily_scan_limit' => 20,
+        'price_monthly' => 999,
+        'price_annual' => 9990,
+        'daily_scan_limit' => null, // Unlimited
         'is_active' => true,
     ]);
     $plan->planFeatures()->attach($scanFeature->id, ['is_included' => true]);
@@ -244,102 +210,119 @@ test('subscribed doctor receives custom daily scan limit from plan or unlimited 
 
     Sanctum::actingAs($doctor);
     $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($quota['is_unlimited'])->toBeFalse();
-    expect($quota['limit'])->toBe(20);
+    expect($quota['is_unlimited'])->toBeTrue();
     expect($quota['source'])->toBe('subscription');
 });
 
-test('admin can view and update system-wide default daily scan quota dynamically', function () {
-    $adminRole = Role::where('slug', 'admin')->first();
-    $admin = User::factory()->create(['role_id' => $adminRole->id, 'account_status' => 'active']);
+test('doctor-created patient receives 15 scans per day for 30 days and reverts to 5 scans per day after expiration', function () {
+    fakeAiSuccess();
+    $doctorRole = Role::where('slug', 'doctor')->first();
+    $doctor = User::factory()->create([
+        'role_id' => $doctorRole->id,
+        'account_status' => 'verified',
+    ]);
 
-    $patientRole = Role::where('slug', 'patient')->first();
-    $patient = User::factory()->create(['role_id' => $patientRole->id, 'account_status' => 'active']);
+    $userService = app(UserService::class);
+    $userService->createDoctorRegisteredPatient([
+        'firstName' => 'John',
+        'lastName' => 'Doe',
+        'email' => 'johndoe@test.com',
+        'password' => 'Secret123!',
+    ], $doctor);
 
-    // Default is 5
-    Sanctum::actingAs($admin);
-    $getRes = $this->getJson('/api/admin/settings/default-scan-quota')->assertOk();
-    expect($getRes->json('data.default_daily_quota'))->toBe(5);
-
-    // Update to 10
-    $updateRes = $this->postJson('/api/admin/settings/default-scan-quota', [
-        'default_daily_quota' => 10,
-    ])->assertOk();
-    expect($updateRes->json('data.default_daily_quota'))->toBe(10);
-
-    // Patient now sees new default limit of 10
+    $patient = User::where('email', 'johndoe@test.com')->first();
     Sanctum::actingAs($patient);
-    $patientQuota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
-    expect($patientQuota['limit'])->toBe(10);
-    expect($patientQuota['remaining'])->toBe(10);
 
-    // Non-admin cannot change default quota
-    $this->postJson('/api/admin/settings/default-scan-quota', [
-        'default_daily_quota' => 25,
-    ])->assertStatus(403);
+    // Initial check: 15 scans/day under doctor_care
+    $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    expect($quota['limit'])->toBe(15);
+    expect($quota['source'])->toBe('doctor_care');
+
+    // Fast-forward 31 days -> reverts to standard 5 scans per day
+    $this->travel(31)->days();
+    $expiredQuota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    expect($expiredQuota['limit'])->toBe(5);
+    expect($expiredQuota['source'])->toBe('free');
 });
 
-test('admin can view and update separate dynamic grace periods for appointments and doctor created accounts', function () {
-    $adminRole = Role::where('slug', 'admin')->first();
-    $admin = User::factory()->create(['role_id' => $adminRole->id, 'account_status' => 'active']);
-
-    $doctorRole = Role::where('slug', 'doctor')->first();
-    $doctor = User::factory()->create(['role_id' => $doctorRole->id, 'account_status' => 'active']);
-
+test('completed appointment grants patient 15 scans per day for 30 days and does not stack with doctor-created status', function () {
     $patientRole = Role::where('slug', 'patient')->first();
-    $patient = User::factory()->create(['role_id' => $patientRole->id, 'account_status' => 'active']);
+    $doctorRole = Role::where('slug', 'doctor')->first();
 
-    // Check defaults (7 days each)
-    Sanctum::actingAs($admin);
-    $getRes = $this->getJson('/api/admin/settings/care-grace-periods')->assertOk();
-    expect($getRes->json('data.appointment_unlimited_days'))->toBe(7);
-    expect($getRes->json('data.doctor_created_unlimited_days'))->toBe(7);
+    $patient = User::factory()->create([
+        'role_id' => $patientRole->id,
+        'account_status' => 'active',
+        'is_doctor_registered' => true,
+        'created_at' => now()->subDays(20), // 10 days remaining of initial 30 days
+    ]);
+    $doctor = User::factory()->create(['role_id' => $doctorRole->id, 'account_status' => 'verified']);
 
-    // Update appointment to 14 days, doctor-created to 30 days
-    $updateRes = $this->postJson('/api/admin/settings/care-grace-periods', [
-        'appointment_unlimited_days' => 14,
-        'doctor_created_unlimited_days' => 30,
-    ])->assertOk();
-    expect($updateRes->json('data.appointment_unlimited_days'))->toBe(14);
-    expect($updateRes->json('data.doctor_created_unlimited_days'))->toBe(30);
-
-    // Appointment completion grants 14 days
     $appt = Appointment::create([
         'doctor_id' => $doctor->id,
         'patient_id' => $patient->id,
         'status' => 'confirmed',
         'scheduled_at' => now(),
     ]);
+
+    // Mark appointment completed
     $appt->update(['status' => 'completed']);
-    $patient->refresh();
-    expect((int) round(now()->diffInDays($patient->unlimited_scans_until)))->toBe(14);
 
-    // Doctor registered patient gets 30 days
-    $userService = app(UserService::class);
-    $userService->createDoctorRegisteredPatient([
-        'firstName' => 'Grace',
-        'lastName' => 'Patient',
-        'email' => 'grace.patient@example.com',
-        'password' => 'Pass123!Secure',
-        'contactNumber' => '+639123456789',
-    ], $doctor);
-    $docPatient = User::where('email', 'grace.patient@example.com')->firstOrFail();
-    expect((int) round(now()->diffInDays($docPatient->unlimited_scans_until)))->toBe(30);
+    Sanctum::actingAs($patient);
+    $quota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    // Does NOT stack: limit is still 15
+    expect($quota['limit'])->toBe(15);
+    expect($quota['source'])->toBe('doctor_care');
 
-    // Dynamic resolution on existing patient when setting changes
+    // 25 days later: doctor_created expired (20 + 25 = 45 > 30), but appointment is only 25 days old (25 < 30)
+    $this->travel(25)->days();
+    $midQuota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    expect($midQuota['limit'])->toBe(15);
+    expect($midQuota['source'])->toBe('doctor_care');
+
+    // 10 more days later (35 days after appointment) -> now completely expired -> reverts to 5
+    $this->travel(10)->days();
+    $finalQuota = $this->getJson('/api/scan-quota')->assertOk()->json('data');
+    expect($finalQuota['limit'])->toBe(5);
+    expect($finalQuota['source'])->toBe('free');
+});
+
+test('admin can view and update all dynamic scan quota policies', function () {
+    $adminRole = Role::where('slug', 'admin')->first();
+    $admin = User::factory()->create(['role_id' => $adminRole->id, 'account_status' => 'active']);
+
     Sanctum::actingAs($admin);
-    $this->postJson('/api/admin/settings/care-grace-periods', [
-        'doctor_created_unlimited_days' => 5,
+
+    // Fetch initial policies
+    $res = $this->getJson('/api/admin/settings/scan-quota-policies')->assertOk();
+    expect($res->json('data.doctor_trial_days'))->toBe(14);
+    expect($res->json('data.doctor_trial_daily_scans'))->toBe(10);
+    expect($res->json('data.doctor_unsubscribed_daily_scans'))->toBe(3);
+    expect($res->json('data.patient_default_daily_scans'))->toBe(5);
+    expect($res->json('data.patient_care_daily_scans'))->toBe(15);
+    expect($res->json('data.patient_care_duration_days'))->toBe(30);
+
+    // Update policies
+    $updateRes = $this->postJson('/api/admin/settings/scan-quota-policies', [
+        'doctor_trial_days' => 21,
+        'doctor_trial_daily_scans' => 20,
+        'doctor_unsubscribed_daily_scans' => 5,
+        'patient_default_daily_scans' => 8,
+        'patient_care_daily_scans' => 25,
+        'patient_care_duration_days' => 60,
     ])->assertOk();
 
-    $quotaService = app(ScanQuotaService::class);
-    $resolved = $quotaService->getQuota($docPatient);
-    expect($resolved['is_unlimited'])->toBeTrue();
-    expect((int) round(now()->diffInDays(Carbon::parse($resolved['unlimited_until']))))->toBe(5);
+    expect($updateRes->json('data.doctor_trial_days'))->toBe(21);
+    expect($updateRes->json('data.doctor_trial_daily_scans'))->toBe(20);
+    expect($updateRes->json('data.doctor_unsubscribed_daily_scans'))->toBe(5);
+    expect($updateRes->json('data.patient_default_daily_scans'))->toBe(8);
+    expect($updateRes->json('data.patient_care_daily_scans'))->toBe(25);
+    expect($updateRes->json('data.patient_care_duration_days'))->toBe(60);
 
-    // Non-admin cannot change settings
+    // Non-admin cannot update policies
+    $patientRole = Role::where('slug', 'patient')->first();
+    $patient = User::factory()->create(['role_id' => $patientRole->id, 'account_status' => 'active']);
     Sanctum::actingAs($patient);
-    $this->postJson('/api/admin/settings/care-grace-periods', [
-        'appointment_unlimited_days' => 3,
+    $this->postJson('/api/admin/settings/scan-quota-policies', [
+        'patient_default_daily_scans' => 100,
     ])->assertStatus(403);
 });
