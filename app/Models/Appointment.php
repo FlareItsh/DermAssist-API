@@ -111,11 +111,11 @@ class Appointment extends Model
      */
     public function hasSatisfiedConsultationScan(): bool
     {
-        if ($this->in_clinic_diagnosis_id && $this->inClinicDiagnosis && ! $this->inClinicDiagnosis->is_technical_failure) {
+        if ($this->in_clinic_diagnosis_id && $this->inClinicDiagnosis && ! $this->inClinicDiagnosis->is_technical_failure && $this->inClinicDiagnosis->status === 'completed') {
             return true;
         }
 
-        if ($this->clinicalNote && $this->clinicalNote->diagnosis && ! $this->clinicalNote->diagnosis->is_technical_failure) {
+        if ($this->clinicalNote && $this->clinicalNote->diagnosis && ! $this->clinicalNote->diagnosis->is_technical_failure && $this->clinicalNote->diagnosis->status === 'completed') {
             if ($this->clinicalNote->diagnosis->scan_type !== 'home') {
                 return true;
             }

@@ -36,12 +36,15 @@ class RecordRepository
             });
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        return $query->where('status', 'completed')
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     public function getAllRecords()
     {
         return Diagnosis::with(['clinicalNote.doctor', 'clinicalNote.patient', 'doctor', 'patient', 'appeal'])
+            ->where('status', 'completed')
             ->orderBy('created_at', 'desc')
             ->get();
     }
