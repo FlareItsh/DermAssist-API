@@ -32,6 +32,15 @@ class AppointmentRescheduleProposal extends Model
         'expires_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'proposer_party',
+    ];
+
+    public function getProposerPartyAttribute(): string
+    {
+        return in_array($this->proposer_type, ['doctor', 'secretary']) ? 'practice' : 'patient';
+    }
+
     protected function serializeDate(\DateTimeInterface $date): string
     {
         return $date->format('Y-m-d\TH:i:sP');
