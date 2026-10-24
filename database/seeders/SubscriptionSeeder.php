@@ -16,8 +16,8 @@ class SubscriptionSeeder extends Seeder
      */
     public function run(): void
     {
-        $doctor = User::where('email', 'ben@derm.com')->first();
-        $admin = User::where('email', 'sam@derm.com')->first();
+        $doctor = User::where('email', 'doc@derm.com')->first() ?: User::where('email', 'ben@derm.com')->first();
+        $admin = User::where('email', 'admin@derm.com')->first() ?: User::where('email', 'sam@derm.com')->first();
         $multiClinicPlan = Plan::where('slug', 'multi-clinic-doctor-plan')->first();
 
         if ($doctor && $multiClinicPlan) {

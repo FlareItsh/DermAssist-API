@@ -22,6 +22,7 @@ use App\Http\Controllers\DoctorPatientController;
 use App\Http\Controllers\DoctorSecretaryController;
 use App\Http\Controllers\DoctorSubscriptionController;
 use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\MedicineController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\OutOfScopeDatasetController;
 use App\Http\Controllers\PatchNoteController;
@@ -251,6 +252,13 @@ Route::middleware(['auth:sanctum', CheckAccountStatus::class])->group(function (
     Route::post('/doctor/clinic-doctors/invitations/{id}/accept', [DoctorClinicDoctorController::class, 'acceptInvitation']);
     Route::post('/doctor/clinic-doctors/invitations/{id}/decline', [DoctorClinicDoctorController::class, 'declineInvitation']);
     Route::post('/doctor/clinic-doctors/revocations/{id}/dismiss', [DoctorClinicDoctorController::class, 'dismissRevocation']);
+
+    // Medicine Library Routes
+    Route::get('/doctor/medicines', [MedicineController::class, 'index']);
+    Route::post('/doctor/medicines', [MedicineController::class, 'store']);
+    Route::get('/doctor/medicines/{uuid}', [MedicineController::class, 'show']);
+    Route::put('/doctor/medicines/{uuid}', [MedicineController::class, 'update']);
+    Route::delete('/doctor/medicines/{uuid}', [MedicineController::class, 'destroy']);
 });
 
 // Unauthenticated Payment Webhooks

@@ -79,7 +79,7 @@ class DiagnosisService
         }
 
         $isDoctor = ! empty($data['doctor_uuid']) || ($data['user'] && $data['user']->role && $data['user']->role->slug === 'doctor');
-        $initialStatus = $isDoctor ? 'completed' : 'draft';
+        $initialStatus = 'draft';
 
         // 3. Create record
         $diagnosis = $this->diagnosisRepository->create([
@@ -98,7 +98,7 @@ class DiagnosisService
             'out_of_scope_category' => $aiResult['out_of_scope_category'] ?? null,
         ]);
 
-        if (! empty($data['appointment_uuid'])) {
+        if (! empty($data['appointment_uuid']) && $diagnosis->status === 'completed') {
             $appointment = Appointment::where('uuid', $data['appointment_uuid'])->first();
             if ($appointment) {
                 $apptUpdate = [];

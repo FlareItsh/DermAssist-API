@@ -51,6 +51,9 @@ class ClinicalNoteService
                 if (! empty($appointmentUpdate)) {
                     $appointment->update($appointmentUpdate);
                 }
+                if ($targetStatus === 'completed' || $diagnosis->status === 'draft') {
+                    $diagnosis->update(['status' => 'completed']);
+                }
             }
             unset($validated['diagnosis_uuid']);
         }
@@ -63,6 +66,9 @@ class ClinicalNoteService
                     $appointmentUpdate['diagnosis_id'] = $inClinicDiagnosis->id;
                 }
                 $appointment->update($appointmentUpdate);
+                if ($targetStatus === 'completed' || $inClinicDiagnosis->status === 'draft') {
+                    $inClinicDiagnosis->update(['status' => 'completed']);
+                }
             }
             unset($validated['in_clinic_diagnosis_uuid']);
         }
@@ -75,6 +81,10 @@ class ClinicalNoteService
                 'scan_exception_doctor_id' => $appointment->doctor_id,
             ]);
             unset($validated['scan_exception_category']);
+        }
+
+        if (! isset($validated['diagnosis_id'])) {
+            $validated['diagnosis_id'] = $appointment->diagnosis_id ?? $appointment->in_clinic_diagnosis_id;
         }
 
         $clinicalNote = $this->clinicalNoteRepository->updateOrCreate(
@@ -102,6 +112,7 @@ class ClinicalNoteService
     public function storeNoteForDiagnosis(string $diagnosisUuid, array $validated, User $user)
     {
         $diagnosis = Diagnosis::where('uuid', $diagnosisUuid)->firstOrFail();
+        $diagnosis->update(['status' => 'completed']);
 
         if (! $diagnosis->patient_id && ! $diagnosis->patient_uuid) {
             throw new \Exception('Diagnosis must have an assigned patient before saving a clinical note.');

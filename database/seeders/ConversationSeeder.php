@@ -14,8 +14,8 @@ class ConversationSeeder extends Seeder
      */
     public function run(): void
     {
-        $patient = User::where('email', 'dan@derm.com')->first();
-        $doctor = User::where('email', 'ben@derm.com')->first();
+        $patient = User::where('email', 'pat@derm.com')->first() ?: User::where('email', 'dan@derm.com')->first();
+        $doctor = User::where('email', 'doc@derm.com')->first() ?: User::where('email', 'ben@derm.com')->first();
 
         if ($patient && $doctor) {
             $conversation = Conversation::firstOrCreate([
